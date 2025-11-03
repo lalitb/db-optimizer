@@ -1,0 +1,19 @@
+pub mod agent;
+pub mod models;
+pub mod collector;
+pub mod analyzer;
+pub mod cost_estimator;
+pub mod recommendations;
+pub mod output;
+pub mod config;
+pub mod auto_apply;
+pub mod query_rewriter;
+
+pub use models::*;
+pub use collector::DatabaseCollector;
+pub use analyzer::QueryAnalyzer;
+pub use cost_estimator::CostEstimator;
+pub use recommendations::RecommendationEngine;
+pub use output::OutputFormatter;
+pub use config::Config;
+pub use auto_apply::AutoApplyOrchestrator;
