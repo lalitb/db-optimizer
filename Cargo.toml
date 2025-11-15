@@ -38,12 +38,17 @@ chrono = { version = "0.4", features = ["serde"] }
 # String utilities
 regex = "1"
 
+# System information
+num_cpus = "1"
+
 # HTTP client for notifications
 reqwest = { version = "0.11", features = ["json"] }
 
 # HTTP server
 axum = "0.7"
-tower-http = { version = "0.5", features = ["cors"] }
+tower = "0.4"
+tower-http = { version = "0.5", features = ["cors", "trace"] }
+lazy_static = "1.4"
 
 # SQL parsing for query rewriting
 sqlparser = "0.39"

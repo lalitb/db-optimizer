@@ -2,12 +2,21 @@
 
 // Only include modules that actually exist
 pub mod correlator;
+pub mod loader;
+pub mod lock_tracer;
+pub mod manager;
 pub mod metrics_collector;
 
 use std::error::Error as StdError;
 use std::fmt;
 
 pub use correlator::DefaultMetricsCorrelator;
+pub use loader::{EbpfProgram, EbpfEventStream, EbpfTarget, EventStreamStats};
+pub use lock_tracer::{
+    LockContentionMetrics, LockContentionSummary, LockEvent, LockEventType,
+    LockMode, LockTracer,
+};
+pub use manager::{EbpfManager, ManagerStats};
 pub use metrics_collector::{EbpfMetricsCollector, MockSystemMetricsCollector, EbpfCollectorConfig};
 
 /// System metrics collected from kernel events

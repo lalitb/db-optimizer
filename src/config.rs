@@ -42,6 +42,10 @@ pub struct Config {
     /// Notification configuration
     #[serde(default)]
     pub notifications: NotificationConfig,
+    
+    /// Guardrails configuration for system resource limits
+    #[serde(default)]
+    pub guardrails: GuardrailsConfig,
 }
 
 impl Config {
@@ -58,6 +62,7 @@ impl Config {
             persistence: PersistenceConfig::default(),
             http_server: HttpServerConfig::default(),
             notifications: NotificationConfig::default(),
+            guardrails: GuardrailsConfig::default(),
         })
     }
     
@@ -81,21 +86,72 @@ impl Config {
         Ok(config)
     }
     
-    /// Apply environment variable overrides
+    /// Apply environment variable overrides with DBO_ prefix
     fn apply_env_overrides(&mut self) -> Result<()> {
-        // Override database URL if env var is set
-        if let Ok(url) = std::env::var("DATABASE_URL") {
+        // Database overrides
+        if let Ok(url) = std::env::var("DBO_DATABASE_URL") {
+            self.database.url = url;
+        } else if let Ok(url) = std::env::var("DATABASE_URL") {
             self.database.url = url;
         }
         
-        // Override operation mode if env var is set
-        if let Ok(mode) = std::env::var("OPERATION_MODE") {
+        // Operation mode override
+        if let Ok(mode) = std::env::var("DBO_OPERATION_MODE") {
+            self.operation_mode = mode.parse()?;
+        } else if let Ok(mode) = std::env::var("OPERATION_MODE") {
             self.operation_mode = mode.parse()?;
         }
         
-        // Override Slack webhook if env var is set
-        if let Ok(webhook) = std::env::var("SLACK_WEBHOOK") {
+        // Slack webhook override
+        if let Ok(webhook) = std::env::var("DBO_SLACK_WEBHOOK") {
             self.notifications.slack_webhook = Some(webhook);
+        } else if let Ok(webhook) = std::env::var("SLACK_WEBHOOK") {
+            self.notifications.slack_webhook = Some(webhook);
+        }
+        
+        // Guardrails overrides
+        if let Ok(enabled) = std::env::var("DBO_GUARDRAILS_ENABLED") {
+            self.guardrails.enabled = enabled.parse().unwrap_or(true);
+        }
+        
+        if let Ok(mem) = std::env::var("DBO_GUARDRAILS_MEMORY_THRESHOLD") {
+            if let Ok(threshold) = mem.parse() {
+                self.guardrails.memory_threshold_percent = threshold;
+            }
+        }
+        
+        if let Ok(cpu) = std::env::var("DBO_GUARDRAILS_CPU_THRESHOLD") {
+            if let Ok(threshold) = cpu.parse() {
+                self.guardrails.cpu_threshold_percent = threshold;
+            }
+        }
+        
+        if let Ok(disk) = std::env::var("DBO_GUARDRAILS_DISK_THRESHOLD") {
+            if let Ok(threshold) = disk.parse() {
+                self.guardrails.disk_threshold_percent = threshold;
+            }
+        }
+        
+        if let Ok(conn) = std::env::var("DBO_GUARDRAILS_MAX_CONNECTIONS") {
+            if let Ok(max) = conn.parse() {
+                self.guardrails.max_connections_threshold = max;
+            }
+        }
+        
+        // eBPF override
+        if let Ok(enabled) = std::env::var("DBO_EBPF_ENABLED") {
+            self.ebpf.enabled = enabled.parse().unwrap_or(false);
+        }
+        
+        // HTTP server overrides
+        if let Ok(enabled) = std::env::var("DBO_HTTP_ENABLED") {
+            self.http_server.enabled = enabled.parse().unwrap_or(false);
+        }
+        
+        if let Ok(port) = std::env::var("DBO_HTTP_PORT") {
+            if let Ok(p) = port.parse() {
+                self.http_server.port = p;
+            }
         }
         
         Ok(())
@@ -136,6 +192,19 @@ impl Config {
             let (start, end) = self.maintenance_window.allowed_hours_utc;
             if start > 23 || end > 23 {
                 bail!("Maintenance window hours must be 0-23");
+            }
+        }
+        
+        // Validate guardrails
+        if self.guardrails.enabled {
+            if self.guardrails.memory_threshold_percent > 100 {
+                bail!("Memory threshold cannot exceed 100%");
+            }
+            if self.guardrails.cpu_threshold_percent > 100 {
+                bail!("CPU threshold cannot exceed 100%");
+            }
+            if self.guardrails.disk_threshold_percent > 100 {
+                bail!("Disk threshold cannot exceed 100%");
             }
         }
         
@@ -637,6 +706,54 @@ pub struct EmailConfig {
     pub to: Vec<String>,
 }
 
+/// Guardrails configuration for system resource limits
+/// Prevents auto-apply operations when system resources are under stress
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GuardrailsConfig {
+    /// Whether guardrails are enabled
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    
+    /// Memory usage threshold (percentage). Stop auto-apply if exceeded.
+    #[serde(default = "default_memory_threshold")]
+    pub memory_threshold_percent: u8,
+    
+    /// CPU usage threshold (percentage). Stop auto-apply if exceeded.
+    #[serde(default = "default_cpu_threshold")]
+    pub cpu_threshold_percent: u8,
+    
+    /// Disk usage threshold (percentage). Stop auto-apply if exceeded.
+    #[serde(default = "default_disk_threshold")]
+    pub disk_threshold_percent: u8,
+    
+    /// Maximum active connections threshold. Stop auto-apply if exceeded.
+    #[serde(default = "default_max_connections_threshold")]
+    pub max_connections_threshold: u32,
+    
+    /// Check interval in seconds
+    #[serde(default = "default_guardrail_check_interval")]
+    pub check_interval_secs: u64,
+}
+
+impl Default for GuardrailsConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            memory_threshold_percent: default_memory_threshold(),
+            cpu_threshold_percent: default_cpu_threshold(),
+            disk_threshold_percent: default_disk_threshold(),
+            max_connections_threshold: default_max_connections_threshold(),
+            check_interval_secs: default_guardrail_check_interval(),
+        }
+    }
+}
+
+fn default_memory_threshold() -> u8 { 90 }
+fn default_cpu_threshold() -> u8 { 85 }
+fn default_disk_threshold() -> u8 { 95 }
+fn default_max_connections_threshold() -> u32 { 1000 }
+fn default_guardrail_check_interval() -> u64 { 30 }
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -670,6 +787,7 @@ mod tests {
             persistence: PersistenceConfig::default(),
             http_server: HttpServerConfig::default(),
             notifications: NotificationConfig::default(),
+            guardrails: GuardrailsConfig::default(),
         };
         
         assert!(config.validate().is_ok());
@@ -696,9 +814,47 @@ mod tests {
             persistence: PersistenceConfig::default(),
             http_server: HttpServerConfig::default(),
             notifications: NotificationConfig::default(),
+            guardrails: GuardrailsConfig::default(),
         };
         
         // Should always be in maintenance window when disabled
         assert!(config.in_maintenance_window());
+    }
+    
+    #[test]
+    fn test_guardrails_defaults() {
+        let guardrails = GuardrailsConfig::default();
+        assert_eq!(guardrails.enabled, true);
+        assert_eq!(guardrails.memory_threshold_percent, 90);
+        assert_eq!(guardrails.cpu_threshold_percent, 85);
+        assert_eq!(guardrails.disk_threshold_percent, 95);
+        assert_eq!(guardrails.max_connections_threshold, 1000);
+    }
+    
+    #[test]
+    fn test_env_var_prefix() {
+        // Test that DBO_ prefix works
+        std::env::set_var("DBO_OPERATION_MODE", "safe_auto");
+        let mut config = Config {
+            database: DatabaseConfig {
+                url: "postgresql://localhost/test".to_string(),
+                max_connections: 5,
+                connection_timeout_secs: 30,
+            },
+            operation_mode: OperationMode::ObserveOnly,
+            analysis: AnalysisConfig::from_env(),
+            safety: SafetyConfig::default(),
+            maintenance_window: MaintenanceWindow::default(),
+            ebpf: EbpfConfig::default(),
+            auto_apply: AutoApplyConfigExtended::default(),
+            persistence: PersistenceConfig::default(),
+            http_server: HttpServerConfig::default(),
+            notifications: NotificationConfig::default(),
+            guardrails: GuardrailsConfig::default(),
+        };
+        
+        config.apply_env_overrides().unwrap();
+        assert_eq!(config.operation_mode, OperationMode::SafeAuto);
+        std::env::remove_var("DBO_OPERATION_MODE");
     }
 }

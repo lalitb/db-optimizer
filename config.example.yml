@@ -163,7 +163,7 @@ http_server:
 
 # Notification configuration
 notifications:
-  # Slack webhook URL (can also be set via SLACK_WEBHOOK env var)
+  # Slack webhook URL (can also be set via SLACK_WEBHOOK or DBO_SLACK_WEBHOOK env var)
   # slack_webhook: "https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
   
   # Email configuration (future feature)
@@ -173,6 +173,26 @@ notifications:
   #   from: "db-optimizer@example.com"
   #   to:
   #     - "dba-team@example.com"
+
+# Guardrails configuration
+# Prevents auto-apply operations when system resources are under stress
+guardrails:
+  enabled: true
+  
+  # Memory usage threshold (percentage). Stop auto-apply if exceeded.
+  memory_threshold_percent: 90
+  
+  # CPU usage threshold (percentage). Stop auto-apply if exceeded.
+  cpu_threshold_percent: 85
+  
+  # Disk usage threshold (percentage). Stop auto-apply if exceeded.
+  disk_threshold_percent: 95
+  
+  # Maximum active connections threshold. Stop auto-apply if exceeded.
+  max_connections_threshold: 1000
+  
+  # Check interval in seconds
+  check_interval_secs: 30
 
 # ============================================================================
 # EXAMPLE CONFIGURATIONS FOR COMMON SCENARIOS
@@ -203,6 +223,7 @@ notifications:
 # maintenance_window.allowed_hours_utc: [2, 6]  # 2-6 AM UTC only
 # safety.protected_tables: [users, transactions, accounts]
 # notifications.slack_webhook: "YOUR_WEBHOOK"
+# guardrails.enabled: true  # Enable system resource checks
 
 # Scenario 4: Production - Aggressive (Use with caution!)
 # -------------------------------------------------------

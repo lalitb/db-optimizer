@@ -1,6 +1,7 @@
 use clap::{Parser, Subcommand};
 use colored::*;
 use sqlx::postgres::PgPoolOptions;
+use sqlx::Row;
 use std::path::PathBuf;
 use anyhow::Result;
 use tokio::signal;
@@ -38,6 +39,12 @@ enum Commands {
     
     /// Start HTTP API server
     Serve(ServeOptions),
+    
+    /// Tune PostgreSQL configuration (generate optimal settings)
+    ConfigTune(ConfigTuneOptions),
+    
+    /// Validate current PostgreSQL configuration
+    ConfigValidate(ConfigValidateOptions),
 }
 
 #[derive(Parser)]
@@ -196,6 +203,72 @@ struct ServeOptions {
 }
 
 #[derive(Parser)]
+struct ConfigTuneOptions {
+    /// PostgreSQL connection string (optional, for workload detection)
+    #[arg(short, long, env = "DATABASE_URL")]
+    database_url: Option<String>,
+    
+    /// Workload type (auto-detect if not specified and database provided)
+    #[arg(short, long, value_enum)]
+    workload: Option<WorkloadTypeArg>,
+    
+    /// System RAM in GB (auto-detect if not specified)
+    #[arg(long)]
+    ram_gb: Option<f64>,
+    
+    /// CPU count (auto-detect if not specified)
+    #[arg(long)]
+    cpus: Option<u32>,
+    
+    /// Disk type
+    #[arg(long, value_enum)]
+    disk_type: Option<DiskTypeArg>,
+    
+    /// Output format
+    #[arg(short = 'f', long, value_enum, default_value = "terminal")]
+    format: OutputFormat,
+    
+    /// Output file (defaults to stdout)
+    #[arg(short, long)]
+    output: Option<PathBuf>,
+    
+    /// Show before/after comparison (requires database connection)
+    #[arg(long)]
+    show_current: bool,
+}
+
+#[derive(Parser)]
+struct ConfigValidateOptions {
+    /// PostgreSQL connection string
+    #[arg(short, long, env = "DATABASE_URL")]
+    database_url: String,
+    
+    /// Output format
+    #[arg(short = 'f', long, value_enum, default_value = "terminal")]
+    format: OutputFormat,
+    
+    /// Output file (defaults to stdout)
+    #[arg(short, long)]
+    output: Option<PathBuf>,
+}
+
+#[derive(clap::ValueEnum, Clone, Debug)]
+enum WorkloadTypeArg {
+    Desktop,
+    Web,
+    Oltp,
+    DataWarehouse,
+    Mixed,
+}
+
+#[derive(clap::ValueEnum, Clone, Debug)]
+enum DiskTypeArg {
+    Hdd,
+    Ssd,
+    Nvme,
+}
+
+#[derive(Parser)]
 struct RewriteSqlOptions {
     /// Input SQL file (or use stdin if not provided)
     #[arg(short, long)]
@@ -286,6 +359,12 @@ async fn main() -> Result<()> {
         }
         Some(Commands::Serve(opts)) => {
             run_serve_mode(opts).await
+        }
+        Some(Commands::ConfigTune(opts)) => {
+            run_config_tune_mode(opts).await
+        }
+        Some(Commands::ConfigValidate(opts)) => {
+            run_config_validate_mode(opts).await
         }
         None => {
             // Default behavior - run analyze with flattened options
@@ -769,19 +848,381 @@ async fn run_serve_mode(opts: ServeOptions) -> Result<()> {
             .init();
     }
     
-    println!("{}", "🌐 PostgreSQL Query Health Advisor - HTTP Server".bright_cyan().bold());
+    println!("{}", "🌐 PostgreSQL Query Health Advisor - HTTP API Server".bright_cyan().bold());
     println!("{}", "━".repeat(70).bright_blue());
-    println!("   Starting HTTP API server on port {}", opts.port);
+    println!("   Port: {}", opts.port);
+    println!("   API Base: {}", format!("http://localhost:{}/api/v1", opts.port).bright_cyan());
+    println!();
     println!("   Endpoints:");
-    println!("     GET  {}  - Server health", "/health".bright_white());
-    println!("     GET  {}  - Server info", "/".bright_white());
+    println!("     {}  {}  - Interactive documentation", "GET".bright_green(), "/".bright_white());
+    println!("     {}  {}  - Health check", "GET".bright_green(), "/api/v1/health".bright_white());
+    println!("     {}  {}  - Lock contention", "GET".bright_green(), "/api/v1/locks/contention".bright_white());
+    println!("     {}  {}  - Query rewriter", "POST".bright_yellow(), "/api/v1/queries/rewrite".bright_white());
+    println!("     {}  {}  - Prometheus metrics", "GET".bright_green(), "/api/v1/stats/metrics".bright_white());
+    println!("     {} See http://localhost:{} for full API docs", "📚".bright_blue(), opts.port);
     println!("{}", "━".repeat(70).bright_blue());
     println!();
     
+    // Create minimal HTTP config
+    let http_config = pg_query_advisor::HttpServerConfig {
+        enabled: true,
+        bind_address: "127.0.0.1".to_string(),
+        port: opts.port,
+        auth_token: None,
+        enable_cors: true,
+    };
+    
+    // Create empty persistence (will add proper integration later)
+    use std::sync::Arc;
+    use tokio::sync::RwLock;
+    let persistence: Arc<RwLock<Box<dyn pg_query_advisor::persistence::PersistenceStore>>> = 
+        Arc::new(RwLock::new(Box::new(pg_query_advisor::persistence::sqlite::SqliteStore::new(":memory:").await?)));
+    
     println!("✅ Server starting...");
-    println!("   Access at: {}", format!("http://localhost:{}", opts.port).bright_cyan());
+    println!("   Access API at: {}", format!("http://localhost:{}/api/v1", opts.port).bright_cyan());
+    println!("   View docs at: {}", format!("http://localhost:{}", opts.port).bright_cyan().underline());
     println!("   Press Ctrl+C to stop\n");
     
-    // Start server
-    pg_query_advisor::http_server::create_server(opts.port).await
+    // Start new HTTP API server (no eBPF manager, no db_pool for now)
+    pg_query_advisor::http::serve(http_config, persistence, None, None).await
+}
+
+/// Run config tune mode
+async fn run_config_tune_mode(opts: ConfigTuneOptions) -> Result<()> {
+    use pg_query_advisor::config_tuner::{ConfigTuner, WorkloadDetector, models::{SystemInfo, WorkloadType, DiskType}};
+    
+    println!("{}", "⚙️  PostgreSQL Configuration Tuner".bright_cyan().bold());
+    println!("{}\n", "Generating optimal configuration...".bright_black());
+    
+    // Detect or use provided system info
+    print!("Detecting system information... ");
+    let mut system_info = SystemInfo::detect()?;
+    println!("{}", "✓".bright_green());
+    
+    // Override with user-provided values
+    if let Some(ram_gb) = opts.ram_gb {
+        system_info.total_ram_kb = (ram_gb * 1024.0 * 1024.0) as u64;
+    }
+    if let Some(cpus) = opts.cpus {
+        system_info.cpu_count = cpus;
+    }
+    if let Some(disk_type) = opts.disk_type {
+        system_info.disk_type = match disk_type {
+            DiskTypeArg::Hdd => DiskType::HDD,
+            DiskTypeArg::Ssd => DiskType::SSD,
+            DiskTypeArg::Nvme => DiskType::SAN, // Use SAN for NVMe-class storage
+        };
+    }
+    
+    println!("   RAM: {:.1} GB", system_info.ram_gb());
+    println!("   CPUs: {}", system_info.cpu_count);
+    println!("   Disk: {:?}", system_info.disk_type);
+    println!("   OS: {:?}", system_info.os_type);
+    println!("   PostgreSQL: {:.1}", system_info.pg_version);
+    println!();
+    
+    // Determine workload type
+    let (workload, detected) = if let Some(workload_arg) = opts.workload {
+        let wl = match workload_arg {
+            WorkloadTypeArg::Desktop => WorkloadType::Desktop,
+            WorkloadTypeArg::Web => WorkloadType::Web,
+            WorkloadTypeArg::Oltp => WorkloadType::OLTP,
+            WorkloadTypeArg::DataWarehouse => WorkloadType::DataWarehouse,
+            WorkloadTypeArg::Mixed => WorkloadType::Mixed,
+        };
+        (wl, false)
+    } else if let Some(db_url) = &opts.database_url {
+        print!("Detecting workload type from database... ");
+        let pool = PgPoolOptions::new()
+            .max_connections(5)
+            .connect(db_url)
+            .await?;
+        
+        let detector = WorkloadDetector::new();
+        let detected_workload = detector.detect(&pool).await?;
+        println!("{}", "✓".bright_green());
+        (detected_workload, true)
+    } else {
+        println!("{}", "⚠️  No workload specified and no database connection, using Mixed".yellow());
+        (WorkloadType::Mixed, false)
+    };
+    
+    println!("Workload type: {} {}", 
+        format!("{:?}", workload).bright_white().bold(),
+        if detected { "(auto-detected)".bright_black() } else { "(manual)".bright_black() }
+    );
+    println!();
+    
+    // Show current config if requested
+    if opts.show_current {
+        if let Some(db_url) = &opts.database_url {
+            print!("Fetching current configuration... ");
+            let pool = PgPoolOptions::new()
+                .max_connections(5)
+                .connect(db_url)
+                .await?;
+            println!("{}", "✓".bright_green());
+            
+            // Query key params
+            let row = sqlx::query("SELECT name, setting, unit FROM pg_settings WHERE name IN ('shared_buffers', 'effective_cache_size', 'work_mem', 'max_connections')")
+                .fetch_all(&pool)
+                .await?;
+            
+            println!("\n{}", "Current Configuration:".bright_cyan().bold());
+            println!("{}", "━".repeat(50).bright_blue());
+            for r in row {
+                let name: String = r.try_get("name")?;
+                let setting: String = r.try_get("setting")?;
+                let unit: Option<String> = r.try_get("unit").ok();
+                println!("   {}: {} {}", name, setting, unit.unwrap_or_default());
+            }
+            println!();
+        }
+    }
+    
+    // Calculate optimal configuration
+    print!("Calculating optimal parameters... ");
+    let tuner = ConfigTuner::new();
+    let optimal_config = tuner.calculate_optimal_config(&system_info, workload);
+    println!("{}", "✓".bright_green());
+    
+    // Format output
+    let output_text = match opts.format {
+        OutputFormat::Terminal => {
+            let mut output = String::new();
+            output.push_str(&format!("\n{}\n", "Recommended Configuration:".bright_cyan().bold()));
+            output.push_str(&format!("{}\n\n", "━".repeat(70).bright_blue()));
+            output.push_str(&format!("{}\n", optimal_config.to_postgresql_conf()));
+            output.push_str(&format!("\n{}\n", "━".repeat(70).bright_blue()));
+            output.push_str(&format!("\n{}\n", "💡 Tips:".bright_yellow().bold()));
+            output.push_str("   1. Review these settings before applying\n");
+            output.push_str("   2. Test in a non-production environment first\n");
+            output.push_str("   3. Restart PostgreSQL after making changes\n");
+            output.push_str("   4. Monitor performance after changes\n");
+            output
+        }
+        OutputFormat::Json => {
+            serde_json::to_string_pretty(&optimal_config)?
+        }
+        OutputFormat::Markdown => {
+            let mut output = String::new();
+            output.push_str("# PostgreSQL Configuration Recommendations\n\n");
+            output.push_str(&format!("**Workload Type:** {:?}\n", workload));
+            output.push_str(&format!("**System:** {:.1} GB RAM, {} CPUs, {:?} disk\n\n", 
+                system_info.ram_gb(), system_info.cpu_count, system_info.disk_type));
+            output.push_str("## Recommended Settings\n\n```ini\n");
+            output.push_str(&optimal_config.to_postgresql_conf());
+            output.push_str("\n```\n");
+            output
+        }
+    };
+    
+    // Output
+    if let Some(output_path) = opts.output {
+        std::fs::write(&output_path, &output_text)?;
+        println!("\n{} Configuration saved to: {}", 
+            "✓".bright_green(), 
+            output_path.display().to_string().bright_white());
+    } else {
+        print!("{}", output_text);
+    }
+    
+    Ok(())
+}
+
+/// Run config validate mode
+async fn run_config_validate_mode(opts: ConfigValidateOptions) -> Result<()> {
+    use pg_query_advisor::config_tuner::ConfigValidator;
+    
+    println!("{}", "🔍 PostgreSQL Configuration Validator".bright_cyan().bold());
+    println!("{}\n", "Analyzing current configuration...".bright_black());
+    
+    // Connect to database
+    print!("Connecting to database... ");
+    let pool = PgPoolOptions::new()
+        .max_connections(5)
+        .connect(&opts.database_url)
+        .await?;
+    println!("{}", "✓".bright_green());
+    
+    // Run validation
+    print!("Running configuration checks... ");
+    let validator = ConfigValidator::new();
+    let report = validator.validate(&pool).await?;
+    println!("{}", "✓".bright_green());
+    println!();
+    
+    // Format output
+    let output_text = match opts.format {
+        OutputFormat::Terminal => {
+            let mut output = String::new();
+            
+            // Header
+            if report.is_healthy() {
+                output.push_str(&format!("{} {}\n", "✅".bright_green(), "Configuration looks good!".bright_green().bold()));
+            } else {
+                output.push_str(&format!("{} {}\n", "⚠️ ".yellow(), "Configuration issues detected".yellow().bold()));
+            }
+            output.push_str(&format!("{}\n\n", "━".repeat(70).bright_blue()));
+            
+            // Critical Issues
+            let critical_issues: Vec<_> = report.issues.iter()
+                .filter(|i| i.severity == pg_query_advisor::config_tuner::models::ValidationSeverity::Critical)
+                .collect();
+            
+            if !critical_issues.is_empty() {
+                output.push_str(&format!("{} ({}):\n", "Critical".bright_red().bold(), critical_issues.len()));
+                for issue in critical_issues {
+                    output.push_str(&format!("   {} [{}] {}: {}\n",
+                        "❌".bright_red(),
+                        issue.category,
+                        issue.title,
+                        issue.description
+                    ));
+                    if !issue.recommendation.is_empty() {
+                        output.push_str(&format!("      → {}\n", issue.recommendation));
+                    }
+                    if let (Some(current), Some(recommended)) = (&issue.current_value, &issue.recommended_value) {
+                        output.push_str(&format!("      Current: {}, Recommended: {}\n", current, recommended));
+                    }
+                }
+                output.push_str("\n");
+            }
+            
+            // High Issues
+            let high_issues: Vec<_> = report.issues.iter()
+                .filter(|i| i.severity == pg_query_advisor::config_tuner::models::ValidationSeverity::High)
+                .collect();
+            
+            if !high_issues.is_empty() {
+                output.push_str(&format!("{} ({}):\n", "High".bright_red(), high_issues.len()));
+                for issue in high_issues {
+                    output.push_str(&format!("   {} [{}] {}: {}\n",
+                        "⚠️ ".bright_red(),
+                        issue.category,
+                        issue.title,
+                        issue.description
+                    ));
+                    if !issue.recommendation.is_empty() {
+                        output.push_str(&format!("      → {}\n", issue.recommendation));
+                    }
+                    if let (Some(current), Some(recommended)) = (&issue.current_value, &issue.recommended_value) {
+                        output.push_str(&format!("      Current: {}, Recommended: {}\n", current, recommended));
+                    }
+                }
+                output.push_str("\n");
+            }
+            
+            // Medium Issues
+            let medium_issues: Vec<_> = report.issues.iter()
+                .filter(|i| i.severity == pg_query_advisor::config_tuner::models::ValidationSeverity::Medium)
+                .collect();
+            
+            if !medium_issues.is_empty() {
+                output.push_str(&format!("{} ({}):\n", "Medium".yellow(), medium_issues.len()));
+                for issue in medium_issues {
+                    output.push_str(&format!("   {} [{}] {}: {}\n",
+                        "⚠️ ".yellow(),
+                        issue.category,
+                        issue.title,
+                        issue.description
+                    ));
+                    if !issue.recommendation.is_empty() {
+                        output.push_str(&format!("      → {}\n", issue.recommendation));
+                    }
+                    if let (Some(current), Some(recommended)) = (&issue.current_value, &issue.recommended_value) {
+                        output.push_str(&format!("      Current: {}, Recommended: {}\n", current, recommended));
+                    }
+                }
+                output.push_str("\n");
+            }
+            
+            // Low Issues  
+            let low_issues: Vec<_> = report.issues.iter()
+                .filter(|i| i.severity == pg_query_advisor::config_tuner::models::ValidationSeverity::Low)
+                .collect();
+            
+            if !low_issues.is_empty() {
+                output.push_str(&format!("{} ({}):\n", "Low".bright_black(), low_issues.len()));
+                for issue in low_issues {
+                    output.push_str(&format!("   {} [{}] {}: {}\n",
+                        "ℹ️ ".bright_black(),
+                        issue.category,
+                        issue.title,
+                        issue.description
+                    ));
+                    if !issue.recommendation.is_empty() {
+                        output.push_str(&format!("      → {}\n", issue.recommendation));
+                    }
+                }
+                output.push_str("\n");
+            }
+            
+            // Summary
+            output.push_str(&format!("{}\n", "━".repeat(70).bright_blue()));
+            output.push_str(&format!("Summary: {}\n", report.summary()));
+            
+            output
+        }
+        OutputFormat::Json => {
+            serde_json::to_string_pretty(&report)?
+        }
+        OutputFormat::Markdown => {
+            let mut output = String::new();
+            output.push_str("# PostgreSQL Configuration Validation Report\n\n");
+            
+            if report.is_healthy() {
+                output.push_str("✅ **Status:** Healthy\n\n");
+            } else {
+                output.push_str("⚠️ **Status:** Issues Detected\n\n");
+            }
+            
+            // Group issues by severity
+            for severity in [
+                pg_query_advisor::config_tuner::models::ValidationSeverity::Critical,
+                pg_query_advisor::config_tuner::models::ValidationSeverity::High,
+                pg_query_advisor::config_tuner::models::ValidationSeverity::Medium,
+                pg_query_advisor::config_tuner::models::ValidationSeverity::Low,
+            ] {
+                let issues: Vec<_> = report.issues.iter()
+                    .filter(|i| i.severity == severity)
+                    .collect();
+                
+                if !issues.is_empty() {
+                    output.push_str(&format!("## {} Issues ({})\n\n", severity, issues.len()));
+                    for issue in issues {
+                        output.push_str(&format!("- **[{}] {}:** {}\n", 
+                            issue.category, issue.title, issue.description));
+                        if !issue.recommendation.is_empty() {
+                            output.push_str(&format!("  - Recommendation: {}\n", issue.recommendation));
+                        }
+                        if let (Some(current), Some(recommended)) = (&issue.current_value, &issue.recommended_value) {
+                            output.push_str(&format!("  - Current: `{}`\n", current));
+                            output.push_str(&format!("  - Recommended: `{}`\n", recommended));
+                        }
+                    }
+                    output.push_str("\n");
+                }
+            }
+            
+            output
+        }
+    };
+    
+    // Output
+    if let Some(output_path) = opts.output {
+        std::fs::write(&output_path, &output_text)?;
+        println!("\n{} Report saved to: {}", 
+            "✓".bright_green(), 
+            output_path.display().to_string().bright_white());
+    } else {
+        print!("{}", output_text);
+    }
+    
+    // Exit with error if not healthy
+    if !report.is_healthy() {
+        std::process::exit(1);
+    }
+    
+    Ok(())
 }

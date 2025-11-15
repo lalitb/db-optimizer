@@ -11,8 +11,9 @@ pub mod query_rewriter;
 pub mod persistence;
 pub mod traits;
 pub mod adapters;
-pub mod http_server;
+pub mod http;
 pub mod ebpf;
+pub mod config_tuner;
 
 pub use models::*;
 pub use collector::DatabaseCollector;
