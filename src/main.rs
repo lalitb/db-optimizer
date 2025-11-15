@@ -35,6 +35,9 @@ enum Commands {
     
     /// Rewrite and optimize SQL queries
     RewriteSql(RewriteSqlOptions),
+    
+    /// Start HTTP API server
+    Serve(ServeOptions),
 }
 
 #[derive(Parser)]
@@ -182,6 +185,17 @@ struct AgentOptions {
 }
 
 #[derive(Parser)]
+struct ServeOptions {
+    /// Port to listen on
+    #[arg(short, long, default_value = "8080")]
+    port: u16,
+    
+    /// Enable verbose logging
+    #[arg(short, long)]
+    verbose: bool,
+}
+
+#[derive(Parser)]
 struct RewriteSqlOptions {
     /// Input SQL file (or use stdin if not provided)
     #[arg(short, long)]
@@ -269,6 +283,9 @@ async fn main() -> Result<()> {
         }
         Some(Commands::RewriteSql(opts)) => {
             run_rewrite_sql_mode(opts)
+        }
+        Some(Commands::Serve(opts)) => {
+            run_serve_mode(opts).await
         }
         None => {
             // Default behavior - run analyze with flattened options
@@ -737,4 +754,34 @@ fn display_cycle_results(results: &AnalysisResults) {
     if results.total_savings_usd > 0.0 {
         println!("   💰 Potential savings: ${:.0}/month", results.total_savings_usd);
     }
+}
+
+/// Run HTTP server mode
+async fn run_serve_mode(opts: ServeOptions) -> Result<()> {
+    // Setup logging
+    if opts.verbose {
+        tracing_subscriber::fmt()
+            .with_env_filter("pg_query_advisor=debug")
+            .init();
+    } else {
+        tracing_subscriber::fmt()
+            .with_env_filter("pg_query_advisor=info")
+            .init();
+    }
+    
+    println!("{}", "🌐 PostgreSQL Query Health Advisor - HTTP Server".bright_cyan().bold());
+    println!("{}", "━".repeat(70).bright_blue());
+    println!("   Starting HTTP API server on port {}", opts.port);
+    println!("   Endpoints:");
+    println!("     GET  {}  - Server health", "/health".bright_white());
+    println!("     GET  {}  - Server info", "/".bright_white());
+    println!("{}", "━".repeat(70).bright_blue());
+    println!();
+    
+    println!("✅ Server starting...");
+    println!("   Access at: {}", format!("http://localhost:{}", opts.port).bright_cyan());
+    println!("   Press Ctrl+C to stop\n");
+    
+    // Start server
+    pg_query_advisor::http_server::create_server(opts.port).await
 }

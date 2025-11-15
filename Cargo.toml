@@ -41,6 +41,10 @@ regex = "1"
 # HTTP client for notifications
 reqwest = { version = "0.11", features = ["json"] }
 
+# HTTP server
+axum = "0.7"
+tower-http = { version = "0.5", features = ["cors"] }
+
 # SQL parsing for query rewriting
 sqlparser = "0.39"
 

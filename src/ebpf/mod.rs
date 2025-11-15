@@ -1,26 +1,13 @@
 // src/ebpf/mod.rs - Main eBPF module
 
-pub mod aggregator;
+// Only include modules that actually exist
 pub mod correlator;
-pub mod daemon;
-pub mod events;
-pub mod metrics;
-pub mod normalizer;
-pub mod protocol;
-pub mod sampling;
 pub mod metrics_collector;
 
 use std::error::Error as StdError;
 use std::fmt;
 
-pub use aggregator::EventAggregator;
-pub use correlator::HybridAnalyzer;
-pub use daemon::EbpfDaemon;
-pub use events::RawEvent;
-pub use metrics::ProfilerMetrics;
-pub use normalizer::QueryNormalizer;
-pub use protocol::{Message, MessagePayload, ProtocolCodec};
-pub use sampling::SamplingController;
+pub use correlator::DefaultMetricsCorrelator;
 pub use metrics_collector::{EbpfMetricsCollector, MockSystemMetricsCollector, EbpfCollectorConfig};
 
 /// System metrics collected from kernel events
