@@ -1,4 +1,5 @@
 pub mod rules;
+pub mod cli;
 
 use sqlparser::ast::Statement;
 use sqlparser::dialect::PostgreSqlDialect;

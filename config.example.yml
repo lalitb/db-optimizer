@@ -1,0 +1,215 @@
+# DB Optimizer Configuration Example
+# This file demonstrates all available configuration options.
+# Copy this file to config.yml and adjust values for your environment.
+
+# Database connection settings
+database:
+  url: "postgresql://user:password@localhost:5432/mydb"
+  max_connections: 5
+  connection_timeout_secs: 30
+
+# Operation mode: observe_only, safe_auto, or aggressive
+# - observe_only: Read-only analysis, no changes to database
+# - safe_auto: Auto-apply only safe operations (e.g., CREATE INDEX CONCURRENTLY)
+# - aggressive: More aggressive optimization (use in staging or with explicit opt-in)
+operation_mode: observe_only
+
+# Analysis configuration
+analysis:
+  query_limit: 100
+  cost_per_hour_usd: 0.07  # Database compute cost per hour for cost estimation
+  min_severity: low        # Minimum severity: low, medium, high, critical
+
+# Safety and governance rules
+safety:
+  # Schemas that cannot be modified by auto-apply
+  protected_schemas:
+    - pg_catalog
+    - information_schema
+    # - myapp_critical
+  
+  # Tables that cannot be modified by auto-apply
+  protected_tables:
+    # - users
+    # - transactions
+  
+  # Columns that cannot be modified (table -> columns mapping)
+  protected_columns:
+    # users:
+    #   - id
+    #   - email
+  
+  # Maximum allowed index size in MB (prevents creating huge indexes)
+  max_index_size_mb: 10000.0  # 10 GB
+  
+  # Maximum allowed DDL lock time in seconds
+  max_ddl_lock_time_secs: 300  # 5 minutes
+  
+  # Never modify primary keys
+  protect_primary_keys: true
+  
+  # Never modify unique constraints
+  protect_unique_constraints: true
+  
+  # Require explicit approval for foreign key changes
+  protect_foreign_keys: true
+
+# Maintenance window configuration
+# When enabled, DDL operations only execute during specified windows
+maintenance_window:
+  enabled: false  # Set to true to enforce maintenance windows
+  
+  # Allowed days of week (Mon, Tue, Wed, Thu, Fri, Sat, Sun)
+  allowed_days:
+    - Mon
+    - Tue
+    - Wed
+    - Thu
+    - Fri
+    - Sat
+    - Sun
+  
+  # Allowed hours in UTC (start, end) - both inclusive
+  # Example: (2, 6) = 2:00 AM to 6:59 AM UTC
+  allowed_hours_utc: [0, 23]  # All hours by default
+
+# eBPF configuration
+# Requires root or CAP_BPF capability
+ebpf:
+  enabled: false  # Set to true to enable kernel-level metrics
+  
+  # Sampling interval in milliseconds
+  sampling_interval_ms: 100
+  
+  # Toggle specific metric collection
+  collect_cpu_metrics: true
+  collect_io_metrics: true
+  collect_memory_metrics: true
+  collect_lock_metrics: true
+  
+  # Maximum events to buffer before dropping
+  max_events_buffer: 10000
+
+# Auto-apply configuration
+auto_apply:
+  # Base configuration
+  enabled: false
+  dry_run: true  # Always test with dry_run first!
+  
+  # Minimum estimated monthly savings (USD) to auto-approve
+  min_savings_threshold: 50.0
+  
+  # Maximum risk level to auto-approve: low, medium, high, critical
+  max_risk_level: low
+  
+  # Duration to monitor impact after applying (seconds)
+  verification_duration_secs: 300  # 5 minutes
+  
+  # Minimum improvement percentage to consider successful
+  min_improvement_threshold: 10.0
+  
+  # Auto-rollback if improvement below threshold
+  auto_rollback_on_failure: true
+  
+  # Timeout for SQL execution (seconds)
+  execution_timeout_secs: 600  # 10 minutes
+  
+  # Issue types requiring manual approval (even if within risk/savings thresholds)
+  require_manual_approval:
+    # - slow_query
+  
+  # Slack webhook URL for notifications
+  # slack_webhook: "https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
+  
+  # Custom success criteria (advanced)
+  custom_success_criteria: []
+  #   - metric: p99_time
+  #     min_improvement_pct: 20.0
+  
+  # Soak period in seconds before declaring success
+  soak_period_secs: 60
+  
+  # Maximum concurrent auto-apply operations
+  max_concurrent_applies: 1
+
+# Persistence configuration
+persistence:
+  # Backend: none, sqlite, postgres
+  backend: sqlite
+  
+  # SQLite database path (if backend is sqlite)
+  sqlite_path: "~/.db-optimizer/state.db"
+  
+  # Whether to use the same Postgres DB for persistence (if backend is postgres)
+  use_same_db: true
+  
+  # Separate Postgres URL for persistence (if use_same_db is false)
+  # persistence_db_url: "postgresql://user:password@localhost:5432/optimizer_db"
+  
+  # Retention period for query samples in days
+  retention_days: 30
+
+# HTTP server configuration
+http_server:
+  enabled: false  # Set to true to enable HTTP API
+  bind_address: "127.0.0.1"
+  port: 9090
+  
+  # Optional bearer token for authentication
+  # auth_token: "your-secret-token-here"
+  
+  # Enable CORS for web UI development
+  enable_cors: true
+
+# Notification configuration
+notifications:
+  # Slack webhook URL (can also be set via SLACK_WEBHOOK env var)
+  # slack_webhook: "https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
+  
+  # Email configuration (future feature)
+  # email:
+  #   smtp_host: "smtp.example.com"
+  #   smtp_port: 587
+  #   from: "db-optimizer@example.com"
+  #   to:
+  #     - "dba-team@example.com"
+
+# ============================================================================
+# EXAMPLE CONFIGURATIONS FOR COMMON SCENARIOS
+# ============================================================================
+
+# Scenario 1: Development Environment - Observe Only
+# ---------------------------------------------------
+# operation_mode: observe_only
+# persistence.backend: sqlite
+# http_server.enabled: true  # Enable API for local exploration
+
+# Scenario 2: Staging Environment - Safe Auto-Apply
+# --------------------------------------------------
+# operation_mode: safe_auto
+# auto_apply.enabled: true
+# auto_apply.dry_run: false
+# auto_apply.max_risk_level: medium
+# ebpf.enabled: true  # Enable eBPF for deeper insights
+
+# Scenario 3: Production Environment - Conservative
+# -------------------------------------------------
+# operation_mode: safe_auto
+# auto_apply.enabled: true
+# auto_apply.dry_run: false
+# auto_apply.max_risk_level: low
+# auto_apply.min_savings_threshold: 100.0  # Higher threshold
+# maintenance_window.enabled: true
+# maintenance_window.allowed_hours_utc: [2, 6]  # 2-6 AM UTC only
+# safety.protected_tables: [users, transactions, accounts]
+# notifications.slack_webhook: "YOUR_WEBHOOK"
+
+# Scenario 4: Production - Aggressive (Use with caution!)
+# -------------------------------------------------------
+# operation_mode: aggressive
+# auto_apply.enabled: true
+# auto_apply.dry_run: false
+# auto_apply.max_risk_level: high
+# maintenance_window.enabled: true
+# notifications.slack_webhook: "YOUR_WEBHOOK"
+# # Recommended: Use in staging first, or during maintenance windows only

@@ -19,6 +19,17 @@ Thumbs.db
 .env
 .env.local
 
+# Configuration (keep example, ignore actual config)
+config.yml
+config.yaml
+db-optimizer.yml
+db-optimizer.yaml
+
+# State and persistence
+.db-optimizer/
+*.db
+*.db-journal
+
 # Output files
 *.json
 *.md

@@ -3,6 +3,8 @@ pub mod baseline;
 pub mod executor;
 pub mod verifier;
 pub mod notifier;
+pub mod enhanced_safety;
+pub mod enhanced_verifier;
 
 use crate::models::*;
 use anyhow::Result;

@@ -53,6 +53,12 @@ pub enum Severity {
     Critical,
 }
 
+impl Default for Severity {
+    fn default() -> Self {
+        Self::Low
+    }
+}
+
 impl Severity {
     pub fn as_str(&self) -> &str {
         match self {

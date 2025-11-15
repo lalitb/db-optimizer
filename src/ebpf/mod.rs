@@ -8,6 +8,7 @@ pub mod metrics;
 pub mod normalizer;
 pub mod protocol;
 pub mod sampling;
+pub mod metrics_collector;
 
 use std::error::Error as StdError;
 use std::fmt;
@@ -20,6 +21,7 @@ pub use metrics::ProfilerMetrics;
 pub use normalizer::QueryNormalizer;
 pub use protocol::{Message, MessagePayload, ProtocolCodec};
 pub use sampling::SamplingController;
+pub use metrics_collector::{EbpfMetricsCollector, MockSystemMetricsCollector, EbpfCollectorConfig};
 
 /// System metrics collected from kernel events
 #[derive(Debug, Clone, Default)]
