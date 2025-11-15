@@ -489,11 +489,26 @@ pub enum SuccessMetric {
     /// P99 execution time
     P99Time,
     
+    /// Mean latency (alias for MeanTime)
+    MeanLatency,
+    
+    /// P95 latency (alias for P95Time)
+    P95Latency,
+    
+    /// Throughput (queries per second)
+    Throughput,
+    
+    /// Error rate (percentage)
+    ErrorRate,
+    
     /// CPU time (from eBPF)
     CpuTime,
     
     /// IO wait time (from eBPF)
     IoWaitTime,
+    
+    /// IO wait (alias for IoWaitTime)
+    IoWait,
 }
 
 /// Persistence configuration

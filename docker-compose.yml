@@ -1,0 +1,119 @@
+version: '3.8'
+
+services:
+  # PostgreSQL database for testing
+  postgres:
+    image: postgres:16-alpine
+    container_name: dbopt-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: testdb
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/test-data.sql:/docker-entrypoint-initdb.d/01-test-data.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - dbopt-network
+
+  # db-optimizer in observe-only mode (one-shot analysis)
+  db-optimizer-analyze:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: dbopt-analyzer
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - RUST_LOG=info
+    volumes:
+      - ./config.example.yml:/config/config.yml:ro
+      - dbopt_data:/data
+    command: >
+      analyze
+      --config /config/config.yml
+    networks:
+      - dbopt-network
+    profiles:
+      - analyze
+
+  # db-optimizer as long-running agent (sidecar mode)
+  db-optimizer-agent:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: dbopt-agent
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - RUST_LOG=info
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/testdb
+    volumes:
+      - ./config.example.yml:/config/config.yml:ro
+      - dbopt_data:/data
+    command: >
+      agent
+      --config /config/config.yml
+    restart: unless-stopped
+    networks:
+      - dbopt-network
+    profiles:
+      - agent
+
+  # db-optimizer query rewriter (interactive mode)
+  db-optimizer-rewrite:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: dbopt-rewriter
+    environment:
+      - RUST_LOG=info
+    volumes:
+      - ./scripts:/scripts:ro
+    command: rewrite-sql --file /scripts/test-queries.sql
+    networks:
+      - dbopt-network
+    profiles:
+      - rewrite
+
+volumes:
+  postgres_data:
+    driver: local
+  dbopt_data:
+    driver: local
+
+networks:
+  dbopt-network:
+    driver: bridge
+
+# Usage Examples:
+# 
+# 1. Start Postgres only:
+#    docker-compose up -d postgres
+#
+# 2. Run one-shot analysis:
+#    docker-compose --profile analyze up db-optimizer-analyze
+#
+# 3. Run as long-running agent:
+#    docker-compose --profile agent up -d db-optimizer-agent
+#
+# 4. Run query rewriter:
+#    docker-compose --profile rewrite up db-optimizer-rewrite
+#
+# 5. View logs:
+#    docker-compose logs -f db-optimizer-agent
+#
+# 6. Stop all:
+#    docker-compose down
+#
+# 7. Build and run everything:
+#    docker-compose build
+#    docker-compose --profile agent up -d

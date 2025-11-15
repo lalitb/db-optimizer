@@ -1,0 +1,234 @@
+# Kubernetes Deployment for db-optimizer
+# Deploy as a sidecar alongside your Postgres pod or as a standalone service
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: db-optimizer
+  labels:
+    name: db-optimizer
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: db-optimizer-config
+  namespace: db-optimizer
+data:
+  config.yml: |
+    postgres:
+      host: postgres-service
+      port: 5432
+      database: postgres
+      user: postgres
+      # Password should come from Secret, not ConfigMap
+      
+    operation_mode: observe_only
+    
+    collection:
+      interval_secs: 60
+      pg_stat_statements: true
+      table_stats: true
+      index_stats: true
+      
+    ebpf:
+      enabled: false  # Requires privileged mode
+      sampling_interval_ms: 100
+      
+    persistence:
+      backend: sqlite
+      sqlite_path: /data/db-optimizer.db
+      
+    output:
+      format: terminal
+      
+    safety:
+      max_index_size_mb: 1000.0
+      max_ddl_lock_time_secs: 30
+      protected_schemas:
+        - pg_catalog
+        - information_schema
+      protected_tables: []
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: db-optimizer-secrets
+  namespace: db-optimizer
+type: Opaque
+stringData:
+  postgres-password: "changeme"  # Replace with actual password
+  slack-webhook-url: ""  # Optional: for notifications
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: db-optimizer-data
+  namespace: db-optimizer
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: standard  # Adjust based on your cluster
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: db-optimizer-agent
+  namespace: db-optimizer
+  labels:
+    app: db-optimizer
+    component: agent
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: db-optimizer
+      component: agent
+  template:
+    metadata:
+      labels:
+        app: db-optimizer
+        component: agent
+    spec:
+      serviceAccountName: db-optimizer
+      containers:
+      - name: db-optimizer
+        image: db-optimizer:latest  # Replace with your registry/image
+        imagePullPolicy: IfNotPresent
+        command:
+          - db-optimizer
+          - agent
+          - --config
+          - /config/config.yml
+        env:
+        - name: RUST_LOG
+          value: "info"
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: db-optimizer-secrets
+              key: postgres-password
+        - name: DATABASE_URL
+          value: "postgresql://postgres:$(POSTGRES_PASSWORD)@postgres-service:5432/postgres"
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        volumeMounts:
+        - name: config
+          mountPath: /config
+          readOnly: true
+        - name: data
+          mountPath: /data
+        livenessProbe:
+          exec:
+            command:
+              - db-optimizer
+              - --version
+          initialDelaySeconds: 10
+          periodSeconds: 30
+        readinessProbe:
+          exec:
+            command:
+              - db-optimizer
+              - --version
+          initialDelaySeconds: 5
+          periodSeconds: 10
+      volumes:
+      - name: config
+        configMap:
+          name: db-optimizer-config
+      - name: data
+        persistentVolumeClaim:
+          claimName: db-optimizer-data
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: db-optimizer
+  namespace: db-optimizer
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: db-optimizer-role
+  namespace: db-optimizer
+rules:
+- apiGroups: [""]
+  resources: ["configmaps", "secrets"]
+  verbs: ["get", "list"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: db-optimizer-rolebinding
+  namespace: db-optimizer
+subjects:
+- kind: ServiceAccount
+  name: db-optimizer
+  namespace: db-optimizer
+roleRef:
+  kind: Role
+  name: db-optimizer-role
+  apiGroup: rbac.authorization.k8s.io
+
+---
+# Optional: CronJob for periodic analysis
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: db-optimizer-analyze
+  namespace: db-optimizer
+spec:
+  schedule: "0 */6 * * *"  # Every 6 hours
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          serviceAccountName: db-optimizer
+          containers:
+          - name: db-optimizer
+            image: db-optimizer:latest
+            imagePullPolicy: IfNotPresent
+            command:
+              - db-optimizer
+              - analyze
+              - --config
+              - /config/config.yml
+            env:
+            - name: RUST_LOG
+              value: "info"
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: db-optimizer-secrets
+                  key: postgres-password
+            - name: DATABASE_URL
+              value: "postgresql://postgres:$(POSTGRES_PASSWORD)@postgres-service:5432/postgres"
+            volumeMounts:
+            - name: config
+              mountPath: /config
+              readOnly: true
+            - name: data
+              mountPath: /data
+          volumes:
+          - name: config
+            configMap:
+              name: db-optimizer-config
+          - name: data
+            persistentVolumeClaim:
+              claimName: db-optimizer-data
+          restartPolicy: OnFailure

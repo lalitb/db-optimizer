@@ -8,4 +8,4 @@ pub mod output_reporter;
 pub use postgres_collector::PostgresMetricsCollector;
 pub use query_analyzer::QueryAnalyzerAdapter;
 pub use recommendation_engine::RecommendationEngineAdapter;
-pub use output_reporter::OutputReporter;
+pub use output_reporter::OutputReporterAdapter;

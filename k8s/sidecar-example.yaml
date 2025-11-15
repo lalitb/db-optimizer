@@ -1,0 +1,107 @@
+# Example: db-optimizer as a sidecar container
+# Deploy alongside your existing Postgres pod
+
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres-with-optimizer
+  namespace: default
+spec:
+  serviceName: postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+      # Main Postgres container
+      - name: postgres
+        image: postgres:16-alpine
+        ports:
+        - containerPort: 5432
+          name: postgres
+        env:
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: postgres-secret
+              key: password
+        - name: POSTGRES_DB
+          value: myapp
+        volumeMounts:
+        - name: postgres-data
+          mountPath: /var/lib/postgresql/data
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "1000m"
+      
+      # db-optimizer sidecar
+      - name: db-optimizer
+        image: db-optimizer:latest
+        command:
+          - db-optimizer
+          - agent
+          - --config
+          - /config/config.yml
+        env:
+        - name: RUST_LOG
+          value: "info"
+        - name: DATABASE_URL
+          value: "postgresql://postgres:$(POSTGRES_PASSWORD)@localhost:5432/myapp"
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: postgres-secret
+              key: password
+        volumeMounts:
+        - name: optimizer-config
+          mountPath: /config
+          readOnly: true
+        - name: optimizer-data
+          mountPath: /data
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "50m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+      
+      volumes:
+      - name: optimizer-config
+        configMap:
+          name: db-optimizer-config
+      - name: optimizer-data
+        emptyDir: {}
+  
+  volumeClaimTemplates:
+  - metadata:
+      name: postgres-data
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      resources:
+        requests:
+          storage: 20Gi
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: default
+spec:
+  selector:
+    app: postgres
+  ports:
+  - port: 5432
+    targetPort: 5432
+  clusterIP: None  # Headless service for StatefulSet

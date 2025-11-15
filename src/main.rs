@@ -1,4 +1,4 @@
-use clap::Parser;
+use clap::{Parser, Subcommand};
 use colored::*;
 use sqlx::postgres::PgPoolOptions;
 use std::path::PathBuf;
@@ -10,6 +10,7 @@ use pg_query_advisor::{
     DatabaseCollector, RecommendationEngine, OutputFormatter, AnalysisReport, Severity,
     AutoApplyOrchestrator, AutoApplyConfig, RiskLevel,
     agent::{AgentState, AnalysisResults},
+    query_rewriter::cli::{RewriterCli, InputSource, OutputFormat as RewriterOutputFormat},
 };
 
 #[derive(Parser)]
@@ -17,8 +18,28 @@ use pg_query_advisor::{
 #[command(version = "0.1.0")]
 #[command(about = "PostgreSQL Query Health Advisor - Find performance issues and cost savings", long_about = None)]
 struct Cli {
+    #[command(subcommand)]
+    command: Option<Commands>,
+
+    #[command(flatten)]
+    analyze_opts: Option<AnalyzeOptions>,
+}
+
+#[derive(Subcommand)]
+enum Commands {
+    /// Analyze database queries and generate recommendations (default)
+    Analyze(AnalyzeOptions),
+    
+    /// Run as background agent with continuous monitoring
+    Agent(AgentOptions),
+    
+    /// Rewrite and optimize SQL queries
+    RewriteSql(RewriteSqlOptions),
+}
+
+#[derive(Parser)]
+struct AnalyzeOptions {
     /// PostgreSQL connection string (or set DATABASE_URL env var)
-    /// Format: postgresql://user:password@host:port/database
     #[arg(short, long, env = "DATABASE_URL")]
     database_url: String,
 
@@ -93,6 +114,113 @@ struct Cli {
     slack_webhook: Option<String>,
 }
 
+#[derive(Parser)]
+struct AgentOptions {
+    /// PostgreSQL connection string (or set DATABASE_URL env var)
+    #[arg(short, long, env = "DATABASE_URL")]
+    database_url: String,
+
+    /// Output format
+    #[arg(short = 'f', long, value_enum, default_value = "terminal")]
+    format: OutputFormat,
+
+    /// Number of queries to analyze (top N by total time)
+    #[arg(short = 'n', long, default_value = "100")]
+    query_limit: i64,
+
+    /// Database compute cost per hour (USD) for cost estimation
+    #[arg(short = 'c', long, default_value = "0.07")]
+    cost_per_hour: f64,
+
+    /// Minimum severity to include in report
+    #[arg(short = 's', long, value_enum, default_value = "low")]
+    min_severity: MinSeverity,
+
+    /// Enable verbose logging
+    #[arg(short, long)]
+    verbose: bool,
+
+    /// Monitoring interval in minutes
+    #[arg(long, default_value = "15")]
+    interval_minutes: u64,
+
+    /// State file to track applied optimizations
+    #[arg(long, default_value = "~/.pg-advisor-state.json")]
+    state_file: String,
+
+    /// Enable auto-apply mode
+    #[arg(long)]
+    auto_apply: bool,
+
+    /// Dry-run mode: simulate without executing
+    #[arg(long, default_value = "true")]
+    dry_run: bool,
+
+    /// Minimum estimated monthly savings (USD) to auto-approve
+    #[arg(long, default_value = "50.0")]
+    min_savings: f64,
+
+    /// Maximum risk level to auto-approve
+    #[arg(long, value_enum, default_value = "low")]
+    max_risk: MaxRiskLevel,
+
+    /// Duration to monitor impact after applying changes (seconds)
+    #[arg(long, default_value = "300")]
+    verification_duration: u64,
+
+    /// Minimum improvement percentage to consider successful
+    #[arg(long, default_value = "10.0")]
+    min_improvement: f64,
+
+    /// Auto-rollback if improvement below threshold
+    #[arg(long, default_value = "true")]
+    auto_rollback: bool,
+
+    /// Slack webhook URL for notifications
+    #[arg(long, env = "SLACK_WEBHOOK")]
+    slack_webhook: Option<String>,
+}
+
+#[derive(Parser)]
+struct RewriteSqlOptions {
+    /// Input SQL file (or use stdin if not provided)
+    #[arg(short, long)]
+    input: Option<PathBuf>,
+
+    /// SQL query string (alternative to file/stdin)
+    #[arg(short = 'q', long)]
+    query: Option<String>,
+
+    /// Output format
+    #[arg(short = 'f', long, value_enum, default_value = "terminal")]
+    format: RewriterFormat,
+
+    /// Include detailed explanations
+    #[arg(short = 'e', long, default_value = "true")]
+    explain: bool,
+
+    /// Output file (defaults to stdout)
+    #[arg(short, long)]
+    output: Option<PathBuf>,
+}
+
+#[derive(clap::ValueEnum, Clone, Debug)]
+enum RewriterFormat {
+    Terminal,
+    Json,
+    Markdown,
+}
+
+impl From<RewriterFormat> for RewriterOutputFormat {
+    fn from(format: RewriterFormat) -> Self {
+        match format {
+            RewriterFormat::Terminal => RewriterOutputFormat::Terminal,
+            RewriterFormat::Json => RewriterOutputFormat::Json,
+            RewriterFormat::Markdown => RewriterOutputFormat::Markdown,
+        }
+    }
+}
+
 #[derive(clap::ValueEnum, Clone, Debug)]
 enum OutputFormat {
     Terminal,
@@ -131,6 +259,62 @@ impl From<MaxRiskLevel> for RiskLevel {
 async fn main() -> Result<()> {
     let cli = Cli::parse();
     
+    // Handle subcommands or default to analyze
+    match cli.command {
+        Some(Commands::Analyze(opts)) => {
+            run_analyze_mode(opts).await
+        }
+        Some(Commands::Agent(opts)) => {
+            run_agent_mode(opts).await
+        }
+        Some(Commands::RewriteSql(opts)) => {
+            run_rewrite_sql_mode(opts)
+        }
+        None => {
+            // Default behavior - run analyze with flattened options
+            if let Some(opts) = cli.analyze_opts {
+                run_analyze_mode(opts).await
+            } else {
+                eprintln!("Error: No command specified. Use --help for usage information.");
+                std::process::exit(1)
+            }
+        }
+    }
+}
+
+/// Run rewrite-sql mode
+fn run_rewrite_sql_mode(opts: RewriteSqlOptions) -> Result<()> {
+    // Determine input source
+    let input_source = if let Some(query) = opts.query {
+        InputSource::Inline(query)
+    } else if let Some(path) = opts.input {
+        InputSource::File(path.to_string_lossy().to_string())
+    } else {
+        InputSource::Stdin
+    };
+    
+    // Create CLI and read input
+    let cli = RewriterCli::new();
+    let sql = cli.read_input(&input_source)?;
+    
+    // Rewrite and format
+    let output = cli.rewrite_and_format(&sql, opts.format.into(), opts.explain)?;
+    
+    // Write output
+    if let Some(output_path) = opts.output {
+        std::fs::write(&output_path, &output)?;
+        println!("{} Report saved to: {}", 
+            "✓".bright_green(), 
+            output_path.display().to_string().bright_white());
+    } else {
+        print!("{}", output);
+    }
+    
+    Ok(())
+}
+
+/// Run analyze mode (one-shot analysis)
+async fn run_analyze_mode(cli: AnalyzeOptions) -> Result<()> {
     // Setup logging
     if cli.verbose {
         tracing_subscriber::fmt()
@@ -140,11 +324,6 @@ async fn main() -> Result<()> {
         tracing_subscriber::fmt()
             .with_env_filter("pg_query_advisor=info")
             .init();
-    }
-    
-    // Branch between agent mode and one-shot mode
-    if cli.agent {
-        return run_agent_mode(cli).await;
     }
     
     // One-shot mode (original behavior)
@@ -362,22 +541,32 @@ fn display_auto_apply_results(results: &[pg_query_advisor::ApplyResult]) {
 }
 
 /// Run agent mode - continuous monitoring
-async fn run_agent_mode(cli: Cli) -> Result<()> {
+async fn run_agent_mode(opts: AgentOptions) -> Result<()> {
+    // Setup logging
+    if opts.verbose {
+        tracing_subscriber::fmt()
+            .with_env_filter("pg_query_advisor=debug")
+            .init();
+    } else {
+        tracing_subscriber::fmt()
+            .with_env_filter("pg_query_advisor=info")
+            .init();
+    }
     println!("{}", "🤖 PostgreSQL Query Health Advisor - Agent Mode".bright_cyan().bold());
     println!("{}", "━".repeat(70).bright_blue());
-    println!("   Monitoring interval: {} minutes", cli.interval_minutes);
-    println!("   Database: {}", cli.database_url.split('@').last().unwrap_or("***"));
-    println!("   Auto-apply: {}", if cli.auto_apply { "enabled".bright_green() } else { "disabled".bright_black() });
-    println!("   Dry-run: {}", if cli.dry_run { "yes".bright_yellow() } else { "no".bright_white() });
+    println!("   Monitoring interval: {} minutes", opts.interval_minutes);
+    println!("   Database: {}", opts.database_url.split('@').last().unwrap_or("***"));
+    println!("   Auto-apply: {}", if opts.auto_apply { "enabled".bright_green() } else { "disabled".bright_black() });
+    println!("   Dry-run: {}", if opts.dry_run { "yes".bright_yellow() } else { "no".bright_white() });
     println!("{}", "━".repeat(70).bright_blue());
     println!();
     
     // Expand tilde in state file path
-    let state_file = if cli.state_file.starts_with("~/") {
+    let state_file = if opts.state_file.starts_with("~/") {
         let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
-        cli.state_file.replacen("~", &home, 1)
+        opts.state_file.replacen("~", &home, 1)
     } else {
-        cli.state_file.clone()
+        opts.state_file.clone()
     };
     
     // Load or create state
@@ -385,7 +574,7 @@ async fn run_agent_mode(cli: Cli) -> Result<()> {
     println!("📊 Loaded state: {} optimizations applied previously\n", state.total_optimizations);
     
     // Create interval timer
-    let mut tick_interval = interval(Duration::from_secs(cli.interval_minutes * 60));
+    let mut tick_interval = interval(Duration::from_secs(opts.interval_minutes * 60));
     
     println!("✅ Agent started successfully");
     println!("   Press Ctrl+C to stop\n");
@@ -397,7 +586,7 @@ async fn run_agent_mode(cli: Cli) -> Result<()> {
                 println!("{}", "━".repeat(70).bright_blue());
                 println!("🔍 Running analysis cycle... ({})", chrono::Utc::now().format("%Y-%m-%d %H:%M:%S"));
                 
-                match run_analysis_cycle(&cli, &mut state).await {
+                match run_analysis_cycle(&opts, &mut state).await {
                     Ok(results) => {
                         display_cycle_results(&results);
                         
@@ -408,7 +597,7 @@ async fn run_agent_mode(cli: Cli) -> Result<()> {
                     }
                     Err(e) => {
                         eprintln!("❌ Analysis cycle failed: {}", e);
-                        eprintln!("   Will retry in {} minutes", cli.interval_minutes);
+                        eprintln!("   Will retry in {} minutes", opts.interval_minutes);
                     }
                 }
             }
@@ -435,28 +624,28 @@ async fn run_agent_mode(cli: Cli) -> Result<()> {
 }
 
 /// Run a single analysis cycle
-async fn run_analysis_cycle(cli: &Cli, state: &mut AgentState) -> Result<AnalysisResults> {
+async fn run_analysis_cycle(opts: &AgentOptions, state: &mut AgentState) -> Result<AnalysisResults> {
     // Connect to database
     let pool = PgPoolOptions::new()
         .max_connections(5)
-        .connect(&cli.database_url)
+        .connect(&opts.database_url)
         .await?;
     
     // Collect data
     let collector = DatabaseCollector::new(pool.clone());
-    let queries = collector.collect_query_stats(cli.query_limit).await?;
+    let queries = collector.collect_query_stats(opts.query_limit).await?;
     let tables = collector.collect_table_info().await?;
     let indexes = collector.collect_index_info().await?;
     
     // Generate recommendations
     let engine = RecommendationEngine::new()
-        .with_cost_per_hour(cli.cost_per_hour);
+        .with_cost_per_hour(opts.cost_per_hour);
     
     let mut recommendations = engine.generate_recommendations(&queries, &tables, &indexes);
     
     // Filter by severity
     recommendations.retain(|rec| {
-        match cli.min_severity {
+        match opts.min_severity {
             MinSeverity::Low => true,
             MinSeverity::Medium => rec.severity >= Severity::Medium,
             MinSeverity::High => rec.severity >= Severity::High,
@@ -484,18 +673,18 @@ async fn run_analysis_cycle(cli: &Cli, state: &mut AgentState) -> Result<Analysi
         .sum();
     
     // Auto-apply if enabled
-    if cli.auto_apply {
+    if opts.auto_apply {
         let config = AutoApplyConfig {
             enabled: true,
-            dry_run: cli.dry_run,
-            min_savings_threshold: cli.min_savings,
-            max_risk_level: cli.max_risk.clone().into(),
-            verification_duration_secs: cli.verification_duration,
-            min_improvement_threshold: cli.min_improvement,
-            auto_rollback_on_failure: cli.auto_rollback,
+            dry_run: opts.dry_run,
+            min_savings_threshold: opts.min_savings,
+            max_risk_level: opts.max_risk.clone().into(),
+            verification_duration_secs: opts.verification_duration,
+            min_improvement_threshold: opts.min_improvement,
+            auto_rollback_on_failure: opts.auto_rollback,
             execution_timeout_secs: 600,
             require_manual_approval: vec![],
-            slack_webhook: cli.slack_webhook.clone(),
+            slack_webhook: opts.slack_webhook.clone(),
         };
         
         let orchestrator = AutoApplyOrchestrator::new(pool.clone(), config);

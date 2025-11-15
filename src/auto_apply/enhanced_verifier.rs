@@ -200,11 +200,15 @@ impl EnhancedVerifier {
         
         for criterion in &self.success_criteria {
             let met = match criterion.metric {
-                SuccessMetric::P95Latency => {
+                SuccessMetric::P95Latency | SuccessMetric::P95Time => {
                     db_comparison.p95_latency_improvement_pct >= criterion.min_improvement_pct
                 }
-                SuccessMetric::MeanLatency => {
+                SuccessMetric::MeanLatency | SuccessMetric::MeanTime => {
                     db_comparison.mean_latency_improvement_pct >= criterion.min_improvement_pct
+                }
+                SuccessMetric::P99Time => {
+                    // P99 uses P95 as approximation for now
+                    db_comparison.p95_latency_improvement_pct >= criterion.min_improvement_pct
                 }
                 SuccessMetric::Throughput => {
                     db_comparison.throughput_change_pct >= criterion.min_improvement_pct
@@ -218,7 +222,7 @@ impl EnhancedVerifier {
                         .map(|sc| sc.cpu_time_improvement_pct >= criterion.min_improvement_pct)
                         .unwrap_or(false)
                 }
-                SuccessMetric::IoWait => {
+                SuccessMetric::IoWait | SuccessMetric::IoWaitTime => {
                     system_comparison
                         .map(|sc| sc.io_wait_improvement_pct >= criterion.min_improvement_pct)
                         .unwrap_or(false)

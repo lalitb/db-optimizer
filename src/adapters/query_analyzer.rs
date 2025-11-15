@@ -14,22 +14,21 @@ pub struct QueryAnalyzerAdapter {
 
 impl QueryAnalyzerAdapter {
     /// Create a new QueryAnalyzerAdapter
-    pub fn new(analyzer: LegacyAnalyzer) -> Self {
-        Self { analyzer }
+    pub fn new() -> Self {
+        Self {
+            analyzer: LegacyAnalyzer::new(),
+        }
     }
     
-    /// Create with default configuration
+    /// Create with default configuration (alias for new)
     pub fn with_defaults() -> Self {
-        Self {
-            analyzer: LegacyAnalyzer::new(0.07), // Default cost per hour
-        }
+        Self::new()
     }
-    
-    /// Create with custom cost per hour
-    pub fn with_cost(cost_per_hour: f64) -> Self {
-        Self {
-            analyzer: LegacyAnalyzer::new(cost_per_hour),
-        }
+}
+
+impl Default for QueryAnalyzerAdapter {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -41,9 +40,21 @@ impl Analyzer for QueryAnalyzerAdapter {
         indexes: &[IndexInfo],
         tables: &[TableInfo],
     ) -> Result<Vec<Recommendation>> {
-        // The legacy analyzer returns recommendations directly
-        // No need for async here since the legacy implementation is synchronous
-        let recommendations = self.analyzer.analyze_queries(queries, indexes, tables)?;
+        // The legacy analyzer has individual methods for different types of issues
+        let mut recommendations = Vec::new();
+        
+        // Find slow queries
+        recommendations.extend(self.analyzer.find_slow_queries(queries));
+        
+        // Find missing indexes
+        recommendations.extend(self.analyzer.find_missing_indexes(queries, tables));
+        
+        // Find unused indexes
+        recommendations.extend(self.analyzer.find_unused_indexes(indexes));
+        
+        // Find high-volume queries
+        recommendations.extend(self.analyzer.find_high_volume_queries(queries));
+        
         Ok(recommendations)
     }
     
