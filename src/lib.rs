@@ -14,6 +14,7 @@ pub mod adapters;
 pub mod http;
 pub mod ebpf;
 pub mod config_tuner;
+pub mod azure;
 
 pub use models::*;
 pub use collector::DatabaseCollector;

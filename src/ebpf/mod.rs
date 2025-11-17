@@ -6,6 +6,7 @@ pub mod loader;
 pub mod lock_tracer;
 pub mod manager;
 pub mod metrics_collector;
+pub mod postgres_tracer;
 
 use std::error::Error as StdError;
 use std::fmt;
@@ -18,6 +19,10 @@ pub use lock_tracer::{
 };
 pub use manager::{EbpfManager, ManagerStats};
 pub use metrics_collector::{EbpfMetricsCollector, MockSystemMetricsCollector, EbpfCollectorConfig};
+pub use postgres_tracer::{
+    PostgresTracer, PostgresQueryEvent, QueryStatus, QueryIoStats,
+    LockContentionEvent, BlockingStats, QueryBreakdown, Recommendation,
+};
 
 /// System metrics collected from kernel events
 #[derive(Debug, Clone, Default)]

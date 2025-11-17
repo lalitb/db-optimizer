@@ -1,0 +1,127 @@
+# Lima VM configuration for Vaanyze eBPF testing
+# Install Lima: brew install lima
+# Usage: limactl start lima-vaanyze.yaml
+
+# VM settings
+vmType: "qemu"
+os: "Linux"
+arch: "x86_64"
+
+images:
+  # Ubuntu 22.04 with kernel 5.15+ (eBPF support)
+  - location: "https://cloud-images.ubuntu.com/releases/22.04/release/ubuntu-22.04-server-cloudimg-amd64.img"
+    arch: "x86_64"
+
+# CPU and memory
+cpus: 4
+memory: "8GiB"
+disk: "30GiB"
+
+# Mount host directory into VM
+mounts:
+  - location: "~"
+    writable: true
+  - location: "/tmp/lima"
+    writable: true
+
+# Port forwarding for PostgreSQL
+portForwards:
+  - guestPort: 5432
+    hostPort: 5432
+    proto: tcp
+
+# Provision script - runs on first boot
+provision:
+  - mode: system
+    script: |
+      #!/bin/bash
+      set -eux -o pipefail
+
+      # Update system
+      apt-get update
+
+      # Install eBPF tools
+      apt-get install -y \
+        clang \
+        llvm \
+        libelf-dev \
+        libbpf-dev \
+        linux-headers-$(uname -r) \
+        linux-tools-common \
+        linux-tools-generic \
+        linux-tools-$(uname -r) \
+        bpftool
+
+      # Install PostgreSQL 15
+      apt-get install -y postgresql-15 postgresql-contrib-15
+
+      # Install Rust
+      curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+
+      # Enable pg_stat_statements
+      echo "shared_preload_libraries = 'pg_stat_statements'" >> /etc/postgresql/15/main/postgresql.conf
+      echo "pg_stat_statements.track = all" >> /etc/postgresql/15/main/postgresql.conf
+
+      # Allow password authentication
+      sed -i 's/peer/trust/g' /etc/postgresql/15/main/pg_hba.conf
+      sed -i 's/md5/trust/g' /etc/postgresql/15/main/pg_hba.conf
+
+      # Restart PostgreSQL
+      systemctl restart postgresql
+
+      # Create test database
+      sudo -u postgres psql -c "CREATE USER test WITH PASSWORD 'test' SUPERUSER;"
+      sudo -u postgres createdb -O test test_vaanyze
+      sudo -u postgres psql test_vaanyze -c "CREATE EXTENSION IF NOT EXISTS pg_stat_statements;"
+
+      echo "✅ Lima VM provisioned successfully!"
+      echo "📊 PostgreSQL running on :5432"
+      echo "🔬 eBPF tools installed"
+
+probes:
+  - description: "PostgreSQL readiness"
+    script: |
+      #!/bin/bash
+      systemctl is-active postgresql
+    hint: |
+      PostgreSQL is not running.
+      Run: limactl shell vaanyze sudo systemctl start postgresql
+
+# SSH
+ssh:
+  localPort: 0
+  loadDotSSHPubKeys: true
+  forwardAgent: false
+
+# Message shown after first boot
+message: |
+  ✅ Vaanyze eBPF Test VM Ready!
+
+  🔧 Quick Start:
+
+  1. Enter the VM:
+     limactl shell vaanyze
+
+  2. Navigate to your project:
+     cd ~/personal/db-optimizer
+
+  3. Build Vaanyze:
+     cargo build --release
+
+  4. Run eBPF tests:
+     sudo ./target/release/db-optimizer \
+       --database-url postgresql://test:test@localhost/test_vaanyze \
+       --ebpf-enabled analyze
+
+  5. Load test data:
+     psql -U test -d test_vaanyze < scripts/test-data.sql
+
+  6. Run integration tests:
+     TEST_DATABASE_URL=postgresql://test:test@localhost/test_vaanyze \
+       cargo test --ignored
+
+  📊 PostgreSQL available at: localhost:5432
+  🔬 eBPF kernel: $(uname -r)
+
+  Stop VM:  limactl stop vaanyze
+  Delete:   limactl delete vaanyze

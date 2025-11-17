@@ -1,0 +1,134 @@
+name: eBPF Integration Tests
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  ebpf-tests:
+    runs-on: ubuntu-22.04  # Kernel 5.15+ with eBPF support
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Install Rust
+      uses: actions-rs/toolchain@v1
+      with:
+        profile: minimal
+        toolchain: stable
+        override: true
+
+    - name: Install eBPF dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          clang \
+          llvm \
+          libelf-dev \
+          libbpf-dev \
+          linux-headers-$(uname -r) \
+          linux-tools-common \
+          linux-tools-generic \
+          bpftool
+
+    - name: Verify kernel eBPF support
+      run: |
+        uname -r
+        ls -la /sys/kernel/btf/vmlinux || echo "BTF not available"
+        sudo bpftool feature probe kernel | grep -i bpf
+
+    - name: Install PostgreSQL
+      run: |
+        sudo apt-get install -y postgresql postgresql-contrib
+        sudo systemctl start postgresql
+        sudo -u postgres psql -c "CREATE USER test WITH PASSWORD 'test' SUPERUSER;"
+        sudo -u postgres createdb test_vaanyze
+        sudo -u postgres psql test_vaanyze -c "CREATE EXTENSION IF NOT EXISTS pg_stat_statements;"
+
+    - name: Load test data
+      run: |
+        PGPASSWORD=test psql -h localhost -U test -d test_vaanyze < scripts/test-data.sql
+
+    - name: Build project
+      run: cargo build --release
+
+    - name: Run unit tests
+      run: cargo test --release
+
+    - name: Run integration tests
+      env:
+        TEST_DATABASE_URL: postgresql://test:test@localhost/test_vaanyze
+      run: |
+        cargo test --release --test integration_test -- --ignored
+        cargo test --release --test advanced_index_integration_test -- --ignored
+
+    - name: Run eBPF-enabled analysis (requires sudo)
+      env:
+        DATABASE_URL: postgresql://test:test@localhost/test_vaanyze
+      run: |
+        # Run with eBPF enabled (requires CAP_BPF or root)
+        sudo -E ./target/release/db-optimizer \
+          --database-url "$DATABASE_URL" \
+          --ebpf-enabled \
+          analyze \
+          --output json > ebpf-analysis.json
+
+        # Verify eBPF data was captured
+        cat ebpf-analysis.json | jq '.recommendations[] | select(.issue_type == "MissingIndex")'
+
+    - name: Generate workload with pgbench
+      run: |
+        # Initialize pgbench
+        PGPASSWORD=test pgbench -h localhost -U test -i -s 10 test_vaanyze
+
+        # Run workload (10 clients, 30 seconds)
+        PGPASSWORD=test pgbench -h localhost -U test -c 10 -T 30 test_vaanyze
+
+    - name: Run eBPF analysis on pgbench workload
+      env:
+        DATABASE_URL: postgresql://test:test@localhost/test_vaanyze
+      run: |
+        sudo -E ./target/release/db-optimizer \
+          --database-url "$DATABASE_URL" \
+          --ebpf-enabled \
+          analyze \
+          --output json > pgbench-analysis.json
+
+        # Verify I/O breakdown exists
+        jq -e '.recommendations[0].io_breakdown' pgbench-analysis.json || echo "Warning: No I/O breakdown found"
+
+    - name: Test auto-apply (dry-run)
+      env:
+        DATABASE_URL: postgresql://test:test@localhost/test_vaanyze
+      run: |
+        sudo -E ./target/release/db-optimizer \
+          --database-url "$DATABASE_URL" \
+          auto-apply \
+          --dry-run \
+          --min-savings 50 \
+          --max-risk low
+
+    - name: Upload test results
+      if: always()
+      uses: actions/upload-artifact@v3
+      with:
+        name: ebpf-test-results
+        path: |
+          ebpf-analysis.json
+          pgbench-analysis.json
+
+    - name: Check for eBPF errors
+      run: |
+        # Check kernel logs for eBPF errors
+        sudo dmesg | grep -i bpf | tail -20 || true
+
+        # Verify no crashes
+        if sudo dmesg | grep -i "kernel panic"; then
+          echo "ERROR: Kernel panic detected!"
+          exit 1
+        fi

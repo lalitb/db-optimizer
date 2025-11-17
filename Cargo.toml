@@ -35,6 +35,10 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 # Date/time
 chrono = { version = "0.4", features = ["serde"] }
 
+# eBPF support (optional - only needed if building with eBPF features)
+# libbpf-rs = { version = "0.22", optional = true }
+# libbpf-sys = { version = "1.2", optional = true }
+
 # String utilities
 regex = "1"
 
