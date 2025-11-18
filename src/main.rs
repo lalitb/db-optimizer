@@ -458,15 +458,27 @@ async fn run_analyze_mode(cli: AnalyzeOptions) -> Result<()> {
     print!("Collecting index information... ");
     let indexes = collector.collect_index_info().await?;
     println!("{} ({} indexes)", "✓".bright_green(), indexes.len());
-    
+
     let (db_name, pg_version) = collector.get_database_info().await?;
-    
+
+    // Collect connection statistics
+    print!("Collecting connection statistics... ");
+    let connection_stats = collector.collect_connection_stats().await.ok();
+    let connections = collector.collect_connections().await.ok();
+    println!("{}", "✓".bright_green());
+
     // Analyze and generate recommendations
     print!("Analyzing queries and generating recommendations... ");
     let engine = RecommendationEngine::new()
         .with_cost_per_hour(cli.cost_per_hour);
-    
-    let mut recommendations = engine.generate_recommendations(&queries, &tables, &indexes);
+
+    let mut recommendations = engine.generate_recommendations(
+        &queries,
+        &tables,
+        &indexes,
+        connection_stats.as_ref(),
+        connections.as_deref(),
+    );
     
     // Filter by minimum severity
     recommendations.retain(|rec| {
@@ -524,6 +536,7 @@ async fn run_analyze_mode(cli: AnalyzeOptions) -> Result<()> {
         total_queries_analyzed: queries.len(),
         total_tables: tables.len(),
         total_indexes: indexes.len(),
+        connection_stats,
     };
     
     // Output report
@@ -732,12 +745,20 @@ async fn run_analysis_cycle(opts: &AgentOptions, state: &mut AgentState) -> Resu
     let queries = collector.collect_query_stats(opts.query_limit).await?;
     let tables = collector.collect_table_info().await?;
     let indexes = collector.collect_index_info().await?;
-    
+    let connection_stats = collector.collect_connection_stats().await.ok();
+    let connections = collector.collect_connections().await.ok();
+
     // Generate recommendations
     let engine = RecommendationEngine::new()
         .with_cost_per_hour(opts.cost_per_hour);
-    
-    let mut recommendations = engine.generate_recommendations(&queries, &tables, &indexes);
+
+    let mut recommendations = engine.generate_recommendations(
+        &queries,
+        &tables,
+        &indexes,
+        connection_stats.as_ref(),
+        connections.as_deref(),
+    );
     
     // Filter by severity
     recommendations.retain(|rec| {

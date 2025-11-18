@@ -7,7 +7,7 @@
     <!-- Primary Meta Tags -->
     <title>Vaanyze | Kernel-Level PostgreSQL Performance Analysis with eBPF</title>
     <meta name="title" content="Vaanyze | Kernel-Level PostgreSQL Performance Analysis with eBPF">
-    <meta name="description" content="Production-grade eBPF instrumentation for PostgreSQL. Syscall-level query attribution with I/O latency, CPU time, and lock contention metrics. Autonomous optimization with CREATE INDEX CONCURRENTLY and automatic rollback. Linux 4.15+, PostgreSQL 12-17.">
+    <meta name="description" content="Production-grade eBPF instrumentation for PostgreSQL. Syscall-level query attribution with I/O latency, CPU time, lock contention metrics. Real-time connection monitoring for idle transactions and pool exhaustion. Autonomous optimization with CREATE INDEX CONCURRENTLY and automatic rollback. Linux 4.15+, PostgreSQL 12-17.">
     <meta name="keywords" content="eBPF PostgreSQL, kernel instrumentation, database performance analysis, syscall tracing, query optimization, pg_stat_statements, BRIN GIN HASH indexes, CREATE INDEX CONCURRENTLY, database monitoring, performance tuning">
 
     <!-- Open Graph / Facebook -->
@@ -138,6 +138,7 @@
                     <p class="text-xl text-gray-700 leading-relaxed">
                         Production-grade eBPF instrumentation for PostgreSQL. Captures query-level I/O latency,
                         CPU time, lock contention, and network overhead at the kernel syscall layer.
+                        Monitors connection states, idle transactions, and pool exhaustion in real-time.
                         Provides deterministic performance attribution and autonomous index optimization with safety guarantees.
                     </p>
 
@@ -447,6 +448,20 @@
                     </p>
                     <div class="mt-4 text-xs text-gray-600">
                         <strong>Integrations:</strong> Prometheus, Grafana, Slack, PagerDuty, custom webhooks
+                    </div>
+                </div>
+
+                <!-- Feature 7 -->
+                <div class="bg-white p-8 rounded-2xl shadow-lg card-hover border-l-4 border-purple-500">
+                    <div class="text-xs font-mono text-purple-600 mb-3">CONNECTION MONITORING</div>
+                    <h3 class="text-xl font-bold mb-3">Real-Time Connection State Analysis</h3>
+                    <p class="text-gray-700 text-sm leading-relaxed">
+                        Monitors pg_stat_activity for idle-in-transaction connections, lock contention (wait_event_type='Lock'),
+                        and connection pool exhaustion. Detects problematic connections blocking VACUUM and holding locks.
+                        Provides PID-level diagnostics with duration tracking and blocking query identification.
+                    </p>
+                    <div class="mt-4 text-xs text-gray-600">
+                        <strong>Detection:</strong> Idle transactions, lock waits, pool usage, blocking queries
                     </div>
                 </div>
             </div>

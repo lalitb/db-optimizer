@@ -49,23 +49,42 @@ impl SafetyFilter {
                     RiskLevel::Low
                 }
             }
-            
+
             IssueType::UnusedIndex => {
                 // Dropping index is low risk
                 mitigation_steps.push("Can be recreated instantly if needed".to_string());
                 RiskLevel::Low
             }
-            
+
             IssueType::SlowQuery => {
                 // Query rewrites are higher risk
                 risk_factors.push("Query modification may change behavior".to_string());
                 risk_factors.push("Requires application deployment".to_string());
                 RiskLevel::High
             }
-            
+
             IssueType::HighVolumeQuery => {
                 risk_factors.push("High traffic - impact is multiplied".to_string());
                 RiskLevel::Medium
+            }
+
+            // Connection-related issues - these are monitoring recommendations, not auto-applicable
+            IssueType::IdleInTransaction => {
+                risk_factors.push("Requires application-level connection handling fixes".to_string());
+                mitigation_steps.push("Review application connection pooling configuration".to_string());
+                RiskLevel::High
+            }
+
+            IssueType::ConnectionPoolExhaustion => {
+                risk_factors.push("May require infrastructure changes".to_string());
+                mitigation_steps.push("Increase max_connections or optimize connection usage".to_string());
+                RiskLevel::Medium
+            }
+
+            IssueType::LockContention => {
+                risk_factors.push("Requires query or transaction optimization".to_string());
+                mitigation_steps.push("Review blocking queries and transaction duration".to_string());
+                RiskLevel::High
             }
         };
         
@@ -74,6 +93,10 @@ impl SafetyFilter {
             IssueType::UnusedIndex => RollbackComplexity::Moderate, // Recreate index
             IssueType::SlowQuery => RollbackComplexity::Irreversible, // Code change
             IssueType::HighVolumeQuery => RollbackComplexity::Moderate,
+            // Connection-related issues don't have database-level rollback
+            IssueType::IdleInTransaction => RollbackComplexity::Irreversible, // Application change
+            IssueType::ConnectionPoolExhaustion => RollbackComplexity::Irreversible, // Config change
+            IssueType::LockContention => RollbackComplexity::Irreversible, // Application/query change
         };
         
         RiskAssessment {
@@ -89,23 +112,23 @@ impl SafetyFilter {
             IssueType::MissingIndex => {
                 // Parse migration SQL to extract index details
                 let (index_name, table_name, columns) = self.parse_create_index(&rec.migration_sql);
-                
+
                 ApplyStrategy::CreateIndexConcurrently {
                     index_name,
                     table_name,
                     columns,
                 }
             }
-            
+
             IssueType::UnusedIndex => {
                 let (schema, index_name) = self.parse_drop_index(&rec.migration_sql);
-                
+
                 ApplyStrategy::DropIndex {
                     index_name,
                     schema,
                 }
             }
-            
+
             IssueType::SlowQuery => {
                 // Would require query rewriting logic
                 ApplyStrategy::QueryRewrite {
@@ -113,12 +136,25 @@ impl SafetyFilter {
                     optimized_query: String::new(),
                 }
             }
-            
+
             IssueType::HighVolumeQuery => {
                 // Similar to slow query
                 ApplyStrategy::QueryRewrite {
                     original_query: rec.affected_query.clone().unwrap_or_default(),
                     optimized_query: String::new(),
+                }
+            }
+
+            // Connection-related issues - these would require configuration changes
+            IssueType::IdleInTransaction |
+            IssueType::ConnectionPoolExhaustion |
+            IssueType::LockContention => {
+                // These are monitoring/alerting recommendations, not auto-applicable
+                // Return a configuration change strategy as a placeholder
+                ApplyStrategy::ConfigurationChange {
+                    parameter: "connection_monitoring".to_string(),
+                    current_value: "N/A".to_string(),
+                    new_value: "N/A".to_string(),
                 }
             }
         }

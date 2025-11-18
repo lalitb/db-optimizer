@@ -229,10 +229,11 @@ impl PostgresTracer {
     pub fn record_query_event(&self, event: PostgresQueryEvent) {
         if let Ok(mut events) = self.query_events.lock() {
             events.push(event);
-            
+
             // Keep only last 10000 events
             if events.len() > 10000 {
-                events.drain(0..events.len() - 10000);
+                let len = events.len();
+                events.drain(0..len - 10000);
             }
         }
     }
@@ -248,10 +249,11 @@ impl PostgresTracer {
     pub fn record_lock_event(&self, event: LockContentionEvent) {
         if let Ok(mut events) = self.lock_events.lock() {
             events.push(event);
-            
+
             // Keep only last 5000 events
             if events.len() > 5000 {
-                events.drain(0..events.len() - 5000);
+                let len = events.len();
+                events.drain(0..len - 5000);
             }
         }
     }

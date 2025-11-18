@@ -46,6 +46,7 @@ impl Reporter for OutputReporterAdapter {
             total_indexes: 0, // Not provided in this context
             summary,
             recommendations: recommendations.to_vec(),
+            connection_stats: None, // Not available in this adapter context
         })
     }
     

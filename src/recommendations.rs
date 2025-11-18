@@ -1,9 +1,10 @@
 use crate::models::*;
-use crate::analyzer::QueryAnalyzer;
+use crate::analyzer::{QueryAnalyzer, ConnectionAnalyzer};
 use crate::cost_estimator::CostEstimator;
 
 pub struct RecommendationEngine {
     analyzer: QueryAnalyzer,
+    connection_analyzer: ConnectionAnalyzer,
     cost_estimator: CostEstimator,
 }
 
@@ -11,6 +12,7 @@ impl RecommendationEngine {
     pub fn new() -> Self {
         Self {
             analyzer: QueryAnalyzer::new(),
+            connection_analyzer: ConnectionAnalyzer::new(),
             cost_estimator: CostEstimator::new(),
         }
     }
@@ -26,26 +28,33 @@ impl RecommendationEngine {
         queries: &[QueryStats],
         tables: &[TableInfo],
         indexes: &[IndexInfo],
+        connection_stats: Option<&ConnectionStats>,
+        connections: Option<&[ConnectionInfo]>,
     ) -> Vec<Recommendation> {
         let mut recommendations = Vec::new();
-        
+
         // Find slow queries
         recommendations.extend(self.analyzer.find_slow_queries(queries));
-        
+
         // Find missing indexes
         recommendations.extend(self.analyzer.find_missing_indexes(queries, tables));
-        
+
         // Find unused indexes
         recommendations.extend(self.analyzer.find_unused_indexes(indexes));
-        
+
         // Find high-volume queries
         recommendations.extend(self.analyzer.find_high_volume_queries(queries));
-        
+
+        // Check connection issues (if connection data provided)
+        if let (Some(stats), Some(conns)) = (connection_stats, connections) {
+            recommendations.extend(self.connection_analyzer.analyze_connections(stats, conns));
+        }
+
         // Estimate cost savings for each
         for rec in recommendations.iter_mut() {
             self.cost_estimator.estimate_savings(rec);
         }
-        
+
         // Sort by severity then by cost savings
         recommendations.sort_by(|a, b| {
             b.severity.cmp(&a.severity)
@@ -55,7 +64,7 @@ impl RecommendationEngine {
                     b_savings.partial_cmp(&a_savings).unwrap_or(std::cmp::Ordering::Equal)
                 })
         });
-        
+
         recommendations
     }
     

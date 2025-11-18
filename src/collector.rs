@@ -1,6 +1,7 @@
 use sqlx::{PgPool, Row};
-use crate::models::{QueryStats, IndexInfo, TableInfo};
+use crate::models::{QueryStats, IndexInfo, TableInfo, ConnectionInfo, ConnectionState, WaitEventType, ConnectionStats};
 use anyhow::Result;
+use std::collections::HashMap;
 
 pub struct DatabaseCollector {
     pool: PgPool,
@@ -141,7 +142,150 @@ impl DatabaseCollector {
         )
         .fetch_one(&self.pool)
         .await?;
-        
+
         Ok(result)
+    }
+
+    // ============================================================================
+    // CONNECTION MONITORING METHODS
+    // ============================================================================
+
+    /// Collect all active connections from pg_stat_activity
+    pub async fn collect_connections(&self) -> Result<Vec<ConnectionInfo>> {
+        let rows = sqlx::query(
+            r#"
+            SELECT
+                pid,
+                datname as database,
+                usename as username,
+                application_name,
+                client_addr::text,
+                state,
+                query,
+                query_start,
+                state_change,
+                wait_event_type,
+                wait_event,
+                backend_type
+            FROM pg_stat_activity
+            WHERE pid != pg_backend_pid()  -- Exclude our own connection
+              AND backend_type = 'client backend'
+            ORDER BY state_change ASC  -- Oldest first
+            "#
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
+        let connections: Vec<ConnectionInfo> = rows
+            .into_iter()
+            .map(|row| {
+                let state_str: String = row.get("state");
+                let wait_event_type_opt: Option<String> = row.try_get("wait_event_type").ok();
+
+                ConnectionInfo {
+                    pid: row.get("pid"),
+                    database: row.get("database"),
+                    username: row.get("username"),
+                    application_name: row.try_get("application_name").ok(),
+                    client_addr: row.try_get("client_addr").ok(),
+                    state: ConnectionState::from_str(&state_str),
+                    query: row.get("query"),
+                    query_start: row.try_get("query_start").ok(),
+                    state_change: row.try_get("state_change").ok(),
+                    wait_event_type: WaitEventType::from_str_opt(wait_event_type_opt.as_deref()),
+                    wait_event: row.try_get("wait_event").ok(),
+                    backend_type: row.get("backend_type"),
+                }
+            })
+            .collect();
+
+        Ok(connections)
+    }
+
+    /// Get aggregated connection statistics
+    pub async fn collect_connection_stats(&self) -> Result<ConnectionStats> {
+        // Get max_connections setting
+        let max_connections: (i32,) = sqlx::query_as(
+            "SELECT setting::int FROM pg_settings WHERE name = 'max_connections'"
+        )
+        .fetch_one(&self.pool)
+        .await?;
+
+        let connections = self.collect_connections().await?;
+        let total_connections = connections.len() as i32;
+
+        // Group by state
+        let mut connections_by_state: HashMap<String, i32> = HashMap::new();
+        let mut idle_in_transaction_count = 0;
+        let mut locked_connections_count = 0;
+        let mut oldest_idle_transaction_secs: Option<i64> = None;
+        let mut oldest_locked_query_secs: Option<i64> = None;
+
+        for conn in &connections {
+            // Count by state
+            let state_key = conn.state.as_str().to_string();
+            *connections_by_state.entry(state_key).or_insert(0) += 1;
+
+            // Track idle in transaction
+            if conn.state.is_problematic() {
+                idle_in_transaction_count += 1;
+                if let Some(duration) = conn.state_duration_secs() {
+                    oldest_idle_transaction_secs = Some(
+                        oldest_idle_transaction_secs
+                            .map(|old| old.max(duration))
+                            .unwrap_or(duration)
+                    );
+                }
+            }
+
+            // Track locked queries
+            if conn.is_locked() {
+                locked_connections_count += 1;
+                if let Some(duration) = conn.query_duration_secs() {
+                    oldest_locked_query_secs = Some(
+                        oldest_locked_query_secs
+                            .map(|old| old.max(duration))
+                            .unwrap_or(duration)
+                    );
+                }
+            }
+        }
+
+        Ok(ConnectionStats {
+            total_connections,
+            max_connections: max_connections.0,
+            connections_by_state,
+            idle_in_transaction_count,
+            locked_connections_count,
+            oldest_idle_transaction_secs,
+            oldest_locked_query_secs,
+        })
+    }
+
+    /// Get connections that are idle in transaction for longer than threshold_secs
+    pub async fn get_long_idle_transactions(&self, threshold_secs: i64) -> Result<Vec<ConnectionInfo>> {
+        let connections = self.collect_connections().await?;
+
+        let long_idle: Vec<ConnectionInfo> = connections
+            .into_iter()
+            .filter(|conn| {
+                conn.state.is_problematic() &&
+                conn.state_duration_secs().map_or(false, |d| d > threshold_secs)
+            })
+            .collect();
+
+        Ok(long_idle)
+    }
+
+    /// Get connections that are waiting for locks
+    pub async fn get_locked_connections(&self) -> Result<Vec<ConnectionInfo>> {
+        let connections = self.collect_connections().await?;
+
+        let locked: Vec<ConnectionInfo> = connections
+            .into_iter()
+            .filter(|conn| conn.is_locked())
+            .collect();
+
+        Ok(locked)
     }
 }

@@ -48,6 +48,12 @@ impl CostEstimator {
                     0.0
                 }
             }
+            // Connection-related issues - cost already calculated in analyzer
+            IssueType::IdleInTransaction |
+            IssueType::ConnectionPoolExhaustion |
+            IssueType::LockContention => {
+                rec.estimated_cost_savings_usd_monthly.unwrap_or(0.0)
+            }
         };
         
         rec.estimated_cost_savings_usd_monthly = Some(monthly_savings.max(0.0));

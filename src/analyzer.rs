@@ -318,3 +318,599 @@ fn truncate_query(query: &str, max_len: usize) -> String {
         format!("{}...", &cleaned[..max_len])
     }
 }
+
+// ============================================================================
+// CONNECTION ANALYZER
+// ============================================================================
+
+pub struct ConnectionAnalyzer {
+    /// Threshold for idle in transaction warning (seconds)
+    idle_in_transaction_threshold_secs: i64,
+    /// Threshold for connection pool usage warning (percentage)
+    connection_pool_warning_threshold: f64,
+    /// Threshold for lock wait warning (seconds)
+    lock_wait_threshold_secs: i64,
+}
+
+impl ConnectionAnalyzer {
+    pub fn new() -> Self {
+        Self {
+            idle_in_transaction_threshold_secs: 30,  // 30 seconds default
+            connection_pool_warning_threshold: 80.0,  // 80% usage
+            lock_wait_threshold_secs: 5,              // 5 seconds
+        }
+    }
+
+    /// Create analyzer with custom thresholds
+    pub fn with_thresholds(
+        idle_threshold: i64,
+        pool_threshold: f64,
+        lock_threshold: i64,
+    ) -> Self {
+        Self {
+            idle_in_transaction_threshold_secs: idle_threshold,
+            connection_pool_warning_threshold: pool_threshold,
+            lock_wait_threshold_secs: lock_threshold,
+        }
+    }
+
+    /// Analyze connection statistics and generate recommendations
+    pub fn analyze_connections(
+        &self,
+        stats: &ConnectionStats,
+        connections: &[ConnectionInfo],
+    ) -> Vec<Recommendation> {
+        let mut recommendations = Vec::new();
+
+        // Check for connection pool exhaustion
+        if let Some(rec) = self.check_connection_pool_exhaustion(stats) {
+            recommendations.push(rec);
+        }
+
+        // Check for idle in transaction issues
+        if let Some(rec) = self.check_idle_in_transaction(stats, connections) {
+            recommendations.push(rec);
+        }
+
+        // Check for lock contention
+        if let Some(rec) = self.check_lock_contention(stats, connections) {
+            recommendations.push(rec);
+        }
+
+        recommendations
+    }
+
+    /// Check if connection pool is near exhaustion
+    fn check_connection_pool_exhaustion(&self, stats: &ConnectionStats) -> Option<Recommendation> {
+        if !stats.is_near_limit(self.connection_pool_warning_threshold) {
+            return None;
+        }
+
+        let usage_pct = stats.usage_percentage();
+        let severity = if usage_pct >= 95.0 {
+            Severity::Critical
+        } else if usage_pct >= 90.0 {
+            Severity::High
+        } else {
+            Severity::Medium
+        };
+
+        Some(Recommendation {
+            id: "connection_pool_exhaustion".to_string(),
+            title: format!(
+                "Connection pool usage at {:.1}%",
+                usage_pct
+            ),
+            description: format!(
+                "Current connections: {} / {} ({:.1}% used). High connection usage can lead to \
+                application errors when the pool is exhausted. Consider increasing max_connections, \
+                optimizing connection pooling, or investigating connection leaks.",
+                stats.total_connections,
+                stats.max_connections,
+                usage_pct
+            ),
+            issue_type: IssueType::ConnectionPoolExhaustion,
+            severity,
+
+            affected_queries_count: Some(stats.total_connections as i64),
+            estimated_time_savings_ms: None,
+            estimated_cost_savings_usd_monthly: None,
+
+            migration_sql: format!(
+                "-- Option 1: Increase max_connections (requires restart)\n\
+                -- WARNING: Each connection consumes memory (~10MB)\n\
+                ALTER SYSTEM SET max_connections = {};\n\
+                -- Then restart PostgreSQL\n\n\
+                -- Option 2: Implement connection pooling (pgBouncer recommended)\n\
+                -- See: https://www.pgbouncer.org/\n\n\
+                -- Option 3: Investigate connection leaks in application\n\
+                SELECT * FROM pg_stat_activity WHERE state = 'idle' ORDER BY state_change LIMIT 20;",
+                (stats.max_connections as f64 * 1.5) as i32
+            ),
+            rollback_sql: Some(format!(
+                "ALTER SYSTEM SET max_connections = {};\n-- Then restart PostgreSQL",
+                stats.max_connections
+            )),
+            safety_notes: format!(
+                "Increasing max_connections increases memory usage (~10MB per connection). \
+                Current setting: {}. Recommended maximum based on available RAM. \
+                Consider implementing connection pooling (pgBouncer, PgPool II) instead of \
+                increasing max_connections.",
+                stats.max_connections
+            ),
+
+            affected_table: None,
+            affected_query: None,
+        })
+    }
+
+    /// Check for idle in transaction connections
+    fn check_idle_in_transaction(
+        &self,
+        stats: &ConnectionStats,
+        connections: &[ConnectionInfo],
+    ) -> Option<Recommendation> {
+        if stats.idle_in_transaction_count == 0 {
+            return None;
+        }
+
+        let long_idle: Vec<&ConnectionInfo> = connections
+            .iter()
+            .filter(|c| {
+                c.state.is_problematic() &&
+                c.state_duration_secs()
+                    .map_or(false, |d| d > self.idle_in_transaction_threshold_secs)
+            })
+            .collect();
+
+        if long_idle.is_empty() {
+            return None;
+        }
+
+        let severity = if stats.idle_in_transaction_count > 10 {
+            Severity::Critical
+        } else if stats.idle_in_transaction_count > 5 {
+            Severity::High
+        } else {
+            Severity::Medium
+        };
+
+        let example_queries: Vec<String> = long_idle
+            .iter()
+            .take(3)
+            .map(|c| format!("  PID {}: {} ({}s)", c.pid, truncate_query(&c.query, 80), c.state_duration_secs().unwrap_or(0)))
+            .collect();
+
+        Some(Recommendation {
+            id: "idle_in_transaction".to_string(),
+            title: format!(
+                "{} idle in transaction connection{}",
+                stats.idle_in_transaction_count,
+                if stats.idle_in_transaction_count > 1 { "s" } else { "" }
+            ),
+            description: format!(
+                "Detected {} connection(s) in 'idle in transaction' state. Longest: {}s. \
+                Idle transactions hold locks, preventing VACUUM from cleaning up dead rows and can \
+                cause table bloat. This is usually caused by:\n\
+                1. Application not committing/rolling back transactions\n\
+                2. Connection pooling misconfiguration\n\
+                3. Long-running application logic between queries\n\n\
+                Example connections:\n{}",
+                stats.idle_in_transaction_count,
+                stats.oldest_idle_transaction_secs.unwrap_or(0),
+                example_queries.join("\n")
+            ),
+            issue_type: IssueType::IdleInTransaction,
+            severity,
+
+            affected_queries_count: Some(stats.idle_in_transaction_count as i64),
+            estimated_time_savings_ms: None,
+            estimated_cost_savings_usd_monthly: None,
+
+            migration_sql: format!(
+                "-- Option 1: Set statement_timeout to auto-abort long transactions\n\
+                ALTER SYSTEM SET idle_in_transaction_session_timeout = '30s';\n\
+                -- Restart required\n\n\
+                -- Option 2: Kill specific idle transactions\n\
+                SELECT pg_terminate_backend(pid)\n\
+                FROM pg_stat_activity\n\
+                WHERE state = 'idle in transaction'\n\
+                  AND (now() - state_change) > interval '30 seconds';\n\n\
+                -- Option 3: View all idle transactions\n\
+                SELECT pid, usename, application_name, state, query, \n\
+                       now() - state_change as idle_duration\n\
+                FROM pg_stat_activity\n\
+                WHERE state LIKE 'idle in transaction%'\n\
+                ORDER BY state_change;"
+            ),
+            rollback_sql: Some(
+                "ALTER SYSTEM SET idle_in_transaction_session_timeout = '0';\n-- Then restart PostgreSQL".to_string()
+            ),
+            safety_notes: format!(
+                "Idle transactions block VACUUM and can cause severe table bloat. \
+                Investigate application code to ensure transactions are committed/rolled back promptly. \
+                Consider setting idle_in_transaction_session_timeout to automatically terminate \
+                idle transactions after a timeout (e.g., 30 seconds)."
+            ),
+
+            affected_table: None,
+            affected_query: Some(format!("Example: {}", long_idle.first().map(|c| &c.query).unwrap_or(&String::from("N/A")))),
+        })
+    }
+
+    /// Check for lock contention issues
+    fn check_lock_contention(
+        &self,
+        stats: &ConnectionStats,
+        connections: &[ConnectionInfo],
+    ) -> Option<Recommendation> {
+        if stats.locked_connections_count == 0 {
+            return None;
+        }
+
+        let long_locked: Vec<&ConnectionInfo> = connections
+            .iter()
+            .filter(|c| {
+                c.is_locked() &&
+                c.query_duration_secs()
+                    .map_or(false, |d| d > self.lock_wait_threshold_secs)
+            })
+            .collect();
+
+        if long_locked.is_empty() {
+            return None;
+        }
+
+        let severity = if stats.locked_connections_count > 20 {
+            Severity::Critical
+        } else if stats.locked_connections_count > 10 {
+            Severity::High
+        } else {
+            Severity::Medium
+        };
+
+        let example_queries: Vec<String> = long_locked
+            .iter()
+            .take(3)
+            .map(|c| format!("  PID {}: {} (waiting {}s)", c.pid, truncate_query(&c.query, 80), c.query_duration_secs().unwrap_or(0)))
+            .collect();
+
+        Some(Recommendation {
+            id: "lock_contention".to_string(),
+            title: format!(
+                "{} connection{} waiting for locks",
+                stats.locked_connections_count,
+                if stats.locked_connections_count > 1 { "s" } else { "" }
+            ),
+            description: format!(
+                "Detected {} connection(s) waiting for locks. Longest wait: {}s. \
+                Lock contention occurs when multiple transactions try to modify the same data simultaneously. \
+                Common causes:\n\
+                1. Missing indexes causing full table scans with locks\n\
+                2. Long-running transactions\n\
+                3. Inefficient queries updating many rows\n\n\
+                Waiting connections:\n{}",
+                stats.locked_connections_count,
+                stats.oldest_locked_query_secs.unwrap_or(0),
+                example_queries.join("\n")
+            ),
+            issue_type: IssueType::LockContention,
+            severity,
+
+            affected_queries_count: Some(stats.locked_connections_count as i64),
+            estimated_time_savings_ms: stats.oldest_locked_query_secs.map(|s| s as f64 * 1000.0),
+            estimated_cost_savings_usd_monthly: None,
+
+            migration_sql: format!(
+                "-- View blocking queries and what they're blocking\n\
+                SELECT\n\
+                    blocked_activity.pid AS blocked_pid,\n\
+                    blocked_activity.query AS blocked_query,\n\
+                    blocking_activity.pid AS blocking_pid,\n\
+                    blocking_activity.query AS blocking_query,\n\
+                    now() - blocked_activity.query_start AS wait_duration\n\
+                FROM pg_catalog.pg_locks blocked_locks\n\
+                JOIN pg_catalog.pg_stat_activity blocked_activity ON blocked_activity.pid = blocked_locks.pid\n\
+                JOIN pg_catalog.pg_locks blocking_locks\n\
+                    ON blocking_locks.locktype = blocked_locks.locktype\n\
+                    AND blocking_locks.pid != blocked_locks.pid\n\
+                JOIN pg_catalog.pg_stat_activity blocking_activity ON blocking_activity.pid = blocking_locks.pid\n\
+                WHERE NOT blocked_locks.granted\n\
+                ORDER BY wait_duration DESC;\n\n\
+                -- To manually kill a blocking query (use with caution):\n\
+                -- SELECT pg_terminate_backend(<blocking_pid>);"
+            ),
+            rollback_sql: None,
+            safety_notes: format!(
+                "Lock contention indicates queries waiting for data access. Investigate blocking queries using \
+                pg_locks and pg_stat_activity. Consider:\n\
+                1. Adding indexes to speed up locking queries\n\
+                2. Reducing transaction scope\n\
+                3. Using FOR UPDATE SKIP LOCKED for queue-like patterns\n\
+                4. Partitioning large tables\n\
+                Never kill blocking queries in production without understanding the impact."
+            ),
+
+            affected_table: None,
+            affected_query: Some(format!("Example: {}", long_locked.first().map(|c| &c.query).unwrap_or(&String::from("N/A")))),
+        })
+    }
+}
+
+impl Default for ConnectionAnalyzer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[cfg(test)]
+mod connection_analyzer_tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    fn create_test_connection(
+        pid: i32,
+        state: ConnectionState,
+        wait_event_type: WaitEventType,
+        state_change_secs_ago: Option<i64>,
+        query_start_secs_ago: Option<i64>,
+    ) -> ConnectionInfo {
+        let now = chrono::Utc::now();
+        ConnectionInfo {
+            pid,
+            database: "testdb".to_string(),
+            username: "testuser".to_string(),
+            application_name: Some("testapp".to_string()),
+            client_addr: Some("127.0.0.1".to_string()),
+            state,
+            query: "SELECT * FROM users".to_string(),
+            query_start: query_start_secs_ago.map(|secs| now - chrono::Duration::seconds(secs)),
+            state_change: state_change_secs_ago.map(|secs| now - chrono::Duration::seconds(secs)),
+            wait_event_type,
+            wait_event: None,
+            backend_type: "client backend".to_string(),
+        }
+    }
+
+    #[test]
+    fn test_connection_pool_exhaustion_detection() {
+        let analyzer = ConnectionAnalyzer::new();
+
+        let mut connections_by_state = HashMap::new();
+        connections_by_state.insert("active".to_string(), 92);
+
+        let stats = ConnectionStats {
+            total_connections: 92,
+            max_connections: 100,
+            connections_by_state,
+            idle_in_transaction_count: 0,
+            locked_connections_count: 0,
+            oldest_idle_transaction_secs: None,
+            oldest_locked_query_secs: None,
+        };
+
+        let result = analyzer.check_connection_pool_exhaustion(&stats);
+        assert!(result.is_some());
+
+        let recommendation = result.unwrap();
+        assert_eq!(recommendation.issue_type, IssueType::ConnectionPoolExhaustion);
+        assert_eq!(recommendation.severity, Severity::High);
+        assert!(recommendation.title.contains("92"));
+    }
+
+    #[test]
+    fn test_connection_pool_no_alert_when_usage_low() {
+        let analyzer = ConnectionAnalyzer::new();
+
+        let mut connections_by_state = HashMap::new();
+        connections_by_state.insert("active".to_string(), 50);
+
+        let stats = ConnectionStats {
+            total_connections: 50,
+            max_connections: 100,
+            connections_by_state,
+            idle_in_transaction_count: 0,
+            locked_connections_count: 0,
+            oldest_idle_transaction_secs: None,
+            oldest_locked_query_secs: None,
+        };
+
+        let result = analyzer.check_connection_pool_exhaustion(&stats);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_idle_in_transaction_detection() {
+        let analyzer = ConnectionAnalyzer::new();
+
+        let connections = vec![
+            create_test_connection(1001, ConnectionState::IdleInTransaction, WaitEventType::None, Some(60), Some(60)),
+            create_test_connection(1002, ConnectionState::IdleInTransaction, WaitEventType::None, Some(120), Some(120)),
+            create_test_connection(1003, ConnectionState::Active, WaitEventType::None, Some(10), Some(10)),
+        ];
+
+        let mut connections_by_state = HashMap::new();
+        connections_by_state.insert("idle in transaction".to_string(), 2);
+        connections_by_state.insert("active".to_string(), 1);
+
+        let stats = ConnectionStats {
+            total_connections: 3,
+            max_connections: 100,
+            connections_by_state,
+            idle_in_transaction_count: 2,
+            locked_connections_count: 0,
+            oldest_idle_transaction_secs: Some(120),
+            oldest_locked_query_secs: None,
+        };
+
+        let result = analyzer.check_idle_in_transaction(&stats, &connections);
+        assert!(result.is_some());
+
+        let recommendation = result.unwrap();
+        assert_eq!(recommendation.issue_type, IssueType::IdleInTransaction);
+        assert!(recommendation.title.contains("2 idle in transaction"));
+        assert!(recommendation.description.contains("120s"));
+    }
+
+    #[test]
+    fn test_idle_in_transaction_no_alert_when_none() {
+        let analyzer = ConnectionAnalyzer::new();
+
+        let connections = vec![
+            create_test_connection(1001, ConnectionState::Active, WaitEventType::None, Some(10), Some(10)),
+            create_test_connection(1002, ConnectionState::Idle, WaitEventType::None, Some(5), Some(5)),
+        ];
+
+        let mut connections_by_state = HashMap::new();
+        connections_by_state.insert("active".to_string(), 1);
+        connections_by_state.insert("idle".to_string(), 1);
+
+        let stats = ConnectionStats {
+            total_connections: 2,
+            max_connections: 100,
+            connections_by_state,
+            idle_in_transaction_count: 0,
+            locked_connections_count: 0,
+            oldest_idle_transaction_secs: None,
+            oldest_locked_query_secs: None,
+        };
+
+        let result = analyzer.check_idle_in_transaction(&stats, &connections);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_lock_contention_detection() {
+        let analyzer = ConnectionAnalyzer::new();
+
+        let connections = vec![
+            create_test_connection(1001, ConnectionState::Active, WaitEventType::Lock, Some(30), Some(30)),
+            create_test_connection(1002, ConnectionState::Active, WaitEventType::Lock, Some(45), Some(45)),
+            create_test_connection(1003, ConnectionState::Active, WaitEventType::None, Some(10), Some(10)),
+        ];
+
+        let mut connections_by_state = HashMap::new();
+        connections_by_state.insert("active".to_string(), 3);
+
+        let stats = ConnectionStats {
+            total_connections: 3,
+            max_connections: 100,
+            connections_by_state,
+            idle_in_transaction_count: 0,
+            locked_connections_count: 2,
+            oldest_idle_transaction_secs: None,
+            oldest_locked_query_secs: Some(45),
+        };
+
+        let result = analyzer.check_lock_contention(&stats, &connections);
+        assert!(result.is_some());
+
+        let recommendation = result.unwrap();
+        assert_eq!(recommendation.issue_type, IssueType::LockContention);
+        assert!(recommendation.title.contains("2 connection"));
+        assert!(recommendation.description.contains("45s"));
+    }
+
+    #[test]
+    fn test_analyze_connections_multiple_issues() {
+        let analyzer = ConnectionAnalyzer::new();
+
+        let connections = vec![
+            create_test_connection(1001, ConnectionState::IdleInTransaction, WaitEventType::None, Some(60), Some(60)),
+            create_test_connection(1002, ConnectionState::Active, WaitEventType::Lock, Some(30), Some(30)),
+        ];
+
+        let mut connections_by_state = HashMap::new();
+        connections_by_state.insert("idle in transaction".to_string(), 1);
+        connections_by_state.insert("active".to_string(), 1);
+
+        let stats = ConnectionStats {
+            total_connections: 92,  // Changed to 92% to trigger pool exhaustion
+            max_connections: 100,
+            connections_by_state,
+            idle_in_transaction_count: 1,
+            locked_connections_count: 1,
+            oldest_idle_transaction_secs: Some(60),
+            oldest_locked_query_secs: Some(30),
+        };
+
+        let recommendations = analyzer.analyze_connections(&stats, &connections);
+
+        // Should detect: pool exhaustion, idle in transaction, lock contention
+        assert_eq!(recommendations.len(), 3);
+
+        let issue_types: Vec<IssueType> = recommendations.iter()
+            .map(|r| r.issue_type.clone())
+            .collect();
+
+        assert!(issue_types.contains(&IssueType::ConnectionPoolExhaustion));
+        assert!(issue_types.contains(&IssueType::IdleInTransaction));
+        assert!(issue_types.contains(&IssueType::LockContention));
+    }
+
+    #[test]
+    fn test_severity_scaling_with_idle_transaction_count() {
+        let analyzer = ConnectionAnalyzer::new();
+
+        // Test with 3 idle transactions (should be Medium)
+        let connections_medium: Vec<ConnectionInfo> = (0..3)
+            .map(|i| create_test_connection(1000 + i, ConnectionState::IdleInTransaction, WaitEventType::None, Some(60), Some(60)))
+            .collect();
+
+        let mut connections_by_state = HashMap::new();
+        connections_by_state.insert("idle in transaction".to_string(), 3);
+
+        let stats_medium = ConnectionStats {
+            total_connections: 3,
+            max_connections: 100,
+            connections_by_state: connections_by_state.clone(),
+            idle_in_transaction_count: 3,
+            locked_connections_count: 0,
+            oldest_idle_transaction_secs: Some(60),
+            oldest_locked_query_secs: None,
+        };
+
+        let result_medium = analyzer.check_idle_in_transaction(&stats_medium, &connections_medium);
+        assert_eq!(result_medium.unwrap().severity, Severity::Medium);
+
+        // Test with 7 idle transactions (should be High)
+        let connections_high: Vec<ConnectionInfo> = (0..7)
+            .map(|i| create_test_connection(1000 + i, ConnectionState::IdleInTransaction, WaitEventType::None, Some(60), Some(60)))
+            .collect();
+
+        connections_by_state.insert("idle in transaction".to_string(), 7);
+
+        let stats_high = ConnectionStats {
+            total_connections: 7,
+            max_connections: 100,
+            connections_by_state: connections_by_state.clone(),
+            idle_in_transaction_count: 7,
+            locked_connections_count: 0,
+            oldest_idle_transaction_secs: Some(60),
+            oldest_locked_query_secs: None,
+        };
+
+        let result_high = analyzer.check_idle_in_transaction(&stats_high, &connections_high);
+        assert_eq!(result_high.unwrap().severity, Severity::High);
+
+        // Test with 12 idle transactions (should be Critical)
+        let connections_critical: Vec<ConnectionInfo> = (0..12)
+            .map(|i| create_test_connection(1000 + i, ConnectionState::IdleInTransaction, WaitEventType::None, Some(60), Some(60)))
+            .collect();
+
+        connections_by_state.insert("idle in transaction".to_string(), 12);
+
+        let stats_critical = ConnectionStats {
+            total_connections: 12,
+            max_connections: 100,
+            connections_by_state,
+            idle_in_transaction_count: 12,
+            locked_connections_count: 0,
+            oldest_idle_transaction_secs: Some(60),
+            oldest_locked_query_secs: None,
+        };
+
+        let result_critical = analyzer.check_idle_in_transaction(&stats_critical, &connections_critical);
+        assert_eq!(result_critical.unwrap().severity, Severity::Critical);
+    }
+}

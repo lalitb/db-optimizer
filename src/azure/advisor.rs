@@ -149,7 +149,7 @@ impl AzureAdvisor {
     }
     
     fn calculate_confidence(&self, justification: &CostJustification) -> f64 {
-        let mut confidence = 0.95;
+        let mut confidence = 0.95_f64;
         
         // Reduce confidence if metrics show high variability
         if justification.peak_cpu_during_business_hours > justification.cpu_utilization * 2.0 {
@@ -158,15 +158,15 @@ impl AzureAdvisor {
         
         // Increase confidence if I/O patterns are stable
         if justification.page_cache_hit_rate > 0.90 {
-            confidence = (confidence + 0.05).min(0.99);
+            confidence = (confidence + 0.05).min(0.99_f64);
         }
-        
+
         // Reduce confidence if query latency is highly variable
         if justification.avg_query_latency_ms > 100.0 {
             confidence -= 0.10;
         }
-        
-        confidence.max(0.40)
+
+        confidence.max(0.40_f64)
     }
     
     fn generate_storage_recommendations(&self, justification: &CostJustification) -> Vec<String> {

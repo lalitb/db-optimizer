@@ -43,7 +43,14 @@ impl RecommendationGenerator for RecommendationEngineAdapter {
         tables: &[TableInfo],
     ) -> Result<Vec<Recommendation>> {
         // Note: Legacy engine expects (queries, tables, indexes) but trait expects (queries, indexes, tables)
-        let recommendations = self.engine.generate_recommendations(queries, tables, indexes);
+        // Connection monitoring data is not available through this adapter interface (passes None)
+        let recommendations = self.engine.generate_recommendations(
+            queries,
+            tables,
+            indexes,
+            None,  // connection_stats
+            None,  // connections
+        );
         Ok(recommendations)
     }
     

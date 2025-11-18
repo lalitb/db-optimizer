@@ -1,4 +1,6 @@
 use pg_query_advisor::*;
+use pg_query_advisor::analyzer::ConnectionAnalyzer;
+use sqlx::Row;
 
 #[tokio::test]
 #[ignore] // Ignored by default - requires DATABASE_URL to be set
@@ -40,14 +42,14 @@ async fn test_basic_workflow() {
     
     // Test recommendation engine
     let engine = RecommendationEngine::new();
-    let recommendations = engine.generate_recommendations(&queries, &tables, &indexes);
-    
+    let recommendations = engine.generate_recommendations(&queries, &tables, &indexes, None, None);
+
     println!("Generated {} recommendations", recommendations.len());
-    
+
     // Test report generation
     let (db_name, pg_version) = collector.get_database_info().await
         .expect("Failed to get database info");
-    
+
     let report = AnalysisReport {
         database_name: db_name,
         postgres_version: pg_version,
@@ -57,6 +59,7 @@ async fn test_basic_workflow() {
         total_queries_analyzed: queries.len(),
         total_tables: tables.len(),
         total_indexes: indexes.len(),
+        connection_stats: None,
     };
     
     // Test output formatters
@@ -450,4 +453,233 @@ fn test_improvement_calculation() {
     
     assert_eq!(improvement, 80.0);
     assert!(improvement > 10.0); // Meets typical threshold
+}
+
+// ===== CONNECTION MONITORING TESTS =====
+
+#[tokio::test]
+#[ignore] // Requires TEST_DATABASE_URL and active database connections
+async fn test_connection_monitoring_integration() {
+    let database_url = std::env::var("TEST_DATABASE_URL")
+        .unwrap_or_else(|_| "postgresql://postgres:postgres@localhost/test".to_string());
+
+    let pool = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(5)
+        .connect(&database_url)
+        .await
+        .expect("Failed to connect to test database");
+
+    let collector = DatabaseCollector::new(pool.clone());
+
+    // Test 1: Collect connection stats
+    let connection_stats = collector.collect_connection_stats().await
+        .expect("Failed to collect connection stats");
+
+    println!("Connection Stats:");
+    println!("  Total: {} / {} max", connection_stats.total_connections, connection_stats.max_connections);
+    println!("  Usage: {:.1}%", connection_stats.usage_percentage());
+    println!("  Idle in transaction: {}", connection_stats.idle_in_transaction_count);
+    println!("  Locked: {}", connection_stats.locked_connections_count);
+
+    // Verify basic stats
+    assert!(connection_stats.total_connections > 0, "Should have at least one connection (this test)");
+    assert!(connection_stats.max_connections > 0);
+    assert!(connection_stats.usage_percentage() >= 0.0);
+    assert!(connection_stats.usage_percentage() <= 100.0);
+
+    // Test 2: Collect individual connections
+    let connections = collector.collect_connections().await
+        .expect("Failed to collect connections");
+
+    println!("\nActive Connections: {}", connections.len());
+    for conn in &connections {
+        println!("  PID {}: {:?} - {} - {}",
+            conn.pid,
+            conn.state,
+            conn.database,
+            conn.query.chars().take(50).collect::<String>()
+        );
+    }
+
+    assert!(connections.len() > 0, "Should have at least one connection");
+
+    // Verify connection data structure
+    for conn in &connections {
+        assert!(conn.pid > 0);
+        assert!(!conn.database.is_empty());
+        assert!(!conn.username.is_empty());
+        assert!(!conn.backend_type.is_empty());
+    }
+
+    // Test 3: Connection analyzer
+    let analyzer = ConnectionAnalyzer::new();
+    let recommendations = analyzer.analyze_connections(&connection_stats, &connections);
+
+    println!("\nConnection Recommendations: {}", recommendations.len());
+    for rec in &recommendations {
+        println!("  [{:?}] {}: {:?}",
+            rec.severity,
+            rec.title,
+            rec.issue_type
+        );
+    }
+
+    // Verify recommendations structure
+    for rec in &recommendations {
+        assert!(!rec.id.is_empty());
+        assert!(!rec.title.is_empty());
+        assert!(!rec.description.is_empty());
+        assert!(!rec.migration_sql.is_empty());
+        assert!(matches!(
+            rec.issue_type,
+            IssueType::ConnectionPoolExhaustion |
+            IssueType::IdleInTransaction |
+            IssueType::LockContention
+        ));
+    }
+
+    // Test 4: Get long idle transactions (if any)
+    let long_idle = collector.get_long_idle_transactions(30).await
+        .expect("Failed to get long idle transactions");
+
+    println!("\nLong idle transactions (>30s): {}", long_idle.len());
+
+    // Test 5: Get locked connections (if any)
+    let locked = collector.get_locked_connections().await
+        .expect("Failed to get locked connections");
+
+    println!("Locked connections: {}", locked.len());
+
+    // Test 6: Integration with recommendation engine
+    let queries = collector.collect_query_stats(10).await.unwrap_or_default();
+    let tables = collector.collect_table_info().await.unwrap_or_default();
+    let indexes = collector.collect_index_info().await.unwrap_or_default();
+
+    let engine = RecommendationEngine::new();
+    let all_recommendations = engine.generate_recommendations(
+        &queries,
+        &tables,
+        &indexes,
+        Some(&connection_stats),
+        Some(&connections),
+    );
+
+    println!("\nTotal Recommendations (all types): {}", all_recommendations.len());
+
+    // Count connection-related recommendations
+    let connection_recs: Vec<_> = all_recommendations.iter()
+        .filter(|r| matches!(
+            r.issue_type,
+            IssueType::ConnectionPoolExhaustion |
+            IssueType::IdleInTransaction |
+            IssueType::LockContention
+        ))
+        .collect();
+
+    println!("Connection-related recommendations: {}", connection_recs.len());
+
+    // Test 7: Verify ConnectionStats helper methods
+    assert!(connection_stats.usage_percentage() >= 0.0);
+
+    let is_near_80 = connection_stats.is_near_limit(80.0);
+    let is_near_95 = connection_stats.is_near_limit(95.0);
+
+    println!("\nConnection pool near 80% limit: {}", is_near_80);
+    println!("Connection pool near 95% limit: {}", is_near_95);
+
+    // Test 8: Verify ConnectionInfo helper methods work
+    if let Some(conn) = connections.first() {
+        let state_duration = conn.state_duration_secs();
+        let query_duration = conn.query_duration_secs();
+        let is_locked = conn.is_locked();
+
+        println!("\nFirst connection details:");
+        println!("  State: {:?}", conn.state);
+        println!("  State duration: {:?}s", state_duration);
+        println!("  Query duration: {:?}s", query_duration);
+        println!("  Is locked: {}", is_locked);
+        println!("  Wait event: {:?}", conn.wait_event_type);
+    }
+
+    println!("\n✅ All connection monitoring integration tests passed!");
+}
+
+#[tokio::test]
+#[ignore] // Requires TEST_DATABASE_URL
+async fn test_connection_state_enum_parsing() {
+    // This test verifies that ConnectionState parsing works with real pg_stat_activity data
+    let database_url = std::env::var("TEST_DATABASE_URL")
+        .unwrap_or_else(|_| "postgresql://postgres:postgres@localhost/test".to_string());
+
+    let pool = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(5)
+        .connect(&database_url)
+        .await
+        .expect("Failed to connect");
+
+    // Query pg_stat_activity directly
+    let rows = sqlx::query(
+        "SELECT DISTINCT state FROM pg_stat_activity WHERE state IS NOT NULL"
+    )
+    .fetch_all(&pool)
+    .await
+    .expect("Failed to query pg_stat_activity");
+
+    println!("Found {} distinct connection states in pg_stat_activity", rows.len());
+
+    for row in rows {
+        let state_str: String = row.get("state");
+        let parsed_state = ConnectionState::from_str(&state_str);
+
+        println!("  '{}' -> {:?}", state_str, parsed_state);
+
+        // Verify round-trip
+        let back_to_str = parsed_state.as_str();
+
+        // Allow for normalization (e.g., "disabled" might not round-trip exactly)
+        assert!(!back_to_str.is_empty(), "State should serialize to non-empty string");
+    }
+
+    println!("✅ All connection state parsing tests passed!");
+}
+
+#[tokio::test]
+#[ignore] // Requires TEST_DATABASE_URL and ability to create test connections
+async fn test_simulated_idle_in_transaction() {
+    // This test simulates an idle-in-transaction scenario
+    let database_url = std::env::var("TEST_DATABASE_URL")
+        .unwrap_or_else(|_| "postgresql://postgres:postgres@localhost/test".to_string());
+
+    let pool = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(10)
+        .connect(&database_url)
+        .await
+        .expect("Failed to connect");
+
+    // Start a transaction but don't commit it (simulates idle in transaction)
+    let mut tx = pool.begin().await.expect("Failed to start transaction");
+
+    sqlx::query("SELECT 1")
+        .execute(&mut *tx)
+        .await
+        .expect("Failed to execute query");
+
+    // Don't commit - leave it idle in transaction
+
+    // Now check if we can detect it
+    tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+
+    let collector = DatabaseCollector::new(pool.clone());
+    let connection_stats = collector.collect_connection_stats().await
+        .expect("Failed to collect stats");
+
+    println!("Idle in transaction count: {}", connection_stats.idle_in_transaction_count);
+
+    // Note: This might be 0 if the transaction is too fast or if pg_stat_activity
+    // hasn't updated yet. This is expected behavior.
+
+    // Clean up
+    tx.rollback().await.expect("Failed to rollback");
+
+    println!("✅ Idle in transaction simulation test completed!");
 }

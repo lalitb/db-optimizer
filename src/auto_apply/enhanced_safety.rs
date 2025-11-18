@@ -137,7 +137,14 @@ impl EnhancedSafetyFilter {
             }
             IssueType::SlowQuery |
             IssueType::HighVolumeQuery => {
-                // These usually don't auto-apply DDL, so OK
+                // These usually don't auto-apply DDL, so not safe for auto-apply
+                Ok(false)
+            }
+            // Connection-related issues - these are runtime issues, not DDL operations
+            IssueType::IdleInTransaction |
+            IssueType::ConnectionPoolExhaustion |
+            IssueType::LockContention => {
+                // These are informational/monitoring recommendations, not auto-applicable DDL
                 Ok(false)
             }
         }
