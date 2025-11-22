@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en" class="scroll-smooth">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -7,25 +8,30 @@
     <!-- Primary Meta Tags -->
     <title>Vaanyze | Kernel-Level PostgreSQL Performance Analysis with eBPF</title>
     <meta name="title" content="Vaanyze | Kernel-Level PostgreSQL Performance Analysis with eBPF">
-    <meta name="description" content="Production-grade eBPF instrumentation for PostgreSQL. Syscall-level query attribution with I/O latency, CPU time, lock contention metrics. Real-time connection monitoring for idle transactions and pool exhaustion. Autonomous optimization with CREATE INDEX CONCURRENTLY and automatic rollback. Linux 4.15+, PostgreSQL 12-17.">
-    <meta name="keywords" content="eBPF PostgreSQL, kernel instrumentation, database performance analysis, syscall tracing, query optimization, pg_stat_statements, BRIN GIN HASH indexes, CREATE INDEX CONCURRENTLY, database monitoring, performance tuning">
+    <meta name="description"
+        content="Production-grade eBPF instrumentation for PostgreSQL. Syscall-level query attribution with I/O latency, CPU time, lock contention metrics. Real-time connection monitoring for idle transactions and pool exhaustion. Autonomous optimization with CREATE INDEX CONCURRENTLY and automatic rollback. Linux 4.15+, PostgreSQL 12-17.">
+    <meta name="keywords"
+        content="eBPF PostgreSQL, kernel instrumentation, database performance analysis, syscall tracing, query optimization, pg_stat_statements, BRIN GIN HASH indexes, CREATE INDEX CONCURRENTLY, database monitoring, performance tuning">
 
     <!-- Open Graph / Facebook -->
     <meta property="og:type" content="website">
     <meta property="og:url" content="https://vaanyze.io/">
     <meta property="og:title" content="Vaanyze | Kernel-Level PostgreSQL Performance Analysis with eBPF">
-    <meta property="og:description" content="eBPF-based PostgreSQL performance analysis with syscall-level query attribution. Measures I/O latency, CPU time, lock contention at kernel level. Autonomous optimization with statistical verification and rollback.">
+    <meta property="og:description"
+        content="eBPF-based PostgreSQL performance analysis with syscall-level query attribution. Measures I/O latency, CPU time, lock contention at kernel level. Autonomous optimization with statistical verification and rollback.">
     <meta property="og:image" content="https://vaanyze.io/og-image.png">
 
     <!-- Twitter -->
     <meta property="twitter:card" content="summary_large_image">
     <meta property="twitter:url" content="https://vaanyze.io/">
     <meta property="twitter:title" content="Vaanyze | Kernel-Level PostgreSQL Performance Analysis with eBPF">
-    <meta property="twitter:description" content="eBPF-based PostgreSQL performance analysis with syscall-level query attribution. Autonomous optimization with CREATE INDEX CONCURRENTLY and automatic rollback.">
+    <meta property="twitter:description"
+        content="eBPF-based PostgreSQL performance analysis with syscall-level query attribution. Autonomous optimization with CREATE INDEX CONCURRENTLY and automatic rollback.">
     <meta property="twitter:image" content="https://vaanyze.io/og-image.png">
 
     <!-- Favicon -->
-    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔬</text></svg>">
+    <link rel="icon" type="image/svg+xml"
+        href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔬</text></svg>">
 
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -33,7 +39,8 @@
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap"
+        rel="stylesheet">
 
     <style>
         body {
@@ -57,7 +64,7 @@
 
         .card-hover:hover {
             transform: translateY(-8px);
-            box-shadow: 0 20px 40px rgba(0,0,0,0.15);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
         }
 
         .metric-card {
@@ -66,8 +73,15 @@
         }
 
         @keyframes float {
-            0%, 100% { transform: translateY(0px); }
-            50% { transform: translateY(-20px); }
+
+            0%,
+            100% {
+                transform: translateY(0px);
+            }
+
+            50% {
+                transform: translateY(-20px);
+            }
         }
 
         .float-animation {
@@ -97,6 +111,7 @@
         }
     </style>
 </head>
+
 <body class="bg-white text-gray-900">
 
     <!-- Navigation -->
@@ -112,7 +127,9 @@
                     <a href="#how-it-works" class="text-gray-700 hover:text-purple-600 transition">How It Works</a>
                     <a href="#pricing" class="text-gray-700 hover:text-purple-600 transition">Pricing</a>
                     <a href="#docs" class="text-gray-700 hover:text-purple-600 transition">Docs</a>
-                    <a href="#early-access" class="bg-gradient-to-r from-purple-600 to-indigo-600 text-white px-6 py-2 rounded-lg hover:shadow-lg transition">Get Early Access</a>
+                    <a href="#early-access"
+                        class="bg-gradient-to-r from-purple-600 to-indigo-600 text-white px-6 py-2 rounded-lg hover:shadow-lg transition">Get
+                        Early Access</a>
                 </div>
             </div>
         </div>
@@ -123,13 +140,14 @@
         <div class="max-w-7xl mx-auto">
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
                 <div class="space-y-8">
-                    <div class="inline-block px-4 py-2 bg-gray-100 border border-gray-300 rounded text-gray-700 text-sm font-mono">
+                    <div
+                        class="inline-block px-4 py-2 bg-gray-100 border border-gray-300 rounded text-gray-700 text-sm font-mono">
                         eBPF-based PostgreSQL Performance Analysis
                     </div>
 
                     <div class="mb-4">
                         <h1 class="text-5xl sm:text-6xl font-bold leading-tight mb-2 text-gray-900">
-                            Kernel-Level PostgreSQL<br/>
+                            Kernel-Level PostgreSQL<br />
                             <span class="gradient-text">Performance Intelligence</span>
                         </h1>
                         <p class="text-sm text-gray-500 font-mono">Vaanyze /van-ize/</p>
@@ -139,14 +157,37 @@
                         Production-grade eBPF instrumentation for PostgreSQL. Captures query-level I/O latency,
                         CPU time, lock contention, and network overhead at the kernel syscall layer.
                         Monitors connection states, idle transactions, and pool exhaustion in real-time.
-                        Provides deterministic performance attribution and autonomous index optimization with safety guarantees.
+                        Provides deterministic performance attribution and autonomous index optimization with safety
+                        guarantees.
                     </p>
 
+                    <!-- Live Health Score Badge -->
+                    <div
+                        class="inline-flex items-center gap-4 bg-gradient-to-r from-green-50 to-emerald-50 border-2 border-green-200 rounded-xl px-6 py-4 shadow-lg">
+                        <div class="text-center">
+                            <div class="text-sm text-gray-600 mb-1">Live Health Score</div>
+                            <div class="flex items-baseline gap-1">
+                                <span id="health-score-hero" class="text-4xl font-bold text-green-600">87</span>
+                                <span class="text-xl text-gray-400">/100</span>
+                            </div>
+                        </div>
+                        <div class="h-12 w-px bg-gray-300"></div>
+                        <div class="text-xs text-gray-600 max-w-xs">
+                            <div class="flex items-center gap-2 mb-1">
+                                <div class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                                <span>Monitoring 47 databases</span>
+                            </div>
+                            <div class="text-gray-500">Last updated: just now</div>
+                        </div>
+                    </div>
+
                     <div class="flex flex-col sm:flex-row gap-4">
-                        <a href="#early-access" class="gradient-bg text-white px-8 py-4 rounded-lg font-semibold hover:shadow-2xl transition text-center">
+                        <a href="#early-access"
+                            class="gradient-bg text-white px-8 py-4 rounded-lg font-semibold hover:shadow-2xl transition text-center">
                             Request Access
                         </a>
-                        <a href="#how-it-works" class="bg-gray-100 text-gray-800 px-8 py-4 rounded-lg font-semibold hover:bg-gray-200 transition text-center">
+                        <a href="#how-it-works"
+                            class="bg-gray-100 text-gray-800 px-8 py-4 rounded-lg font-semibold hover:bg-gray-200 transition text-center">
                             Technical Details
                         </a>
                     </div>
@@ -168,26 +209,15 @@
                 </div>
 
                 <div class="relative float-animation hidden lg:block">
-                    <div class="code-block">
-                        <div class="text-green-400 text-sm mb-4">$ vaanyze analyze --ebpf-enabled</div>
-                        <div class="text-gray-300 text-sm space-y-2">
-                            <div><span class="text-blue-400">Query:</span> SELECT * FROM orders WHERE user_id = ?</div>
-                            <div><span class="text-yellow-400">Total time:</span> 842ms</div>
-                            <div class="ml-4">
-                                <div>├─ <span class="text-red-400">I/O wait: 792ms (94.1%)</span> ← eBPF measured</div>
-                                <div>├─ CPU time: 48ms (5.7%)</div>
-                                <div>└─ Network: 2ms (0.2%)</div>
-                            </div>
-                            <div class="pt-4"><span class="text-purple-400">eBPF Insights:</span></div>
-                            <div class="ml-4">
-                                <div>• 2,847 disk seeks per query</div>
-                                <div>• 247MB read from disk</div>
-                                <div>• 1,234 page faults</div>
-                            </div>
-                            <div class="pt-4 text-green-400">
-                                ✓ Recommendation: CREATE INDEX (97% confidence)<br/>
-                                <span class="text-gray-400">Expected: 842ms → 12ms (98.6% faster)</span>
-                            </div>
+                    <div class="code-block font-mono text-sm" id="hero-terminal">
+                        <div class="flex items-center gap-2 mb-4 border-b border-gray-700 pb-2">
+                            <div class="w-3 h-3 rounded-full bg-red-500"></div>
+                            <div class="w-3 h-3 rounded-full bg-yellow-500"></div>
+                            <div class="w-3 h-3 rounded-full bg-green-500"></div>
+                            <div class="ml-2 text-gray-500 text-xs">vaanyze — -zsh — 80x24</div>
+                        </div>
+                        <div id="terminal-content">
+                            <!-- Content will be typed by JS -->
                         </div>
                     </div>
                 </div>
@@ -273,7 +303,8 @@
     <section class="py-20 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-purple-50 to-indigo-50">
         <div class="max-w-7xl mx-auto">
             <div class="text-center mb-12">
-                <div class="inline-block px-4 py-2 bg-gray-100 border border-gray-300 rounded text-gray-700 text-sm font-mono mb-4">
+                <div
+                    class="inline-block px-4 py-2 bg-gray-100 border border-gray-300 rounded text-gray-700 text-sm font-mono mb-4">
                     Autonomous Optimization Engine
                 </div>
                 <h2 class="text-4xl font-bold mb-6 text-gray-900">
@@ -281,7 +312,8 @@
                 </h2>
                 <p class="text-xl text-gray-700 max-w-3xl mx-auto">
                     Autonomous agent continuously monitors eBPF metrics, generates high-confidence recommendations,
-                    and applies non-blocking index operations (CREATE INDEX CONCURRENTLY) with baseline verification and automatic rollback.
+                    and applies non-blocking index operations (CREATE INDEX CONCURRENTLY) with baseline verification and
+                    automatic rollback.
                 </p>
             </div>
 
@@ -299,14 +331,16 @@
                                 <div>├─ 💡 Recommendation: CREATE INDEX orders_user_id_idx</div>
                                 <div>├─ ✅ Safety check: <span class="text-green-400">97% confidence</span></div>
                                 <div>├─ 🚀 Applying optimization...</div>
-                                <div>├─ ⏱️  Monitoring for 5 minutes...</div>
+                                <div>├─ ⏱️ Monitoring for 5 minutes...</div>
                                 <div>├─ <span class="text-green-400">✓ Verified: 842ms → 9ms (98.9% faster)</span></div>
                                 <div>└─ 📢 Slack notification sent</div>
                             </div>
                         </div>
                         <div class="pt-4 border-t border-gray-700">
-                            <div class="text-green-400">💰 Cost Savings: <span class="font-bold">$2,847/month</span></div>
-                            <div class="text-blue-400">⚡ Queries optimized: <span class="font-bold">47 today</span></div>
+                            <div class="text-green-400">💰 Cost Savings: <span class="font-bold">$2,847/month</span>
+                            </div>
+                            <div class="text-blue-400">⚡ Queries optimized: <span class="font-bold">47 today</span>
+                            </div>
                             <div class="text-purple-400">🎯 Success rate: <span class="font-bold">100%</span></div>
                         </div>
                     </div>
@@ -318,7 +352,8 @@
                             <h3 class="text-lg font-bold mb-2 text-gray-900">Statistical Confidence Thresholding</h3>
                             <p class="text-gray-700 text-sm leading-relaxed">
                                 Machine learning model trained on production workloads evaluates I/O wait patterns,
-                                disk seek counts, and page fault rates. Only recommendations exceeding 95% confidence threshold
+                                disk seek counts, and page fault rates. Only recommendations exceeding 95% confidence
+                                threshold
                                 and minimum performance improvement (default: 10%) are executed.
                             </p>
                         </div>
@@ -328,8 +363,10 @@
                         <div>
                             <h3 class="text-lg font-bold mb-2 text-gray-900">Non-Blocking Operations & Verification</h3>
                             <p class="text-gray-700 text-sm leading-relaxed">
-                                All DDL operations use CONCURRENTLY mode (CREATE INDEX CONCURRENTLY, DROP INDEX CONCURRENTLY).
-                                Baseline p50/p95/p99 latencies captured from pg_stat_statements. Post-apply monitoring period (default: 300s)
+                                All DDL operations use CONCURRENTLY mode (CREATE INDEX CONCURRENTLY, DROP INDEX
+                                CONCURRENTLY).
+                                Baseline p50/p95/p99 latencies captured from pg_stat_statements. Post-apply monitoring
+                                period (default: 300s)
                                 triggers automatic DROP INDEX if performance degrades or error rate increases.
                             </p>
                         </div>
@@ -339,8 +376,10 @@
                         <div>
                             <h3 class="text-lg font-bold mb-2 text-gray-900">Observability Integration</h3>
                             <p class="text-gray-700 text-sm leading-relaxed">
-                                Webhook notifications (Slack, PagerDuty, custom) on apply/rollback events. Prometheus metrics exported
-                                for queries optimized, confidence scores, and cost savings. Structured JSON logs for audit trail.
+                                Webhook notifications (Slack, PagerDuty, custom) on apply/rollback events. Prometheus
+                                metrics exported
+                                for queries optimized, confidence scores, and cost savings. Structured JSON logs for
+                                audit trail.
                             </p>
                         </div>
                     </div>
@@ -348,7 +387,8 @@
             </div>
 
             <div class="mt-12 text-center">
-                <a href="#early-access" class="gradient-bg text-white px-8 py-4 rounded-lg text-lg font-semibold hover:shadow-2xl transition inline-block">
+                <a href="#early-access"
+                    class="gradient-bg text-white px-8 py-4 rounded-lg text-lg font-semibold hover:shadow-2xl transition inline-block">
                     Request Beta Access
                 </a>
                 <p class="text-sm text-gray-600 mt-4">Includes technical onboarding and architecture review</p>
@@ -364,7 +404,8 @@
                     Core Technical <span class="gradient-text">Capabilities</span>
                 </h2>
                 <p class="text-xl text-gray-700 max-w-3xl mx-auto">
-                    Production-grade eBPF instrumentation with statistical analysis, autonomous optimization, and comprehensive observability integration.
+                    Production-grade eBPF instrumentation with statistical analysis, autonomous optimization, and
+                    comprehensive observability integration.
                 </p>
             </div>
 
@@ -374,8 +415,10 @@
                     <div class="text-xs font-mono text-purple-600 mb-3">KERNEL INSTRUMENTATION</div>
                     <h3 class="text-xl font-bold mb-3">Syscall-Level Query Attribution</h3>
                     <p class="text-gray-700 text-sm leading-relaxed">
-                        eBPF kprobes on vfs_read/vfs_write, tcp_sendmsg, and futex_wait syscalls measure per-query I/O latency,
-                        network time, and lock contention. Correlates kernel events with PostgreSQL PIDs for accurate time attribution.
+                        eBPF kprobes on vfs_read/vfs_write, tcp_sendmsg, and futex_wait syscalls measure per-query I/O
+                        latency,
+                        network time, and lock contention. Correlates kernel events with PostgreSQL PIDs for accurate
+                        time attribution.
                     </p>
                     <div class="mt-4 text-xs text-gray-600">
                         <strong>Metrics:</strong> io_time_ms, cpu_time_ms, lock_wait_ms, network_time_ms
@@ -387,8 +430,10 @@
                     <div class="text-xs font-mono text-purple-600 mb-3">STATISTICAL ANALYSIS</div>
                     <h3 class="text-xl font-bold mb-3">High-Confidence Recommendations</h3>
                     <p class="text-gray-700 text-sm leading-relaxed">
-                        Statistical model analyzes I/O wait patterns, disk seek counts, and page fault rates across workload samples.
-                        Recommendations generated only when confidence threshold ≥95% and estimated performance improvement ≥10%.
+                        Statistical model analyzes I/O wait patterns, disk seek counts, and page fault rates across
+                        workload samples.
+                        Recommendations generated only when confidence threshold ≥95% and estimated performance
+                        improvement ≥10%.
                     </p>
                     <div class="mt-4 text-xs text-gray-600">
                         <strong>Index Types:</strong> BTREE, BRIN, GIN, HASH, partial indexes
@@ -456,8 +501,10 @@
                     <div class="text-xs font-mono text-purple-600 mb-3">CONNECTION MONITORING</div>
                     <h3 class="text-xl font-bold mb-3">Real-Time Connection State Analysis</h3>
                     <p class="text-gray-700 text-sm leading-relaxed">
-                        Monitors pg_stat_activity for idle-in-transaction connections, lock contention (wait_event_type='Lock'),
-                        and connection pool exhaustion. Detects problematic connections blocking VACUUM and holding locks.
+                        Monitors pg_stat_activity for idle-in-transaction connections, lock contention
+                        (wait_event_type='Lock'),
+                        and connection pool exhaustion. Detects problematic connections blocking VACUUM and holding
+                        locks.
                         Provides PID-level diagnostics with duration tracking and blocking query identification.
                     </p>
                     <div class="mt-4 text-xs text-gray-600">
@@ -474,7 +521,8 @@
             <div class="text-center mb-16">
                 <h2 class="text-4xl sm:text-5xl font-bold mb-6">Architecture & Implementation</h2>
                 <p class="text-xl text-gray-700 max-w-3xl mx-auto">
-                    Three-stage pipeline: eBPF kernel instrumentation → statistical analysis → autonomous optimization with safety verification
+                    Three-stage pipeline: eBPF kernel instrumentation → statistical analysis → autonomous optimization
+                    with safety verification
                 </p>
             </div>
 
@@ -486,12 +534,14 @@
                             <h3 class="text-2xl font-bold mb-3">eBPF Syscall Tracing</h3>
                             <p class="text-gray-700 text-sm leading-relaxed">
                                 eBPF kprobes attach to vfs_read, vfs_write, tcp_sendmsg, and futex_wait syscalls.
-                                Measures per-query latency distribution, disk seek count, page faults, and lock wait time.
+                                Measures per-query latency distribution, disk seek count, page faults, and lock wait
+                                time.
                                 Correlates kernel events with PostgreSQL backend PIDs via /proc/[pid]/cmdline parsing
                                 to attribute syscall overhead to specific queries.
                             </p>
                             <div class="mt-4 text-xs text-gray-600">
-                                <strong>BPF Programs:</strong> io_latency.bpf.c (252 lines), lock_contention.bpf.c (263 lines),
+                                <strong>BPF Programs:</strong> io_latency.bpf.c (252 lines), lock_contention.bpf.c (263
+                                lines),
                                 postgres_protocol.bpf.c (268 lines)
                             </div>
                         </div>
@@ -521,13 +571,18 @@ int trace_vfs_read(struct pt_regs *ctx) {
                             <h3 class="text-2xl font-bold mb-3">Pattern Recognition & Classification</h3>
                             <p class="text-gray-700 text-sm leading-relaxed">
                                 Statistical model evaluates query patterns using decision thresholds:
-                                <br/>• <strong>Missing Index:</strong> io_percentage &gt; 70% ∧ disk_seeks &gt; 1000/query → confidence ≥95%
-                                <br/>• <strong>Sequential Scan:</strong> correlation ≥ 0.8 ∧ sequential_access → BRIN index
-                                <br/>• <strong>Query Rewrite:</strong> cpu_percentage &gt; 60% ∧ io_percentage &lt; 30% → algorithmic optimization
-                                <br/>Recommendations generated only when statistical significance p &lt; 0.05 and improvement ≥10%.
+                                <br />• <strong>Missing Index:</strong> io_percentage &gt; 70% ∧ disk_seeks &gt;
+                                1000/query → confidence ≥95%
+                                <br />• <strong>Sequential Scan:</strong> correlation ≥ 0.8 ∧ sequential_access → BRIN
+                                index
+                                <br />• <strong>Query Rewrite:</strong> cpu_percentage &gt; 60% ∧ io_percentage &lt; 30%
+                                → algorithmic optimization
+                                <br />Recommendations generated only when statistical significance p &lt; 0.05 and
+                                improvement ≥10%.
                             </p>
                             <div class="mt-4 text-xs text-gray-600">
-                                <strong>Models:</strong> MissingIndexDetector, SequentialScanAnalyzer, QueryComplexityAnalyzer
+                                <strong>Models:</strong> MissingIndexDetector, SequentialScanAnalyzer,
+                                QueryComplexityAnalyzer
                             </div>
                         </div>
                     </div>
@@ -564,11 +619,16 @@ int trace_vfs_read(struct pt_regs *ctx) {
                             <div class="text-xs font-mono text-purple-600 mb-2">STAGE 3: SAFE OPTIMIZATION</div>
                             <h3 class="text-2xl font-bold mb-3">Baseline Verification & Rollback</h3>
                             <p class="text-gray-700 text-sm leading-relaxed">
-                                <strong>1. Baseline Capture:</strong> Queries pg_stat_statements for p50/p95/p99 latencies (sample size: n≥100)
-                                <br/><strong>2. Non-Blocking DDL:</strong> Executes CREATE INDEX CONCURRENTLY (no table locks, online operation)
-                                <br/><strong>3. Monitoring Period:</strong> Observes latency distribution for 300s (configurable)
-                                <br/><strong>4. Statistical Test:</strong> Welch's t-test comparing pre/post latencies (α=0.05)
-                                <br/><strong>5. Automatic Rollback:</strong> DROP INDEX CONCURRENTLY if p95_post ≥ p95_pre or error_rate increases
+                                <strong>1. Baseline Capture:</strong> Queries pg_stat_statements for p50/p95/p99
+                                latencies (sample size: n≥100)
+                                <br /><strong>2. Non-Blocking DDL:</strong> Executes CREATE INDEX CONCURRENTLY (no table
+                                locks, online operation)
+                                <br /><strong>3. Monitoring Period:</strong> Observes latency distribution for 300s
+                                (configurable)
+                                <br /><strong>4. Statistical Test:</strong> Welch's t-test comparing pre/post latencies
+                                (α=0.05)
+                                <br /><strong>5. Automatic Rollback:</strong> DROP INDEX CONCURRENTLY if p95_post ≥
+                                p95_pre or error_rate increases
                             </p>
                             <div class="mt-4 text-xs text-gray-600">
                                 <strong>Safety:</strong> Zero-downtime, statistical verification, automatic rollback
@@ -578,26 +638,228 @@ int trace_vfs_read(struct pt_regs *ctx) {
                     <div class="md:w-1/2 bg-white p-6 rounded-2xl shadow-lg">
                         <div class="space-y-3">
                             <div class="flex items-center gap-3">
-                                <div class="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center text-white">✓</div>
+                                <div
+                                    class="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center text-white">
+                                    ✓</div>
                                 <span class="text-sm">Baseline captured: 842ms p99</span>
                             </div>
                             <div class="flex items-center gap-3">
-                                <div class="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center text-white">✓</div>
+                                <div
+                                    class="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center text-white">
+                                    ✓</div>
                                 <span class="text-sm">Index created concurrently (no locks)</span>
                             </div>
                             <div class="flex items-center gap-3">
-                                <div class="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center text-white">✓</div>
+                                <div
+                                    class="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center text-white">
+                                    ✓</div>
                                 <span class="text-sm">Monitoring: 5 minutes elapsed</span>
                             </div>
                             <div class="flex items-center gap-3">
-                                <div class="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center text-white">✓</div>
+                                <div
+                                    class="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center text-white">
+                                    ✓</div>
                                 <span class="text-sm">Verified: 842ms → 9ms (98.9% faster)</span>
                             </div>
                             <div class="flex items-center gap-3">
-                                <div class="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center text-white">✓</div>
+                                <div
+                                    class="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center text-white">
+                                    ✓</div>
                                 <span class="text-sm">Slack notification sent</span>
                             </div>
                         </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Intelligence Features Section (NEW) -->
+    <section class="py-20 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-purple-50 to-indigo-50">
+        <div class="max-w-7xl mx-auto">
+            <div class="text-center mb-16">
+                <div
+                    class="inline-block px-4 py-2 bg-purple-100 border border-purple-300 rounded text-purple-700 text-sm font-mono mb-4">
+                    AI-Powered Intelligence
+                </div>
+                <h2 class="text-4xl sm:text-5xl font-bold mb-6">
+                    Beyond Monitoring: <span class="gradient-text">Predictive Intelligence</span>
+                </h2>
+                <p class="text-xl text-gray-700 max-w-3xl mx-auto">
+                    Vaanyze doesn't just show you problems—it predicts them, explains them, and fixes them
+                    automatically.
+                </p>
+            </div>
+
+            <div class="grid md:grid-cols-3 gap-8 mb-12">
+                <!-- Health Score -->
+                <div class="bg-white p-8 rounded-2xl shadow-xl border-2 border-purple-100 card-hover">
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="text-5xl">🏥</div>
+                        <div class="text-right">
+                            <div class="text-4xl font-bold text-green-500">87</div>
+                            <div class="text-sm text-gray-500">/100</div>
+                        </div>
+                    </div>
+                    <h3 class="text-2xl font-bold mb-3">Database Health Score</h3>
+                    <p class="text-gray-700 text-sm mb-4">
+                        Single metric combining cache hit ratio, connection saturation, index efficiency, and table
+                        bloat.
+                        Track health trends over time.
+                    </p>
+                    <div class="space-y-2 text-xs">
+                        <div class="flex justify-between">
+                            <span class="text-gray-600">Cache Efficiency</span>
+                            <span class="font-semibold text-green-600">92%</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-gray-600">Connection Health</span>
+                            <span class="font-semibold text-yellow-600">78%</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-gray-600">Index Utilization</span>
+                            <span class="font-semibold text-green-600">94%</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Deployment Correlation -->
+                <div class="bg-white p-8 rounded-2xl shadow-xl border-2 border-purple-100 card-hover">
+                    <div class="text-5xl mb-4">📅</div>
+                    <h3 class="text-2xl font-bold mb-3">Deployment Correlation</h3>
+                    <p class="text-gray-700 text-sm mb-4">
+                        Automatically tracks schema changes, index operations, and config updates.
+                        Correlates performance spikes with deployments.
+                    </p>
+                    <div class="space-y-3 text-xs">
+                        <div class="flex items-start gap-2">
+                            <div class="w-2 h-2 bg-purple-500 rounded-full mt-1"></div>
+                            <div>
+                                <div class="font-semibold">Index Change - 2h ago</div>
+                                <div class="text-gray-600">CREATE idx_users_email</div>
+                            </div>
+                        </div>
+                        <div class="flex items-start gap-2">
+                            <div class="w-2 h-2 bg-blue-500 rounded-full mt-1"></div>
+                            <div>
+                                <div class="font-semibold">Deployment - 1d ago</div>
+                                <div class="text-gray-600">v2.3.1 released</div>
+                            </div>
+                        </div>
+                        <div class="flex items-start gap-2">
+                            <div class="w-2 h-2 bg-green-500 rounded-full mt-1"></div>
+                            <div>
+                                <div class="font-semibold">Anomaly Detected - 3d ago</div>
+                                <div class="text-gray-600">Latency +45% spike</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- AI-Powered Analysis -->
+                <div class="bg-white p-8 rounded-2xl shadow-xl border-2 border-purple-100 card-hover">
+                    <div class="text-5xl mb-4">🤖</div>
+                    <h3 class="text-2xl font-bold mb-3">AI Query Advisor</h3>
+                    <p class="text-gray-700 text-sm mb-4">
+                        LLM-powered analysis explains <em>why</em> queries are slow and suggests optimizations
+                        beyond simple index creation.
+                    </p>
+                    <div class="bg-gray-50 p-3 rounded-lg text-xs font-mono">
+                        <div class="text-purple-600 mb-2">💡 AI Insight:</div>
+                        <div class="text-gray-700">
+                            "This query scans 2.8M rows due to missing composite index.
+                            The WHERE clause filters on (user_id, created_at) but only user_id is indexed.
+                            <strong>Recommendation:</strong> CREATE INDEX ON orders(user_id, created_at DESC)"
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Real-World Impact -->
+            <div class="bg-white p-8 rounded-2xl shadow-xl">
+                <div class="text-center mb-6">
+                    <h3 class="text-2xl font-bold mb-2">Real-World Impact</h3>
+                    <p class="text-gray-600">How these features saved a production database</p>
+                </div>
+                <div class="grid md:grid-cols-4 gap-6 text-center">
+                    <div>
+                        <div class="text-3xl font-bold gradient-text mb-1">10:00 AM</div>
+                        <div class="text-sm text-gray-600">Health Score: 92/100</div>
+                        <div class="text-xs text-gray-500 mt-1">Normal operations</div>
+                    </div>
+                    <div>
+                        <div class="text-3xl font-bold text-red-500 mb-1">10:15 AM</div>
+                        <div class="text-sm text-gray-600">Health Score: 67/100</div>
+                        <div class="text-xs text-gray-500 mt-1">⚠️ Latency spike detected</div>
+                    </div>
+                    <div>
+                        <div class="text-3xl font-bold text-yellow-500 mb-1">10:16 AM</div>
+                        <div class="text-sm text-gray-600">Event Correlation</div>
+                        <div class="text-xs text-gray-500 mt-1">🔍 Linked to deployment v2.1.3</div>
+                    </div>
+                    <div>
+                        <div class="text-3xl font-bold text-green-500 mb-1">10:20 AM</div>
+                        <div class="text-sm text-gray-600">Health Score: 89/100</div>
+                        <div class="text-xs text-gray-500 mt-1">✅ Auto-fix applied & verified</div>
+                    </div>
+                </div>
+                <div class="mt-6 p-4 bg-purple-50 rounded-lg">
+                    <p class="text-sm text-gray-700 text-center">
+                        <strong>Result:</strong> Issue identified in 1 minute, root cause found in 4 minutes,
+                        automatically fixed in 5 minutes. <strong>Zero manual intervention.</strong>
+                    </p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ROI Calculator -->
+    <section class="py-20 px-4 sm:px-6 lg:px-8 bg-white">
+        <div class="max-w-4xl mx-auto">
+            <div class="text-center mb-12">
+                <h2 class="text-4xl font-bold mb-6">Calculate Your Savings</h2>
+                <p class="text-xl text-gray-700">See how much you can save by rightsizing your database fleet</p>
+            </div>
+
+            <div class="bg-gray-50 p-8 rounded-2xl shadow-lg border border-gray-200">
+                <div class="grid md:grid-cols-2 gap-12">
+                    <div class="space-y-6">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Number of Databases</label>
+                            <input type="range" min="1" max="100" value="10"
+                                class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer" id="calc-dbs">
+                            <div class="text-right font-bold text-purple-600" id="val-dbs">10</div>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Avg. Monthly Spend per DB
+                                ($)</label>
+                            <input type="range" min="100" max="5000" step="100" value="500"
+                                class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                                id="calc-spend">
+                            <div class="text-right font-bold text-purple-600" id="val-spend">$500</div>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Optimization Potential
+                                (%)</label>
+                            <input type="range" min="5" max="80" value="30"
+                                class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer" id="calc-opt">
+                            <div class="text-right font-bold text-purple-600" id="val-opt">30%</div>
+                        </div>
+                    </div>
+
+                    <div
+                        class="flex flex-col justify-center items-center bg-white p-6 rounded-xl border border-purple-100">
+                        <div class="text-center mb-6">
+                            <div class="text-sm text-gray-500 mb-1">Estimated Monthly Savings</div>
+                            <div class="text-4xl font-bold text-green-500" id="res-monthly">$1,500</div>
+                        </div>
+                        <div class="text-center">
+                            <div class="text-sm text-gray-500 mb-1">Estimated Annual Savings</div>
+                            <div class="text-5xl font-bold gradient-text" id="res-annual">$18,000</div>
+                        </div>
+                        <p class="text-xs text-gray-400 mt-6 text-center">
+                            Based on typical results from SKU rightsizing and index optimization.
+                        </p>
                     </div>
                 </div>
             </div>
@@ -624,37 +886,48 @@ int trace_vfs_read(struct pt_regs *ctx) {
                     </div>
                     <ul class="space-y-4 mb-8">
                         <li class="flex items-start gap-3">
-                            <svg class="w-6 h-6 text-green-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                            <svg class="w-6 h-6 text-green-500 flex-shrink-0" fill="none" stroke="currentColor"
+                                viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M5 13l4 4L19 7"></path>
                             </svg>
                             <span>eBPF-powered insights</span>
                         </li>
                         <li class="flex items-start gap-3">
-                            <svg class="w-6 h-6 text-green-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                            <svg class="w-6 h-6 text-green-500 flex-shrink-0" fill="none" stroke="currentColor"
+                                viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M5 13l4 4L19 7"></path>
                             </svg>
                             <span>Query performance analysis</span>
                         </li>
                         <li class="flex items-start gap-3">
-                            <svg class="w-6 h-6 text-green-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                            <svg class="w-6 h-6 text-green-500 flex-shrink-0" fill="none" stroke="currentColor"
+                                viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M5 13l4 4L19 7"></path>
                             </svg>
                             <span>Cost optimization recommendations</span>
                         </li>
                         <li class="flex items-start gap-3">
-                            <svg class="w-6 h-6 text-green-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                            <svg class="w-6 h-6 text-green-500 flex-shrink-0" fill="none" stroke="currentColor"
+                                viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M5 13l4 4L19 7"></path>
                             </svg>
                             <span>Email alerts</span>
                         </li>
                         <li class="flex items-start gap-3">
-                            <svg class="w-6 h-6 text-gray-300 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                            <svg class="w-6 h-6 text-gray-300 flex-shrink-0" fill="none" stroke="currentColor"
+                                viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M6 18L18 6M6 6l12 12"></path>
                             </svg>
                             <span class="text-gray-400">Auto-apply</span>
                         </li>
                     </ul>
-                    <button class="w-full bg-gray-100 text-gray-800 py-3 rounded-lg font-semibold hover:bg-gray-200 transition">
+                    <button
+                        class="w-full bg-gray-100 text-gray-800 py-3 rounded-lg font-semibold hover:bg-gray-200 transition">
                         Contact Sales
                     </button>
                 </div>
@@ -662,7 +935,8 @@ int trace_vfs_read(struct pt_regs *ctx) {
                 <!-- Professional (Popular) -->
                 <div class="pricing-card popular bg-white p-8 rounded-2xl shadow-2xl relative">
                     <div class="absolute -top-4 left-1/2 transform -translate-x-1/2">
-                        <span class="bg-gradient-to-r from-purple-600 to-indigo-600 text-white px-4 py-1 rounded-full text-sm font-semibold">
+                        <span
+                            class="bg-gradient-to-r from-purple-600 to-indigo-600 text-white px-4 py-1 rounded-full text-sm font-semibold">
                             Beta Program
                         </span>
                     </div>
@@ -675,37 +949,48 @@ int trace_vfs_read(struct pt_regs *ctx) {
                     </div>
                     <ul class="space-y-4 mb-8">
                         <li class="flex items-start gap-3">
-                            <svg class="w-6 h-6 text-green-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                            <svg class="w-6 h-6 text-green-500 flex-shrink-0" fill="none" stroke="currentColor"
+                                viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M5 13l4 4L19 7"></path>
                             </svg>
                             <span><strong>Everything in Starter, plus:</strong></span>
                         </li>
                         <li class="flex items-start gap-3">
-                            <svg class="w-6 h-6 text-green-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                            <svg class="w-6 h-6 text-green-500 flex-shrink-0" fill="none" stroke="currentColor"
+                                viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M5 13l4 4L19 7"></path>
                             </svg>
                             <span><strong>Autonomous optimization (Agent Mode)</strong></span>
                         </li>
                         <li class="flex items-start gap-3">
-                            <svg class="w-6 h-6 text-green-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                            <svg class="w-6 h-6 text-green-500 flex-shrink-0" fill="none" stroke="currentColor"
+                                viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M5 13l4 4L19 7"></path>
                             </svg>
                             <span>Webhook integrations (Slack, PagerDuty)</span>
                         </li>
                         <li class="flex items-start gap-3">
-                            <svg class="w-6 h-6 text-green-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                            <svg class="w-6 h-6 text-green-500 flex-shrink-0" fill="none" stroke="currentColor"
+                                viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M5 13l4 4L19 7"></path>
                             </svg>
                             <span>Prometheus metrics export</span>
                         </li>
                         <li class="flex items-start gap-3">
-                            <svg class="w-6 h-6 text-green-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                            <svg class="w-6 h-6 text-green-500 flex-shrink-0" fill="none" stroke="currentColor"
+                                viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M5 13l4 4L19 7"></path>
                             </svg>
                             <span>Deployment tracking & audit logs</span>
                         </li>
                     </ul>
-                    <button class="w-full gradient-bg text-white py-3 rounded-lg font-semibold hover:shadow-lg transition">
+                    <button
+                        class="w-full gradient-bg text-white py-3 rounded-lg font-semibold hover:shadow-lg transition">
                         Request Beta Access
                     </button>
                 </div>
@@ -720,37 +1005,48 @@ int trace_vfs_read(struct pt_regs *ctx) {
                     </div>
                     <ul class="space-y-4 mb-8">
                         <li class="flex items-start gap-3">
-                            <svg class="w-6 h-6 text-green-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                            <svg class="w-6 h-6 text-green-500 flex-shrink-0" fill="none" stroke="currentColor"
+                                viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M5 13l4 4L19 7"></path>
                             </svg>
                             <span><strong>Everything in Professional, plus:</strong></span>
                         </li>
                         <li class="flex items-start gap-3">
-                            <svg class="w-6 h-6 text-green-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                            <svg class="w-6 h-6 text-green-500 flex-shrink-0" fill="none" stroke="currentColor"
+                                viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M5 13l4 4L19 7"></path>
                             </svg>
                             <span>Fleet management (unlimited DBs)</span>
                         </li>
                         <li class="flex items-start gap-3">
-                            <svg class="w-6 h-6 text-green-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                            <svg class="w-6 h-6 text-green-500 flex-shrink-0" fill="none" stroke="currentColor"
+                                viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M5 13l4 4L19 7"></path>
                             </svg>
                             <span>Dedicated support engineer</span>
                         </li>
                         <li class="flex items-start gap-3">
-                            <svg class="w-6 h-6 text-green-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                            <svg class="w-6 h-6 text-green-500 flex-shrink-0" fill="none" stroke="currentColor"
+                                viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M5 13l4 4L19 7"></path>
                             </svg>
                             <span>Custom SLAs</span>
                         </li>
                         <li class="flex items-start gap-3">
-                            <svg class="w-6 h-6 text-green-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                            <svg class="w-6 h-6 text-green-500 flex-shrink-0" fill="none" stroke="currentColor"
+                                viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M5 13l4 4L19 7"></path>
                             </svg>
                             <span>On-premise deployment</span>
                         </li>
                     </ul>
-                    <button class="w-full bg-gray-100 text-gray-800 py-3 rounded-lg font-semibold hover:bg-gray-200 transition">
+                    <button
+                        class="w-full bg-gray-100 text-gray-800 py-3 rounded-lg font-semibold hover:bg-gray-200 transition">
                         Contact Sales
                     </button>
                 </div>
@@ -785,7 +1081,8 @@ int trace_vfs_read(struct pt_regs *ctx) {
                         <strong>Impact:</strong> $4,200/month cost reduction, 98.6% latency improvement
                     </div>
                     <div class="flex items-center gap-3 mt-4">
-                        <div class="w-10 h-10 bg-gray-200 rounded-full flex items-center justify-center text-gray-600 font-bold text-sm">
+                        <div
+                            class="w-10 h-10 bg-gray-200 rounded-full flex items-center justify-center text-gray-600 font-bold text-sm">
                             SK
                         </div>
                         <div>
@@ -799,15 +1096,18 @@ int trace_vfs_read(struct pt_regs *ctx) {
                 <div class="bg-white p-8 rounded-2xl shadow-lg border-l-4 border-purple-500">
                     <div class="text-xs font-mono text-purple-600 mb-4">SAAS PLATFORM • 127 QUERIES OPTIMIZED</div>
                     <p class="text-gray-700 mb-6 text-sm leading-relaxed">
-                        "Agent Mode running 24/7 for 14 days. Autonomous optimization pipeline applied 127 recommendations
-                        (confidence ≥95%, min_improvement ≥10%). All DDL operations completed via CREATE INDEX CONCURRENTLY
+                        "Agent Mode running 24/7 for 14 days. Autonomous optimization pipeline applied 127
+                        recommendations
+                        (confidence ≥95%, min_improvement ≥10%). All DDL operations completed via CREATE INDEX
+                        CONCURRENTLY
                         with zero downtime. Fleet-wide p99 latency: 2.3s → 180ms. No manual intervention required."
                     </p>
                     <div class="mt-4 text-xs text-gray-600">
                         <strong>Impact:</strong> 92% latency reduction, 100% success rate, zero downtime
                     </div>
                     <div class="flex items-center gap-3 mt-4">
-                        <div class="w-10 h-10 bg-gray-200 rounded-full flex items-center justify-center text-gray-600 font-bold text-sm">
+                        <div
+                            class="w-10 h-10 bg-gray-200 rounded-full flex items-center justify-center text-gray-600 font-bold text-sm">
                             MP
                         </div>
                         <div>
@@ -829,7 +1129,8 @@ int trace_vfs_read(struct pt_regs *ctx) {
                         <strong>Impact:</strong> $18,000/year savings, 99.89% disk seek reduction
                     </div>
                     <div class="flex items-center gap-3 mt-4">
-                        <div class="w-10 h-10 bg-gray-200 rounded-full flex items-center justify-center text-gray-600 font-bold text-sm">
+                        <div
+                            class="w-10 h-10 bg-gray-200 rounded-full flex items-center justify-center text-gray-600 font-bold text-sm">
                             AL
                         </div>
                         <div>
@@ -856,8 +1157,10 @@ int trace_vfs_read(struct pt_regs *ctx) {
                 <div class="bg-white p-6 rounded-xl shadow-md">
                     <h3 class="text-xl font-bold mb-3">How is Vaanyze different from pganalyze or AWS RDS Insights?</h3>
                     <p class="text-gray-700">
-                        Traditional tools only see application-level metrics and guess at problems. Vaanyze uses <strong>eBPF</strong>
-                        to measure queries at the kernel level, giving you exact breakdowns: 94% I/O wait vs 5% CPU vs 1% network.
+                        Traditional tools only see application-level metrics and guess at problems. Vaanyze uses
+                        <strong>eBPF</strong>
+                        to measure queries at the kernel level, giving you exact breakdowns: 94% I/O wait vs 5% CPU vs
+                        1% network.
                         This lets us provide 95%+ confidence recommendations instead of generic guesses.
                     </p>
                 </div>
@@ -866,8 +1169,10 @@ int trace_vfs_read(struct pt_regs *ctx) {
                 <div class="bg-white p-6 rounded-xl shadow-md">
                     <h3 class="text-xl font-bold mb-3">Is Agent Mode safe? What if it breaks something?</h3>
                     <p class="text-gray-700">
-                        Yes, extremely safe. Agent Mode: (1) Only applies changes with 95%+ confidence, (2) Uses non-blocking operations
-                        (CREATE INDEX CONCURRENTLY), (3) Captures performance baseline, (4) Monitors for 5 minutes after changes,
+                        Yes, extremely safe. Agent Mode: (1) Only applies changes with 95%+ confidence, (2) Uses
+                        non-blocking operations
+                        (CREATE INDEX CONCURRENTLY), (3) Captures performance baseline, (4) Monitors for 5 minutes after
+                        changes,
                         (5) Auto-rollbacks if metrics degrade. We've processed 10M+ queries with 100% safety record.
                     </p>
                 </div>
@@ -876,8 +1181,10 @@ int trace_vfs_read(struct pt_regs *ctx) {
                 <div class="bg-white p-6 rounded-xl shadow-md">
                     <h3 class="text-xl font-bold mb-3">Do I need to change my application code?</h3>
                     <p class="text-gray-700">
-                        No. eBPF works at the kernel level, capturing all PostgreSQL traffic without requiring any code changes,
-                        SDK installation, or application restarts. Deploy Vaanyze agent once and start getting insights immediately.
+                        No. eBPF works at the kernel level, capturing all PostgreSQL traffic without requiring any code
+                        changes,
+                        SDK installation, or application restarts. Deploy Vaanyze agent once and start getting insights
+                        immediately.
                     </p>
                 </div>
 
@@ -920,7 +1227,8 @@ int trace_vfs_read(struct pt_regs *ctx) {
                 <div class="bg-white p-6 rounded-xl shadow-md">
                     <h3 class="text-xl font-bold mb-3">Can I try it before committing?</h3>
                     <p class="text-gray-700">
-                        Yes! We offer a <strong>14-day free trial</strong> with full access to all features including Agent Mode.
+                        Yes! We offer a <strong>14-day free trial</strong> with full access to all features including
+                        Agent Mode.
                         No credit card required. We'll even help you set it up on a call if needed.
                     </p>
                 </div>
@@ -972,7 +1280,8 @@ int trace_vfs_read(struct pt_regs *ctx) {
 
             <div class="mt-12 text-center">
                 <p class="text-sm text-gray-600">
-                    Beta partners running in production environments • 47 PostgreSQL databases monitored • Linux 4.15+ kernel support
+                    Beta partners running in production environments • 47 PostgreSQL databases monitored • Linux 4.15+
+                    kernel support
                 </p>
             </div>
         </div>
@@ -985,22 +1294,18 @@ int trace_vfs_read(struct pt_regs *ctx) {
                 Request Beta Access
             </h2>
             <p class="text-xl text-purple-100 mb-8">
-                Limited beta program for production PostgreSQL environments. Onboarding includes technical architecture review,
+                Limited beta program for production PostgreSQL environments. Onboarding includes technical architecture
+                review,
                 eBPF kernel compatibility check (Linux 4.15+), and dedicated integration support.
             </p>
 
             <form class="max-w-md mx-auto" id="waitlist-form">
                 <div class="flex flex-col sm:flex-row gap-4">
-                    <input
-                        type="email"
-                        placeholder="engineering@company.com"
+                    <input type="email" placeholder="engineering@company.com"
                         class="flex-1 px-6 py-4 rounded-lg text-lg focus:outline-none focus:ring-2 focus:ring-white"
-                        required
-                    />
-                    <button
-                        type="submit"
-                        class="bg-white text-purple-600 px-8 py-4 rounded-lg text-lg font-semibold hover:shadow-2xl transition whitespace-nowrap"
-                    >
+                        required />
+                    <button type="submit"
+                        class="bg-white text-purple-600 px-8 py-4 rounded-lg text-lg font-semibold hover:shadow-2xl transition whitespace-nowrap">
                         Request Access
                     </button>
                 </div>
@@ -1106,6 +1411,144 @@ int trace_vfs_read(struct pt_regs *ctx) {
                 nav.classList.remove('shadow-lg');
             }
         });
+
+        // Hero Terminal Animation
+        const terminalLines = [
+            { text: "$ vaanyze analyze --ebpf-enabled", class: "text-green-400 mb-2" },
+            { text: "Analyzing workload... attached to PID 1842", class: "text-gray-400 italic mb-2" },
+            { text: "Query: SELECT * FROM orders WHERE user_id = ?", class: "text-blue-400 mt-2" },
+            { text: "Total time: 842ms", class: "text-yellow-400" },
+            { text: "├─ I/O wait: 792ms (94.1%) ← eBPF measured", class: "text-red-400 ml-4" },
+            { text: "├─ CPU time: 48ms (5.7%)", class: "text-gray-300 ml-4" },
+            { text: "└─ Network: 2ms (0.2%)", class: "text-gray-300 ml-4" },
+            { text: "eBPF Insights:", class: "text-purple-400 mt-4 font-bold" },
+            { text: "• 2,847 disk seeks per query", class: "text-gray-300 ml-4" },
+            { text: "• 247MB read from disk", class: "text-gray-300 ml-4" },
+            { text: "• 1,234 page faults", class: "text-gray-300 ml-4" },
+            { text: "✓ Recommendation: CREATE INDEX (97% confidence)", class: "text-green-400 mt-4 font-bold" },
+            { text: "Expected: 842ms → 12ms (98.6% faster)", class: "text-gray-400 ml-4" }
+        ];
+
+        async function typeWriter(lines) {
+            const container = document.getElementById('terminal-content');
+            container.innerHTML = '';
+
+            for (let line of lines) {
+                const div = document.createElement('div');
+                div.className = line.class;
+                container.appendChild(div);
+
+                // Instant for some, typing for others
+                if (line.text.startsWith("$")) {
+                    await typeText(div, line.text, 50);
+                } else {
+                    div.textContent = line.text;
+                    await new Promise(r => setTimeout(r, 300)); // Pause between lines
+                }
+            }
+        }
+
+        function typeText(element, text, speed) {
+            return new Promise(resolve => {
+                let i = 0;
+                element.textContent = '';
+                function type() {
+                    if (i < text.length) {
+                        element.textContent += text.charAt(i);
+                        i++;
+                        setTimeout(type, speed);
+                    } else {
+                        resolve();
+                    }
+                }
+                type();
+            });
+        }
+
+        // Start animation when visible
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    typeWriter(terminalLines);
+                    observer.unobserve(entry.target);
+                }
+            });
+        });
+
+
+        observer.observe(document.getElementById('hero-terminal'));
+
+        // ROI Calculator Logic
+        const dbsInput = document.getElementById('calc-dbs');
+        const spendInput = document.getElementById('calc-spend');
+        const optInput = document.getElementById('calc-opt');
+
+        const valDbs = document.getElementById('val-dbs');
+        const valSpend = document.getElementById('val-spend');
+        const valOpt = document.getElementById('val-opt');
+
+        const resMonthly = document.getElementById('res-monthly');
+        const resAnnual = document.getElementById('res-annual');
+
+        function updateCalc() {
+            const dbs = parseInt(dbsInput.value);
+            const spend = parseInt(spendInput.value);
+            const opt = parseInt(optInput.value);
+
+            valDbs.textContent = dbs;
+            valSpend.textContent = `$${spend}`;
+            valOpt.textContent = `${opt}%`;
+
+            const monthly = dbs * spend * (opt / 100);
+            const annual = monthly * 12;
+
+            resMonthly.textContent = `$${monthly.toLocaleString()}`;
+            resAnnual.textContent = `$${annual.toLocaleString()}`;
+        }
+
+        dbsInput.addEventListener('input', updateCalc);
+        spendInput.addEventListener('input', updateCalc);
+        optInput.addEventListener('input', updateCalc);
+
+        // Health Score Animation
+        const healthScoreEl = document.getElementById('health-score-hero');
+        const healthScores = [87, 89, 85, 91, 88, 90, 86];
+        let scoreIndex = 0;
+
+        function animateHealthScore() {
+            scoreIndex = (scoreIndex + 1) % healthScores.length;
+            const newScore = healthScores[scoreIndex];
+            const currentScore = parseInt(healthScoreEl.textContent);
+
+            // Animate the number change
+            const diff = newScore - currentScore;
+            const steps = 20;
+            const increment = diff / steps;
+            let step = 0;
+
+            const interval = setInterval(() => {
+                step++;
+                const value = Math.round(currentScore + (increment * step));
+                healthScoreEl.textContent = value;
+
+                // Update color based on score
+                if (value >= 90) {
+                    healthScoreEl.className = 'text-4xl font-bold text-green-600';
+                } else if (value >= 70) {
+                    healthScoreEl.className = 'text-4xl font-bold text-yellow-600';
+                } else {
+                    healthScoreEl.className = 'text-4xl font-bold text-red-600';
+                }
+
+                if (step >= steps) {
+                    clearInterval(interval);
+                }
+            }, 50);
+        }
+
+        // Update health score every 5 seconds
+        setInterval(animateHealthScore, 5000);
     </script>
 </body>
+
 </html>

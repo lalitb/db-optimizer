@@ -9,8 +9,9 @@ use tokio::time::{interval, Duration};
 
 use pg_query_advisor::{
     DatabaseCollector, RecommendationEngine, OutputFormatter, AnalysisReport, Severity,
-    AutoApplyOrchestrator, AutoApplyConfig, RiskLevel,
+    AutoApplyOrchestrator, AutoApplyConfig, RiskLevel, AnalysisConfig, ThresholdConfig,
     agent::{AgentState, AnalysisResults},
+    analyzer::HealthCalculator,
     query_rewriter::cli::{RewriterCli, InputSource, OutputFormat as RewriterOutputFormat},
 };
 
@@ -469,7 +470,21 @@ async fn run_analyze_mode(cli: AnalyzeOptions) -> Result<()> {
 
     // Analyze and generate recommendations
     print!("Analyzing queries and generating recommendations... ");
+    
+    let analysis_config = AnalysisConfig {
+        query_limit: cli.query_limit,
+        cost_per_hour_usd: cli.cost_per_hour,
+        min_severity: match cli.min_severity {
+            MinSeverity::Low => Severity::Low,
+            MinSeverity::Medium => Severity::Medium,
+            MinSeverity::High => Severity::High,
+            MinSeverity::Critical => Severity::Critical,
+        },
+        thresholds: ThresholdConfig::default(),
+    };
+
     let engine = RecommendationEngine::new()
+        .with_analysis_config(analysis_config)
         .with_cost_per_hour(cli.cost_per_hour);
 
     let mut recommendations = engine.generate_recommendations(
@@ -517,7 +532,7 @@ async fn run_analyze_mode(cli: AnalyzeOptions) -> Result<()> {
         };
         
         // Create orchestrator and process recommendations
-        let orchestrator = AutoApplyOrchestrator::new(pool.clone(), config);
+        let mut orchestrator = AutoApplyOrchestrator::new(pool.clone(), config);
         let apply_results = orchestrator.process_all(&recommendations).await;
         
         // Display results
@@ -527,6 +542,9 @@ async fn run_analyze_mode(cli: AnalyzeOptions) -> Result<()> {
     }
     
     // Create report
+    let total_db_size_mb: f64 = tables.iter().map(|t| t.total_size_mb).sum();
+    let health_score = HealthCalculator::calculate(&tables, &indexes, connection_stats.as_ref(), total_db_size_mb);
+
     let report = AnalysisReport {
         database_name: db_name,
         postgres_version: pg_version,
@@ -537,6 +555,7 @@ async fn run_analyze_mode(cli: AnalyzeOptions) -> Result<()> {
         total_tables: tables.len(),
         total_indexes: indexes.len(),
         connection_stats,
+        health_score,
     };
     
     // Output report
@@ -682,6 +701,32 @@ async fn run_agent_mode(opts: AgentOptions) -> Result<()> {
     let mut state = AgentState::load(&state_file)?;
     println!("📊 Loaded state: {} optimizations applied previously\n", state.total_optimizations);
     
+    // Display recent events from previous runs
+    use pg_query_advisor::events::EventStore;
+    let event_store_path = PathBuf::from(".vaanyze/events.json");
+    if let Ok(event_store) = EventStore::load(&event_store_path) {
+        let recent_events = event_store.get_recent_events(3);
+        if !recent_events.is_empty() {
+            println!("{}", "Recent Activity:".bright_cyan().bold());
+            for event in recent_events {
+                let time_ago = chrono::Utc::now() - event.timestamp;
+                let time_str = if time_ago.num_hours() < 1 {
+                    format!("{}m ago", time_ago.num_minutes())
+                } else if time_ago.num_days() < 1 {
+                    format!("{}h ago", time_ago.num_hours())
+                } else {
+                    format!("{}d ago", time_ago.num_days())
+                };
+                println!("   {} - {} ({})", 
+                    event.event_type_str(), 
+                    event.summary(), 
+                    time_str.bright_black()
+                );
+            }
+            println!();
+        }
+    }
+    
     // Create interval timer
     let mut tick_interval = interval(Duration::from_secs(opts.interval_minutes * 60));
     
@@ -722,6 +767,32 @@ async fn run_agent_mode(opts: AgentOptions) -> Result<()> {
                 println!("\n{}", "Agent Statistics:".bright_cyan().bold());
                 println!("   Total optimizations applied: {}", state.total_optimizations);
                 println!("   Uptime: {:.1} hours", state.uptime_hours());
+                
+                // Display recent events
+                use pg_query_advisor::events::EventStore;
+                let event_store_path = PathBuf::from(".vaanyze/events.json");
+                if let Ok(event_store) = EventStore::load(&event_store_path) {
+                    let recent_events = event_store.get_recent_events(5);
+                    if !recent_events.is_empty() {
+                        println!("\n{}", "Recent Events:".bright_cyan().bold());
+                        for event in recent_events {
+                            let time_ago = chrono::Utc::now() - event.timestamp;
+                            let time_str = if time_ago.num_hours() < 1 {
+                                format!("{}m ago", time_ago.num_minutes())
+                            } else if time_ago.num_days() < 1 {
+                                format!("{}h ago", time_ago.num_hours())
+                            } else {
+                                format!("{}d ago", time_ago.num_days())
+                            };
+                            println!("   {} - {} ({})", 
+                                event.event_type_str(), 
+                                event.summary(), 
+                                time_str.bright_black()
+                            );
+                        }
+                    }
+                }
+                
                 println!("\n✅ Agent stopped gracefully");
                 
                 break;
@@ -749,7 +820,20 @@ async fn run_analysis_cycle(opts: &AgentOptions, state: &mut AgentState) -> Resu
     let connections = collector.collect_connections().await.ok();
 
     // Generate recommendations
+    let analysis_config = AnalysisConfig {
+        query_limit: opts.query_limit,
+        cost_per_hour_usd: opts.cost_per_hour,
+        min_severity: match opts.min_severity {
+            MinSeverity::Low => Severity::Low,
+            MinSeverity::Medium => Severity::Medium,
+            MinSeverity::High => Severity::High,
+            MinSeverity::Critical => Severity::Critical,
+        },
+        thresholds: ThresholdConfig::default(),
+    };
+
     let engine = RecommendationEngine::new()
+        .with_analysis_config(analysis_config)
         .with_cost_per_hour(opts.cost_per_hour);
 
     let mut recommendations = engine.generate_recommendations(
@@ -773,8 +857,13 @@ async fn run_analysis_cycle(opts: &AgentOptions, state: &mut AgentState) -> Resu
     // Filter out already-applied recommendations
     recommendations.retain(|rec| !state.is_applied(&rec.id));
     
+    // Calculate health score
+    let total_db_size_mb: f64 = tables.iter().map(|t| t.total_size_mb).sum();
+    let health_score = HealthCalculator::calculate(&tables, &indexes, connection_stats.as_ref(), total_db_size_mb);
+    
     let mut results = AnalysisResults {
         new_recommendations: recommendations.len(),
+        health_score: Some(health_score),
         ..Default::default()
     };
     
@@ -804,7 +893,7 @@ async fn run_analysis_cycle(opts: &AgentOptions, state: &mut AgentState) -> Resu
             slack_webhook: opts.slack_webhook.clone(),
         };
         
-        let orchestrator = AutoApplyOrchestrator::new(pool.clone(), config);
+        let mut orchestrator = AutoApplyOrchestrator::new(pool.clone(), config);
         let apply_results = orchestrator.process_all(&recommendations).await;
         
         // Track results
@@ -835,6 +924,18 @@ async fn run_analysis_cycle(opts: &AgentOptions, state: &mut AgentState) -> Resu
 
 /// Display results from an analysis cycle
 fn display_cycle_results(results: &AnalysisResults) {
+    // Display health score first
+    if let Some(score) = results.health_score {
+        let score_display = if score >= 90 {
+            format!("{}/100", score).green().bold()
+        } else if score >= 70 {
+            format!("{}/100", score).yellow().bold()
+        } else {
+            format!("{}/100", score).red().bold()
+        };
+        println!("   🏥 Health Score: {}", score_display);
+    }
+    
     if results.is_empty() {
         println!("   ✅ No new optimization opportunities found");
         return;

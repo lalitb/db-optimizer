@@ -15,6 +15,7 @@ pub mod http;
 pub mod ebpf;
 pub mod config_tuner;
 pub mod azure;
+pub mod events;
 
 pub use models::*;
 pub use collector::DatabaseCollector;
@@ -40,4 +41,5 @@ pub use config::{
     NotificationConfig,
     SuccessCriterion,
     SuccessMetric,
+    ThresholdConfig,
 };

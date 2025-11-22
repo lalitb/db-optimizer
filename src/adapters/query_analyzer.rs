@@ -6,6 +6,7 @@ use async_trait::async_trait;
 use crate::traits::Analyzer;
 use crate::models::{QueryStats, IndexInfo, TableInfo, Recommendation};
 use crate::analyzer::QueryAnalyzer as LegacyAnalyzer;
+use crate::config::AnalysisConfig;
 
 /// Adapter for the existing QueryAnalyzer to implement the Analyzer trait
 pub struct QueryAnalyzerAdapter {
@@ -16,7 +17,7 @@ impl QueryAnalyzerAdapter {
     /// Create a new QueryAnalyzerAdapter
     pub fn new() -> Self {
         Self {
-            analyzer: LegacyAnalyzer::new(),
+            analyzer: LegacyAnalyzer::new(AnalysisConfig::default()),
         }
     }
     

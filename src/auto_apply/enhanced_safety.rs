@@ -151,7 +151,7 @@ impl EnhancedSafetyFilter {
     }
     
     /// Estimate if index size will exceed limit
-    fn exceeds_index_size_limit(&self, recommendation: &Recommendation, limit_mb: f64) -> Result<bool> {
+    fn exceeds_index_size_limit(&self, _recommendation: &Recommendation, _limit_mb: f64) -> Result<bool> {
         // TODO: Implement actual index size estimation based on:
         // - Table row count
         // - Column data types
@@ -162,7 +162,7 @@ impl EnhancedSafetyFilter {
     }
     
     /// Estimate if DDL duration will exceed limit
-    fn exceeds_ddl_duration_limit(&self, recommendation: &Recommendation, limit_seconds: u64) -> Result<bool> {
+    fn exceeds_ddl_duration_limit(&self, _recommendation: &Recommendation, _limit_seconds: u64) -> Result<bool> {
         // TODO: Implement actual DDL duration estimation based on:
         // - Table size
         // - Operation type (CREATE INDEX, DROP INDEX, etc.)

@@ -1,14 +1,19 @@
 use crate::models::*;
+use crate::config::AnalysisConfig;
 use regex::Regex;
 use std::collections::HashMap;
+use sqlparser::dialect::PostgreSqlDialect;
+use sqlparser::parser::Parser;
 
 pub mod advanced;
 
-pub struct QueryAnalyzer;
+pub struct QueryAnalyzer {
+    config: AnalysisConfig,
+}
 
 impl QueryAnalyzer {
-    pub fn new() -> Self {
-        Self
+    pub fn new(config: AnalysisConfig) -> Self {
+        Self { config }
     }
     
     /// Find slow queries that need attention
@@ -16,8 +21,8 @@ impl QueryAnalyzer {
         let mut recommendations = Vec::new();
         
         for stat in stats {
-            // Heuristic 1: Mean execution time > 1000ms
-            if stat.mean_exec_time_ms > 1000.0 {
+            // Heuristic 1: Mean execution time > threshold
+            if stat.mean_exec_time_ms > self.config.thresholds.slow_query_ms {
                 recommendations.push(self.create_slow_query_recommendation(stat, "high_mean_time"));
             }
             // Heuristic 2: Total time > 60 seconds (high volume slow query)
@@ -77,7 +82,7 @@ impl QueryAnalyzer {
                 // Must have zero scans
                 idx.index_scans == 0 &&
                 // Must be wasting meaningful space
-                idx.index_size_mb > 1.0
+                idx.index_size_mb > self.config.thresholds.unused_index_size_mb
             })
             .map(|idx| self.create_unused_index_recommendation(idx))
             .collect()
@@ -89,7 +94,7 @@ impl QueryAnalyzer {
             .iter()
             .filter(|stat| {
                 // Very high call count with moderate execution time
-                stat.calls > 10_000 && stat.mean_exec_time_ms > 20.0
+                stat.calls > self.config.thresholds.high_volume_calls && stat.mean_exec_time_ms > 20.0
             })
             .map(|stat| self.create_high_volume_recommendation(stat))
             .collect()
@@ -97,11 +102,42 @@ impl QueryAnalyzer {
     
     // ===== Helper Methods (Simple String/Regex Matching) =====
     
-    /// Extract table name from query (simple heuristic)
+    /// Extract table name from query using sqlparser
     fn extract_table_name(&self, query: &str) -> Option<String> {
-        let query_lower = query.to_lowercase();
+        let dialect = PostgreSqlDialect {};
+        let ast = Parser::parse_sql(&dialect, query).ok()?;
         
-        // Match: FROM table_name or JOIN table_name
+        // Get first statement
+        if let Some(statement) = ast.first() {
+            match statement {
+                sqlparser::ast::Statement::Query(query) => {
+                    if let sqlparser::ast::SetExpr::Select(select) = &*query.body {
+                        // Look at FROM
+                        for table_with_joins in &select.from {
+                            if let sqlparser::ast::TableFactor::Table { name, .. } = &table_with_joins.relation {
+                                return Some(name.to_string());
+                            }
+                        }
+                    }
+                }
+                sqlparser::ast::Statement::Update { table, .. } => {
+                    if let sqlparser::ast::TableFactor::Table { name, .. } = &table.relation {
+                        return Some(name.to_string());
+                    }
+                }
+                sqlparser::ast::Statement::Delete { from, .. } => {
+                    for table_with_joins in from {
+                        if let sqlparser::ast::TableFactor::Table { name, .. } = &table_with_joins.relation {
+                            return Some(name.to_string());
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+        
+        // Fallback to regex if parser fails or structure is complex
+        let query_lower = query.to_lowercase();
         let re = Regex::new(r"(?:from|join)\s+([a-z_][a-z0-9_]*)").ok()?;
         re.captures(&query_lower)
             .and_then(|cap| cap.get(1))
@@ -912,5 +948,70 @@ mod connection_analyzer_tests {
 
         let result_critical = analyzer.check_idle_in_transaction(&stats_critical, &connections_critical);
         assert_eq!(result_critical.unwrap().severity, Severity::Critical);
+    }
+}
+
+
+/// Calculator for overall database health score (0-100)
+pub struct HealthCalculator;
+
+impl HealthCalculator {
+    pub fn calculate(
+        tables: &[TableInfo],
+        indexes: &[IndexInfo],
+        connections: Option<&ConnectionStats>,
+        _db_size_mb: f64,
+    ) -> u8 {
+        let mut score = 100.0;
+        
+        // 1. Cache Hit Ratio (proxy via index usage vs seq scans)
+        // Ideally we'd use pg_stat_database.blks_hit / (blks_hit + blks_read)
+        // For now, we'll use index scan ratio as a proxy if available
+        let total_scans: i64 = indexes.iter().map(|i| i.index_scans).sum();
+        if total_scans == 0 && !indexes.is_empty() {
+            score -= 10.0; // Suspiciously low index usage
+        }
+
+        // 2. Unused Indexes Penalty
+        let unused_indexes = indexes.iter().filter(|i| i.index_scans == 0 && !i.is_primary && !i.is_unique).count();
+        let total_indexes = indexes.len();
+        if total_indexes > 0 {
+            let unused_ratio = unused_indexes as f64 / total_indexes as f64;
+            if unused_ratio > 0.5 {
+                score -= 15.0 * unused_ratio;
+            }
+        }
+
+        // 3. Connection Saturation
+        if let Some(conn_stats) = connections {
+            let utilization = conn_stats.total_connections as f64 / conn_stats.max_connections as f64;
+            if utilization > 0.9 {
+                score -= 30.0; // Critical saturation
+            } else if utilization > 0.75 {
+                score -= 15.0; // Warning saturation
+            }
+
+            // Idle in transaction penalty
+            if conn_stats.idle_in_transaction_count > 0 {
+                score -= (conn_stats.idle_in_transaction_count * 5) as f64;
+            }
+            
+            // Locked connections penalty
+            if conn_stats.locked_connections_count > 0 {
+                score -= (conn_stats.locked_connections_count * 10) as f64;
+            }
+        }
+
+        // 4. Bloat / Table Health (Proxy)
+        // If we had pg_stat_user_tables.n_dead_tup, we'd use that.
+        // For now, check if we have huge tables without indexes
+        for table in tables {
+            if table.table_size_mb > 1000.0 && table.index_size_mb < 10.0 {
+                score -= 5.0; // Large table with minimal indexing
+            }
+        }
+
+        // Clamp score between 0 and 100
+        score.max(0.0).min(100.0) as u8
     }
 }

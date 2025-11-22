@@ -17,6 +17,17 @@ impl OutputFormatter {
         output.push_str(&format!("Analyzed: {}\n", report.analyzed_at.format("%Y-%m-%d %H:%M:%S UTC")));
         output.push_str(&format!("PostgreSQL: {}\n", report.postgres_version));
         
+        // Health Score
+        let score = report.health_score;
+        let score_color = if score >= 90 {
+            score.to_string().green().bold()
+        } else if score >= 70 {
+            score.to_string().yellow().bold()
+        } else {
+            score.to_string().red().bold()
+        };
+        output.push_str(&format!("Health Score: {}/100\n", score_color));
+        
         // Summary box
         output.push_str(&format!("\n{}\n", "SUMMARY".bright_yellow().bold()));
         output.push_str(&format!("{}\n", "━".repeat(70).bright_blue()));

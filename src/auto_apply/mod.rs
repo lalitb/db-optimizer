@@ -7,9 +7,11 @@ pub mod enhanced_safety;
 pub mod enhanced_verifier;
 
 use crate::models::*;
+use crate::events::{DatabaseEvent, EventType, EventDetails, EventSource, EventStore};
 use anyhow::Result;
 use sqlx::PgPool;
 use chrono::Utc;
+use std::path::PathBuf;
 
 use safety_filter::SafetyFilter;
 use baseline::BaselineCollector;
@@ -25,6 +27,8 @@ pub struct AutoApplyOrchestrator {
     executor: Executor,
     verifier: Verifier,
     notifier: Option<Notifier>,
+    event_store: EventStore,
+    event_store_path: PathBuf,
 }
 
 impl AutoApplyOrchestrator {
@@ -37,6 +41,10 @@ impl AutoApplyOrchestrator {
             Notifier::new(webhook.clone())
         });
         
+        let event_store_path = PathBuf::from(".vaanyze/events.json");
+        let event_store = EventStore::load(&event_store_path)
+            .unwrap_or_else(|_| EventStore::new());
+        
         Self {
             pool,
             config,
@@ -45,12 +53,14 @@ impl AutoApplyOrchestrator {
             executor,
             verifier,
             notifier,
+            event_store,
+            event_store_path,
         }
     }
     
     /// Process and optionally apply a single recommendation
     pub async fn process_recommendation(
-        &self,
+        &mut self,
         rec: &Recommendation,
     ) -> Result<ApplyResult> {
         tracing::info!("Processing recommendation: {}", rec.title);
@@ -123,6 +133,10 @@ impl AutoApplyOrchestrator {
                 "Success! Improvement: {:.1}%",
                 verification.improvement_pct
             );
+            
+            // Record event for successful application
+            self.record_recommendation_event(&applicable.recommendation);
+            
             self.notify_success(&applicable, &verification).await?;
             
             ApplyStatus::Success
@@ -147,7 +161,7 @@ impl AutoApplyOrchestrator {
     
     /// Process multiple recommendations
     pub async fn process_all(
-        &self,
+        &mut self,
         recommendations: &[Recommendation],
     ) -> Vec<ApplyResult> {
         let mut results = Vec::new();
@@ -277,5 +291,94 @@ impl AutoApplyOrchestrator {
             notifier.send_rollback(rec, verification).await?;
         }
         Ok(())
+    }
+    
+    /// Record a recommendation application as a database event
+    fn record_recommendation_event(&mut self, rec: &Recommendation) {
+        let (event_type, details) = match rec.issue_type {
+            IssueType::MissingIndex | IssueType::UnusedIndex => {
+                // Extract index name from SQL
+                let index_name = self.extract_index_name(&rec.migration_sql)
+                    .unwrap_or_else(|| "unknown_index".to_string());
+                
+                let table_name = rec.affected_table.clone()
+                    .unwrap_or_else(|| "unknown_table".to_string());
+                
+                let action = if rec.migration_sql.to_uppercase().contains("CREATE") {
+                    "CREATE"
+                } else {
+                    "DROP"
+                };
+                
+                (
+                    EventType::IndexChange,
+                    EventDetails::IndexChange {
+                        index_name,
+                        table_name,
+                        action: action.to_string(),
+                        is_concurrent: rec.migration_sql.to_uppercase().contains("CONCURRENTLY"),
+                    }
+                )
+            }
+            _ => {
+                // Generic schema change
+                (
+                    EventType::SchemaChange,
+                    EventDetails::SchemaChange {
+                        table_name: rec.affected_table.clone().unwrap_or_else(|| "unknown".to_string()),
+                        change_type: "OPTIMIZATION".to_string(),
+                        sql: rec.migration_sql.clone(),
+                    }
+                )
+            }
+        };
+        
+        let event = DatabaseEvent::new(
+            event_type,
+            rec.title.clone(),
+            details,
+            EventSource::AutoApplied,
+        );
+        
+        self.event_store.add_event(event);
+        
+        // Save event store
+        if let Err(e) = self.event_store.save(&self.event_store_path) {
+            tracing::warn!("Failed to save event store: {}", e);
+        }
+    }
+    
+    /// Extract index name from SQL (simple heuristic)
+    fn extract_index_name(&self, sql: &str) -> Option<String> {
+        let sql_upper = sql.to_uppercase();
+        
+        if sql_upper.contains("CREATE INDEX") {
+            // Pattern: CREATE INDEX [CONCURRENTLY] index_name ON ...
+            let parts: Vec<&str> = sql.split_whitespace().collect();
+            for (i, part) in parts.iter().enumerate() {
+                if part.to_uppercase() == "INDEX" {
+                    // Next non-CONCURRENTLY token is the index name
+                    for j in (i+1)..parts.len() {
+                        if parts[j].to_uppercase() != "CONCURRENTLY" {
+                            return Some(parts[j].trim_end_matches(';').to_string());
+                        }
+                    }
+                }
+            }
+        } else if sql_upper.contains("DROP INDEX") {
+            // Pattern: DROP INDEX [CONCURRENTLY] index_name
+            let parts: Vec<&str> = sql.split_whitespace().collect();
+            for (i, part) in parts.iter().enumerate() {
+                if part.to_uppercase() == "INDEX" {
+                    for j in (i+1)..parts.len() {
+                        if parts[j].to_uppercase() != "CONCURRENTLY" {
+                            return Some(parts[j].trim_end_matches(';').to_string());
+                        }
+                    }
+                }
+            }
+        }
+        
+        None
     }
 }

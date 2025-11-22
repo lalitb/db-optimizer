@@ -37,6 +37,9 @@ impl RedundantJoinRemoverEnhanced {
     
     fn has_primary_key_filter(expr: &Expr) -> bool {
         match expr {
+            Expr::BinaryOp { left, op, right } if matches!(op, BinaryOperator::And) => {
+                Self::has_primary_key_filter(left) || Self::has_primary_key_filter(right)
+            }
             Expr::BinaryOp { left, op, .. } => {
                 if matches!(op, BinaryOperator::Eq) {
                     match &**left {
@@ -51,9 +54,6 @@ impl RedundantJoinRemoverEnhanced {
                 } else {
                     Self::has_primary_key_filter(left)
                 }
-            }
-            Expr::BinaryOp { left, op, right } if matches!(op, BinaryOperator::And) => {
-                Self::has_primary_key_filter(left) || Self::has_primary_key_filter(right)
             }
             _ => false,
         }

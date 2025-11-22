@@ -102,6 +102,7 @@ pub struct AnalysisResults {
     pub failed_count: usize,
     pub skipped_count: usize,
     pub total_savings_usd: f64,
+    pub health_score: Option<u8>,
 }
 
 impl AnalysisResults {

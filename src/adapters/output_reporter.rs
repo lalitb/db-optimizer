@@ -47,6 +47,7 @@ impl Reporter for OutputReporterAdapter {
             summary,
             recommendations: recommendations.to_vec(),
             connection_stats: None, // Not available in this adapter context
+            health_score: 100, // Default to 100 when not calculated
         })
     }
     

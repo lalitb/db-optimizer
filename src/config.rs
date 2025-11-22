@@ -335,7 +335,40 @@ pub struct AnalysisConfig {
     /// Minimum severity to include in reports
     #[serde(default)]
     pub min_severity: crate::models::Severity,
+
+    /// Analysis thresholds
+    #[serde(default)]
+    pub thresholds: ThresholdConfig,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ThresholdConfig {
+    /// Execution time in ms to consider a query slow
+    #[serde(default = "default_slow_query_ms")]
+    pub slow_query_ms: f64,
+
+    /// Number of calls to consider a query high volume
+    #[serde(default = "default_high_volume_calls")]
+    pub high_volume_calls: i64,
+
+    /// Minimum size in MB to consider an unused index wasteful
+    #[serde(default = "default_unused_index_size_mb")]
+    pub unused_index_size_mb: f64,
+}
+
+impl Default for ThresholdConfig {
+    fn default() -> Self {
+        Self {
+            slow_query_ms: default_slow_query_ms(),
+            high_volume_calls: default_high_volume_calls(),
+            unused_index_size_mb: default_unused_index_size_mb(),
+        }
+    }
+}
+
+fn default_slow_query_ms() -> f64 { 1000.0 }
+fn default_high_volume_calls() -> i64 { 10_000 }
+fn default_unused_index_size_mb() -> f64 { 1.0 }
 
 impl AnalysisConfig {
     pub fn from_env() -> Self {
@@ -349,6 +382,18 @@ impl AnalysisConfig {
                 .and_then(|s| s.parse().ok())
                 .unwrap_or_else(default_cost_per_hour),
             min_severity: crate::models::Severity::Low,
+            thresholds: ThresholdConfig::default(),
+        }
+    }
+}
+
+impl Default for AnalysisConfig {
+    fn default() -> Self {
+        Self {
+            query_limit: default_query_limit(),
+            cost_per_hour_usd: default_cost_per_hour(),
+            min_severity: crate::models::Severity::Low,
+            thresholds: ThresholdConfig::default(),
         }
     }
 }

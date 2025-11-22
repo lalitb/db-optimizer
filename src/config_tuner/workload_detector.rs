@@ -116,7 +116,7 @@ impl WorkloadDetector {
             10.0 // Assume read-heavy if no writes
         };
 
-        let connection_utilization = 
+        let _connection_utilization = 
             conn_stats.active_connections as f64 / conn_stats.max_connections as f64;
 
         // Decision tree

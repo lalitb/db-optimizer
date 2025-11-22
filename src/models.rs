@@ -275,6 +275,7 @@ pub struct AnalysisReport {
 
     // Connection monitoring stats (optional - only if connection monitoring is enabled)
     pub connection_stats: Option<ConnectionStats>,
+    pub health_score: u8,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
