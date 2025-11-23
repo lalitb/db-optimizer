@@ -1547,31 +1547,6 @@ int trace_vfs_read(struct pt_regs *ctx) {
             });
         });
 
-        // Waitlist form (connects to your backend)
-        document.getElementById('waitlist-form').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const email = e.target.querySelector('input[type="email"]').value;
-
-            // TODO: Replace with your actual backend endpoint
-            try {
-                const response = await fetch('/api/waitlist', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ email })
-                });
-
-                if (response.ok) {
-                    alert('✅ Thanks! Check your email for early access details.');
-                    e.target.reset();
-                } else {
-                    alert('Something went wrong. Please try again.');
-                }
-            } catch (error) {
-                // For now, just show success (you can hook this up later)
-                alert('✅ Thanks for joining! We\'ll be in touch soon.');
-                e.target.reset();
-            }
-        });
 
         // Navbar background on scroll
         window.addEventListener('scroll', () => {
