@@ -1,0 +1,117 @@
+# Vaanyze CloudNativePG Plugin
+
+This plugin integrates Vaanyze's autonomous database optimization capabilities with [CloudNativePG](https://cloudnative-pg.io/), the leading Kubernetes operator for PostgreSQL.
+
+## Features
+
+- **Automated Performance Analysis**: Continuously monitors query performance and calculates a Database Health Score.
+- **Autonomous Optimization**: Automatically applies index recommendations based on workload patterns.
+- **Deployment Correlation**: Correlates performance changes with deployments and schema updates.
+- **AI Query Advisor**: Provides LLM-powered insights into slow queries.
+
+## Installation
+
+### Prerequisites
+
+- Kubernetes cluster
+- CloudNativePG operator installed
+- Vaanyze API Key (get one at [vaanyze.io](https://vaanyze.io))
+
+### Deployment
+
+1. Create a Kubernetes Secret with your API key:
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: vaanyze-credentials
+  namespace: cnpg-system
+type: Opaque
+stringData:
+  api-key: "your-api-key-here"
+```
+
+2. Deploy the Vaanyze Plugin DaemonSet:
+
+```yaml
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: vaanyze-plugin
+  namespace: cnpg-system
+spec:
+  selector:
+    matchLabels:
+      app: vaanyze-plugin
+  template:
+    metadata:
+      labels:
+        app: vaanyze-plugin
+    spec:
+      containers:
+      - name: plugin
+        image: vaanyze/cnpg-plugin:latest
+        env:
+        - name: VAANYZE_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: vaanyze-credentials
+              key: api-key
+        ports:
+        - containerPort: 50051
+          name: grpc
+```
+
+3. Configure your CloudNativePG Cluster to use the plugin:
+
+```yaml
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: production-db
+spec:
+  instances: 3
+  
+  # Enable Vaanyze Plugin
+  plugins:
+    - name: vaanyze-optimizer
+      endpoint: "vaanyze-plugin.cnpg-system.svc:50051"
+      parameters:
+        enableAutoOptimize: "true"
+        healthThreshold: "70"
+```
+
+## Configuration
+
+The plugin can be configured via environment variables or a configuration file:
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `VAANYZE_API_KEY` | Your API key | Required |
+| `ENABLE_AUTO_OPTIMIZE` | Enable automatic index creation | `false` |
+| `HEALTH_THRESHOLD` | Score below which optimization triggers | `70` |
+| `CHECK_INTERVAL` | Analysis interval in seconds | `300` |
+
+## How It Works
+
+1. The CloudNativePG operator communicates with the Vaanyze plugin via the CNPG-I gRPC interface.
+2. The plugin connects to the primary PostgreSQL instance to collect performance metrics.
+3. Metrics are analyzed locally to calculate a Health Score.
+4. If the score drops below the threshold, the plugin generates optimization recommendations.
+5. If auto-optimize is enabled, recommendations are applied with safety verification.
+6. All events and metrics are synced to the Vaanyze Cloud dashboard.
+
+## Troubleshooting
+
+Check the plugin logs:
+
+```bash
+kubectl logs -l app=vaanyze-plugin -n cnpg-system
+```
+
+Verify plugin connectivity:
+
+```bash
+kubectl cnpg status production-db --verbose
+```

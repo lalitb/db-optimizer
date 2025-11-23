@@ -16,6 +16,7 @@ pub mod ebpf;
 pub mod config_tuner;
 pub mod azure;
 pub mod events;
+pub mod cnpg_plugin;
 
 pub use models::*;
 pub use collector::DatabaseCollector;
