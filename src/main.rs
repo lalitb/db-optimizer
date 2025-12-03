@@ -10,6 +10,7 @@ use tokio::time::{interval, Duration};
 use pg_query_advisor::{
     DatabaseCollector, RecommendationEngine, OutputFormatter, AnalysisReport, Severity,
     AutoApplyOrchestrator, AutoApplyConfig, RiskLevel, AnalysisConfig, ThresholdConfig,
+    PricingConfig,
     agent::{AgentState, AnalysisResults},
     analyzer::HealthCalculator,
     query_rewriter::cli::{RewriterCli, InputSource, OutputFormat as RewriterOutputFormat},
@@ -483,9 +484,12 @@ async fn run_analyze_mode(cli: AnalyzeOptions) -> Result<()> {
         thresholds: ThresholdConfig::default(),
     };
 
+    let mut pricing_config = PricingConfig::default();
+    pricing_config.cost_per_vcpu_hour = cli.cost_per_hour;
+
     let engine = RecommendationEngine::new()
         .with_analysis_config(analysis_config)
-        .with_cost_per_hour(cli.cost_per_hour);
+        .with_pricing_config(pricing_config);
 
     let mut recommendations = engine.generate_recommendations(
         &queries,
@@ -832,9 +836,12 @@ async fn run_analysis_cycle(opts: &AgentOptions, state: &mut AgentState) -> Resu
         thresholds: ThresholdConfig::default(),
     };
 
+    let mut pricing_config = PricingConfig::default();
+    pricing_config.cost_per_vcpu_hour = opts.cost_per_hour;
+
     let engine = RecommendationEngine::new()
         .with_analysis_config(analysis_config)
-        .with_cost_per_hour(opts.cost_per_hour);
+        .with_pricing_config(pricing_config);
 
     let mut recommendations = engine.generate_recommendations(
         &queries,

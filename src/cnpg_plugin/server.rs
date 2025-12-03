@@ -91,7 +91,7 @@ pub async fn start_grpc_server(
     config: PluginConfig,
     state: Arc<Mutex<AgentState>>,
 ) -> anyhow::Result<()> {
-    let addr = format!("0.0.0.0:{}", port).parse()?;
+    let addr: std::net::SocketAddr = format!("0.0.0.0:{}", port).parse()?;
     let _service = VaanyzeOperatorService::new(config, state);
     
     info!("gRPC server listening on {}", addr);

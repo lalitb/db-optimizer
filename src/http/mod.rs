@@ -8,13 +8,15 @@ pub mod models;
 use crate::config::HttpServerConfig;
 use crate::ebpf::EbpfManager;
 use crate::persistence::PersistenceStore;
+use crate::fleet::FleetManager;
 use axum::{
-    routing::{get, post},
+    routing::{get, post, delete},
     Router,
 };
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tower_http::cors::{CorsLayer, Any};
+use tower_http::services::ServeDir;
 use tower_http::trace::TraceLayer;
 use tracing::info;
 
@@ -28,6 +30,7 @@ pub struct AppState {
     pub ebpf_manager: Option<Arc<EbpfManager>>,
     pub config: Arc<HttpServerConfig>,
     pub db_pool: Option<sqlx::PgPool>,
+    pub fleet_manager: Option<Arc<FleetManager>>,
 }
 
 /// Create and configure the HTTP router
@@ -54,7 +57,13 @@ pub fn create_router(state: AppState) -> Router {
         .route("/recommendations", get(handlers::recommendations::list))
         .route("/recommendations/:id", get(handlers::recommendations::get_by_id))
         .route("/recommendations/:id/approve", post(handlers::recommendations::approve))
-        .route("/recommendations/:id/reject", post(handlers::recommendations::reject));
+        .route("/recommendations/:id/reject", post(handlers::recommendations::reject))
+        
+        // Fleet Management Endpoints
+        .route("/fleet", get(handlers::fleet::list_instances).post(handlers::fleet::register_instance))
+        .route("/fleet/summary", get(handlers::fleet::get_summary))
+        .route("/fleet/:id", get(handlers::fleet::get_instance).delete(handlers::fleet::remove_instance))
+        .route("/fleet/:id/check", post(handlers::fleet::check_instance));
     
     let api_v1 = api_v1.with_state(state.clone());
     
@@ -76,8 +85,8 @@ pub fn create_router(state: AppState) -> Router {
     };
 
     Router::new()
-        .route("/", get(handlers::root))
         .nest("/api/v1", api_v1)
+        .nest_service("/", ServeDir::new("landing-page"))
         .layer(TraceLayer::new_for_http())
         .layer(if state.config.enable_cors {
             CorsLayer::permissive()
@@ -95,11 +104,25 @@ pub async fn serve(
 ) -> anyhow::Result<()> {
     let addr = format!("{}:{}", config.bind_address, config.port);
     
+    let fleet_manager = Arc::new(FleetManager::new());
+    
+    // Start background fleet monitoring task
+    let fleet_monitor = fleet_manager.clone();
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(60));
+        loop {
+            interval.tick().await;
+            tracing::info!("Running scheduled fleet health check...");
+            fleet_monitor.check_all_instances().await;
+        }
+    });
+    
     let state = AppState {
         persistence,
         ebpf_manager,
         config: Arc::new(config),
         db_pool,
+        fleet_manager: Some(fleet_manager),
     };
 
     let app = create_router(state);

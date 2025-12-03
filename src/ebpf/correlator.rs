@@ -340,6 +340,8 @@ mod tests {
             total_exec_time_ms: 100000.0,
             mean_exec_time_ms: 100.0,
             rows: 10000,
+            shared_blks_read: 0,
+            shared_blks_hit: 0,
         };
         
         let metrics = SystemMetrics {

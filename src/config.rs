@@ -824,6 +824,7 @@ mod tests {
                 query_limit: 100,
                 cost_per_hour_usd: 0.07,
                 min_severity: crate::models::Severity::Low,
+                thresholds: ThresholdConfig::default(),
             },
             safety: SafetyConfig::default(),
             maintenance_window: MaintenanceWindow::default(),

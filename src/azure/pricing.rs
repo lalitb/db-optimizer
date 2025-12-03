@@ -252,7 +252,8 @@ mod tests {
         let pricing = AzurePricing::new_with_defaults();
         let calculator = PricingCalculator::new(pricing);
         
-        let current = AzureSku::new("GeneralPurpose", "Gen5", 8);
+        // Start with MemoryOptimized so we don't trigger the "switch to MemoryOptimized" rule
+        let current = AzureSku::new("MemoryOptimized", "Gen5", 8);
         let recommended = calculator.recommend_sku(
             &current,
             90.0,  // High CPU

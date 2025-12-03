@@ -10,6 +10,11 @@ pub struct QueryStats {
     pub total_exec_time_ms: f64,
     pub mean_exec_time_ms: f64,
     pub rows: i64,
+    // I/O metrics for cost estimation
+    #[serde(default)]
+    pub shared_blks_read: i64,
+    #[serde(default)]
+    pub shared_blks_hit: i64,
 }
 
 /// Index information from pg_stat_user_indexes
@@ -278,7 +283,7 @@ pub struct AnalysisReport {
     pub health_score: u8,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ReportSummary {
     pub issues_found: usize,
     pub critical_issues: usize,

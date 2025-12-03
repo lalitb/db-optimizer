@@ -90,6 +90,8 @@ fn test_analyzer_logic() {
         total_exec_time_ms: 50000.0,
         mean_exec_time_ms: 50.0,
         rows: 1,
+        shared_blks_read: 0,
+        shared_blks_hit: 0,
     };
     
     let very_slow_query = QueryStats {
@@ -99,6 +101,8 @@ fn test_analyzer_logic() {
         total_exec_time_ms: 500000.0,
         mean_exec_time_ms: 5000.0,
         rows: 1000,
+        shared_blks_read: 0,
+        shared_blks_hit: 0,
     };
     
     let queries = vec![slow_query, very_slow_query];
@@ -113,9 +117,11 @@ fn test_analyzer_logic() {
 
 #[test]
 fn test_cost_estimation() {
-    use pg_query_advisor::CostEstimator;
+    use pg_query_advisor::{CostEstimator, PricingConfig};
     
-    let estimator = CostEstimator::new().with_cost_per_hour(0.10);
+    let mut config = PricingConfig::default();
+    config.cost_per_vcpu_hour = 0.10;
+    let estimator = CostEstimator::new(config);
     
     let mut rec = Recommendation {
         id: "test".to_string(),

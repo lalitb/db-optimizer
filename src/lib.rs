@@ -17,11 +17,13 @@ pub mod config_tuner;
 pub mod azure;
 pub mod events;
 pub mod cnpg_plugin;
+pub mod fleet;
+pub mod remote_agent;
 
 pub use models::*;
 pub use collector::DatabaseCollector;
 pub use analyzer::QueryAnalyzer;
-pub use cost_estimator::CostEstimator;
+pub use cost_estimator::{CostEstimator, PricingConfig};
 pub use recommendations::RecommendationEngine;
 pub use output::OutputFormatter;
 pub use auto_apply::AutoApplyOrchestrator;

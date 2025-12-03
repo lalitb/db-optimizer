@@ -35,7 +35,9 @@ impl DatabaseCollector {
                 calls,
                 total_exec_time,
                 mean_exec_time,
-                rows
+                rows,
+                shared_blks_read,
+                shared_blks_hit
             FROM pg_stat_statements
             WHERE query NOT LIKE '%pg_%'
               AND query NOT LIKE 'EXPLAIN%'
@@ -58,6 +60,8 @@ impl DatabaseCollector {
                 total_exec_time_ms: row.get("total_exec_time"),
                 mean_exec_time_ms: row.get("mean_exec_time"),
                 rows: row.get("rows"),
+                shared_blks_read: row.get("shared_blks_read"),
+                shared_blks_hit: row.get("shared_blks_hit"),
             })
             .collect();
         

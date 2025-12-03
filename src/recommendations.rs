@@ -1,6 +1,6 @@
 use crate::models::*;
 use crate::analyzer::{QueryAnalyzer, ConnectionAnalyzer};
-use crate::cost_estimator::CostEstimator;
+use crate::cost_estimator::{CostEstimator, PricingConfig};
 use crate::config::AnalysisConfig;
 pub struct RecommendationEngine {
     analyzer: QueryAnalyzer,
@@ -13,7 +13,7 @@ impl RecommendationEngine {
         Self {
             analyzer: QueryAnalyzer::new(AnalysisConfig::default()),
             connection_analyzer: ConnectionAnalyzer::new(),
-            cost_estimator: CostEstimator::new(),
+            cost_estimator: CostEstimator::new(PricingConfig::default()),
         }
     }
 
@@ -22,8 +22,8 @@ impl RecommendationEngine {
         self
     }
     
-    pub fn with_cost_per_hour(mut self, cost: f64) -> Self {
-        self.cost_estimator = self.cost_estimator.with_cost_per_hour(cost);
+    pub fn with_pricing_config(mut self, config: PricingConfig) -> Self {
+        self.cost_estimator = CostEstimator::new(config);
         self
     }
     

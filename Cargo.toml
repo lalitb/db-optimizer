@@ -51,7 +51,7 @@ reqwest = { version = "0.11", features = ["json"] }
 # HTTP server
 axum = "0.7"
 tower = "0.4"
-tower-http = { version = "0.5", features = ["cors", "trace"] }
+tower-http = { version = "0.5", features = ["cors", "trace", "fs"] }
 lazy_static = "1.4"
 
 # SQL parsing for query rewriting
@@ -59,6 +59,10 @@ sqlparser = "0.39"
 
 # UUID generation
 uuid = { version = "1.6", features = ["v4", "serde"] }
+
+# gRPC support for CNPG plugin
+tonic = "0.11"
+prost = "0.12"
 
 [dev-dependencies]
 tokio-test = "0.4"

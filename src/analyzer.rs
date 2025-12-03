@@ -6,6 +6,7 @@ use sqlparser::dialect::PostgreSqlDialect;
 use sqlparser::parser::Parser;
 
 pub mod advanced;
+pub mod hypothetical;
 
 pub struct QueryAnalyzer {
     config: AnalysisConfig,

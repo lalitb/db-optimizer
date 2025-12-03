@@ -22,8 +22,10 @@ impl RecommendationEngineAdapter {
     
     /// Create with custom cost per hour
     pub fn with_cost_per_hour(cost_per_hour: f64) -> Self {
+        let mut config = crate::cost_estimator::PricingConfig::default();
+        config.cost_per_vcpu_hour = cost_per_hour;
         Self {
-            engine: LegacyEngine::new().with_cost_per_hour(cost_per_hour),
+            engine: LegacyEngine::new().with_pricing_config(config),
         }
     }
 }
