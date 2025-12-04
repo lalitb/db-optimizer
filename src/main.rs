@@ -47,6 +47,28 @@ enum Commands {
     
     /// Validate current PostgreSQL configuration
     ConfigValidate(ConfigValidateOptions),
+
+    /// Ask a natural language question about the database state
+    Ask(AskOptions),
+}
+
+#[derive(Parser)]
+struct AskOptions {
+    /// The question to ask
+    #[arg(index = 1)]
+    question: String,
+
+    /// PostgreSQL connection string (or set DATABASE_URL env var)
+    #[arg(short, long, env = "DATABASE_URL")]
+    database_url: String,
+
+    /// OpenAI API Key (or set OPENAI_API_KEY env var)
+    #[arg(long, env = "OPENAI_API_KEY")]
+    api_key: Option<String>,
+
+    /// Model to use (default: gpt-4-turbo-preview)
+    #[arg(long, default_value = "gpt-4-turbo-preview")]
+    model: String,
 }
 
 #[derive(Parser)]
@@ -368,6 +390,9 @@ async fn main() -> Result<()> {
         Some(Commands::ConfigValidate(opts)) => {
             run_config_validate_mode(opts).await
         }
+        Some(Commands::Ask(opts)) => {
+            run_ask_mode(opts).await
+        }
         None => {
             // Default behavior - run analyze with flattened options
             if let Some(opts) = cli.analyze_opts {
@@ -408,6 +433,26 @@ fn run_rewrite_sql_mode(opts: RewriteSqlOptions) -> Result<()> {
         print!("{}", output);
     }
     
+    Ok(())
+}
+
+/// Run ask mode (natural language query)
+async fn run_ask_mode(opts: AskOptions) -> Result<()> {
+    use pg_query_advisor::analyzer::ask::AskHandler;
+
+    let api_key = opts.api_key.or_else(|| std::env::var("OPENAI_API_KEY").ok())
+        .ok_or_else(|| anyhow::anyhow!("OpenAI API key is required. Set OPENAI_API_KEY env var or use --api-key"))?;
+
+    let pool = PgPoolOptions::new()
+        .max_connections(5)
+        .connect(&opts.database_url)
+        .await?;
+
+    let collector = DatabaseCollector::new(pool);
+    let handler = AskHandler::new(collector, api_key, opts.model);
+
+    handler.handle(&opts.question).await?;
+
     Ok(())
 }
 

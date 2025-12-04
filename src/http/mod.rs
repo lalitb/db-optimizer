@@ -49,22 +49,19 @@ pub fn create_router(state: AppState) -> Router {
         
         // Query Endpoints
         .route("/queries/slow", get(handlers::queries::slow_queries))
-        .route("/queries/:query_id", get(handlers::queries::query_detail))
         .route("/queries/analyze", post(handlers::queries::analyze_query))
         .route("/queries/rewrite", post(handlers::queries::rewrite_query))
-        
-        // Recommendation Endpoints
-        .route("/recommendations", get(handlers::recommendations::list))
-        .route("/recommendations/:id", get(handlers::recommendations::get_by_id))
-        .route("/recommendations/:id/approve", post(handlers::recommendations::approve))
-        .route("/recommendations/:id/reject", post(handlers::recommendations::reject))
         
         // Fleet Management Endpoints
         .route("/fleet", get(handlers::fleet::list_instances).post(handlers::fleet::register_instance))
         .route("/fleet/summary", get(handlers::fleet::get_summary))
         .route("/fleet/:id", get(handlers::fleet::get_instance).delete(handlers::fleet::remove_instance))
-        .route("/fleet/:id/check", post(handlers::fleet::check_instance));
-    
+        .route("/fleet/:id/check", post(handlers::fleet::check_instance))
+        
+        // Recommendations
+        .route("/recommendations", get(handlers::recommendations::list))
+        .route("/recommendations/:id/approve", post(handlers::recommendations::approve));
+        
     let api_v1 = api_v1.with_state(state.clone());
     
     // Add config tuning routes if database pool is available
@@ -87,12 +84,14 @@ pub fn create_router(state: AppState) -> Router {
     Router::new()
         .nest("/api/v1", api_v1)
         .nest_service("/", ServeDir::new("landing-page"))
+        .layer(
+            CorsLayer::new()
+                .allow_origin(Any)
+                .allow_methods(Any)
+                .allow_headers(Any),
+        )
         .layer(TraceLayer::new_for_http())
-        .layer(if state.config.enable_cors {
-            CorsLayer::permissive()
-        } else {
-            CorsLayer::new().allow_origin(Any)
-        })
+        .with_state(state)
 }
 
 /// Start the HTTP server

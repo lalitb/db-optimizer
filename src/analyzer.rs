@@ -7,6 +7,8 @@ use sqlparser::parser::Parser;
 
 pub mod advanced;
 pub mod hypothetical;
+pub mod ai_advisor;
+pub mod ask;
 
 pub struct QueryAnalyzer {
     config: AnalysisConfig,

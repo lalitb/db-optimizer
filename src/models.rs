@@ -40,6 +40,18 @@ pub struct TableInfo {
     pub index_size_mb: f64,
 }
 
+/// General database performance metrics
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DatabaseMetrics {
+    pub transactions_per_sec: f64,
+    pub rows_fetched_per_sec: f64,
+    pub rows_returned_per_sec: f64,
+    pub buffer_cache_hit_ratio: f64,
+    pub deadlocks: i64,
+    pub temp_files: i64,
+    pub temp_bytes: i64,
+}
+
 // ============================================================================
 // CONNECTION MONITORING MODELS
 // ============================================================================

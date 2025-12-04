@@ -292,4 +292,57 @@ impl DatabaseCollector {
 
         Ok(locked)
     }
+
+    /// Collect general database metrics (TPS, Cache Hit Ratio, etc.)
+    pub async fn collect_database_metrics(&self) -> Result<crate::models::DatabaseMetrics> {
+        let row = sqlx::query(
+            r#"
+            SELECT 
+                sum(xact_commit + xact_rollback) as total_xact,
+                sum(tup_fetched) as total_fetched,
+                sum(tup_returned) as total_returned,
+                sum(blks_hit) as total_blks_hit,
+                sum(blks_read) as total_blks_read,
+                sum(deadlocks) as total_deadlocks,
+                sum(temp_files) as total_temp_files,
+                sum(temp_bytes) as total_temp_bytes
+            FROM pg_stat_database
+            WHERE datname = current_database()
+            "#
+        )
+        .fetch_one(&self.pool)
+        .await?;
+
+        let total_xact: i64 = row.try_get("total_xact").unwrap_or(0);
+        let total_fetched: i64 = row.try_get("total_fetched").unwrap_or(0);
+        let total_returned: i64 = row.try_get("total_returned").unwrap_or(0);
+        let blks_hit: i64 = row.try_get("total_blks_hit").unwrap_or(0);
+        let blks_read: i64 = row.try_get("total_blks_read").unwrap_or(0);
+        let deadlocks: i64 = row.try_get("total_deadlocks").unwrap_or(0);
+        let temp_files: i64 = row.try_get("total_temp_files").unwrap_or(0);
+        let temp_bytes: i64 = row.try_get("total_temp_bytes").unwrap_or(0);
+
+        // Calculate Cache Hit Ratio
+        let total_blks = blks_hit + blks_read;
+        let buffer_cache_hit_ratio = if total_blks > 0 {
+            (blks_hit as f64 / total_blks as f64) * 100.0
+        } else {
+            100.0
+        };
+
+        // Note: TPS and Rows/sec are cumulative since reset. 
+        // For real-time rates, we would need to sample twice. 
+        // For now, we return the raw counters or derived ratios where possible.
+        // In a real agent, we'd diff these against the previous sample.
+        
+        Ok(crate::models::DatabaseMetrics {
+            transactions_per_sec: total_xact as f64, // Placeholder: This is total, not per sec
+            rows_fetched_per_sec: total_fetched as f64,
+            rows_returned_per_sec: total_returned as f64,
+            buffer_cache_hit_ratio,
+            deadlocks,
+            temp_files,
+            temp_bytes,
+        })
+    }
 }
