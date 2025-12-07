@@ -190,7 +190,10 @@ impl QueryNormalizer {
                 }
             }
             SetExpr::SetOperation {
-                op, left: _, right: _, ..
+                op,
+                left: _,
+                right: _,
+                ..
             } => {
                 parts.push(format!("{:?} (UNION/INTERSECT/EXCEPT)", op));
             }
