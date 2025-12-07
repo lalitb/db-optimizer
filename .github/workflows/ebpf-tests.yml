@@ -33,14 +33,14 @@ jobs:
           libbpf-dev \
           linux-headers-$(uname -r) \
           linux-tools-common \
-          linux-tools-generic \
-          bpftool
+          linux-tools-$(uname -r)
 
     - name: Verify kernel eBPF support
       run: |
         uname -r
         ls -la /sys/kernel/btf/vmlinux || echo "BTF not available"
-        sudo bpftool feature probe kernel | grep -i bpf
+        # bpftool is included in linux-tools-$(uname -r)
+        sudo /usr/lib/linux-tools/$(uname -r)/bpftool feature probe kernel | head -20 || echo "bpftool not available"
 
     - name: Install PostgreSQL
       run: |
