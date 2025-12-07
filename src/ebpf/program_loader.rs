@@ -7,10 +7,11 @@
 //! - Safe program lifecycle management
 
 use std::collections::HashMap;
+use std::path::Path;
 use std::sync::Arc;
 use std::time::Instant;
 use tokio::sync::RwLock;
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
 /// eBPF program type
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
