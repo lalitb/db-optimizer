@@ -96,9 +96,7 @@ impl DegradationReason {
     /// Suggested remediation
     pub fn remediation(&self) -> &'static str {
         match self {
-            Self::KernelNotSupported(_) => {
-                "Upgrade to Linux kernel 5.8+ for full eBPF support"
-            }
+            Self::KernelNotSupported(_) => "Upgrade to Linux kernel 5.8+ for full eBPF support",
             Self::InsufficientPermissions => {
                 "Run with CAP_BPF and CAP_PERFMON capabilities, or use the privileged daemon"
             }
@@ -108,27 +106,17 @@ impl DegradationReason {
             Self::DaemonNotRunning => {
                 "Start the db-optimizer-ebpf daemon: systemctl start db-optimizer-ebpf"
             }
-            Self::DaemonConnectionLost => {
-                "Check daemon status and restart if needed"
-            }
+            Self::DaemonConnectionLost => "Check daemon status and restart if needed",
             Self::ProbeAttachFailed(_) => {
                 "Check kernel version compatibility or use a different probe type"
             }
-            Self::HighDropRate(_) => {
-                "Increase buffer size or reduce sampling rate"
-            }
-            Self::PgConnectionFailed(_) => {
-                "Check PostgreSQL connection settings and credentials"
-            }
-            Self::UserDisabled => {
-                "Enable eBPF in configuration: ebpf.enabled = true"
-            }
+            Self::HighDropRate(_) => "Increase buffer size or reduce sampling rate",
+            Self::PgConnectionFailed(_) => "Check PostgreSQL connection settings and credentials",
+            Self::UserDisabled => "Enable eBPF in configuration: ebpf.enabled = true",
             Self::ContainerRestricted => {
                 "Run container with --privileged or use host PID namespace"
             }
-            Self::Unknown(_) => {
-                "Check logs for more details"
-            }
+            Self::Unknown(_) => "Check logs for more details",
         }
     }
 }

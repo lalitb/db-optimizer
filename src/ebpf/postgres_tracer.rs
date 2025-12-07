@@ -1,10 +1,10 @@
 // src/ebpf/postgres_tracer.rs - Comprehensive PostgreSQL eBPF tracer
 // Integrates protocol-level tracing, I/O attribution, and lock contention
 
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 
 /// Query event captured from eBPF
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -96,25 +96,25 @@ pub struct QueryBreakdown {
     pub query_id: i64,
     pub query_hash: u64,
     pub total_time_ms: f64,
-    
+
     // Time breakdown from eBPF
     pub io_time_ms: f64,
     pub cpu_time_ms: f64,
     pub network_time_ms: f64,
     pub lock_wait_time_ms: f64,
-    
+
     // Percentages
     pub io_percentage: f64,
     pub cpu_percentage: f64,
     pub network_percentage: f64,
     pub lock_percentage: f64,
-    
+
     // I/O details
     pub io_stats: QueryIoStats,
-    
+
     // Lock contention details
     pub blocking_info: Option<BlockingStats>,
-    
+
     // Recommendation
     pub recommendation: Recommendation,
     pub confidence: f64,
@@ -133,7 +133,7 @@ impl QueryBreakdown {
                 ),
             };
         }
-        
+
         // Low I/O with high CPU suggests query rewrite
         if self.io_percentage < 20.0 && self.cpu_percentage > 60.0 {
             return Recommendation::RewriteQuery {
@@ -144,29 +144,23 @@ impl QueryBreakdown {
                 ),
             };
         }
-        
+
         // High lock wait time
         if self.lock_percentage > 30.0 {
             return Recommendation::ReduceLockContention {
                 confidence: 0.85,
-                reason: format!(
-                    "{:.1}% time waiting for locks",
-                    self.lock_percentage
-                ),
+                reason: format!("{:.1}% time waiting for locks", self.lock_percentage),
             };
         }
-        
+
         // High network latency
         if self.network_percentage > 20.0 {
             return Recommendation::OptimizeNetwork {
                 confidence: 0.80,
-                reason: format!(
-                    "{:.1}% time in network latency",
-                    self.network_percentage
-                ),
+                reason: format!("{:.1}% time in network latency", self.network_percentage),
             };
         }
-        
+
         // High page faults suggest memory pressure
         if self.io_stats.page_faults > 1000 {
             return Recommendation::IncreaseMemory {
@@ -177,33 +171,18 @@ impl QueryBreakdown {
                 ),
             };
         }
-        
+
         Recommendation::Investigate
     }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Recommendation {
-    CreateIndex {
-        confidence: f64,
-        reason: String,
-    },
-    RewriteQuery {
-        confidence: f64,
-        reason: String,
-    },
-    ReduceLockContention {
-        confidence: f64,
-        reason: String,
-    },
-    OptimizeNetwork {
-        confidence: f64,
-        reason: String,
-    },
-    IncreaseMemory {
-        confidence: f64,
-        reason: String,
-    },
+    CreateIndex { confidence: f64, reason: String },
+    RewriteQuery { confidence: f64, reason: String },
+    ReduceLockContention { confidence: f64, reason: String },
+    OptimizeNetwork { confidence: f64, reason: String },
+    IncreaseMemory { confidence: f64, reason: String },
     Investigate,
 }
 
@@ -224,7 +203,7 @@ impl PostgresTracer {
             blocking_stats: Arc::new(Mutex::new(HashMap::new())),
         }
     }
-    
+
     /// Record a query event from eBPF
     pub fn record_query_event(&self, event: PostgresQueryEvent) {
         if let Ok(mut events) = self.query_events.lock() {
@@ -237,14 +216,14 @@ impl PostgresTracer {
             }
         }
     }
-    
+
     /// Record I/O statistics
     pub fn record_io_stats(&self, query_hash: u64, stats: QueryIoStats) {
         if let Ok(mut io_stats) = self.io_stats.lock() {
             io_stats.insert(query_hash, stats);
         }
     }
-    
+
     /// Record lock contention event
     pub fn record_lock_event(&self, event: LockContentionEvent) {
         if let Ok(mut events) = self.lock_events.lock() {
@@ -257,42 +236,54 @@ impl PostgresTracer {
             }
         }
     }
-    
+
     /// Get query breakdown with eBPF metrics
     pub fn get_query_breakdown(&self, query_hash: u64) -> Option<QueryBreakdown> {
         let events = self.query_events.lock().ok()?;
         let io_stats = self.io_stats.lock().ok()?;
         let blocking_stats = self.blocking_stats.lock().ok()?;
-        
+
         // Find events for this query
         let query_events: Vec<_> = events
             .iter()
             .filter(|e| e.query_hash == query_hash)
             .collect();
-        
+
         if query_events.is_empty() {
             return None;
         }
-        
+
         // Calculate averages
         let count = query_events.len() as f64;
         let total_duration_ns: u64 = query_events.iter().map(|e| e.duration_ns).sum();
         let total_io_ns: u64 = query_events.iter().map(|e| e.io_wait_ns).sum();
         let total_cpu_ns: u64 = query_events.iter().map(|e| e.cpu_time_ns).sum();
         let total_network_ns: u64 = query_events.iter().map(|e| e.network_latency_ns).sum();
-        
-        let avg_total = (total_duration_ns as f64 / count) / 1_000_000.0;  // Convert to ms
+
+        let avg_total = (total_duration_ns as f64 / count) / 1_000_000.0; // Convert to ms
         let avg_io = (total_io_ns as f64 / count) / 1_000_000.0;
         let avg_cpu = (total_cpu_ns as f64 / count) / 1_000_000.0;
         let avg_network = (total_network_ns as f64 / count) / 1_000_000.0;
-        
-        let io_pct = if avg_total > 0.0 { (avg_io / avg_total) * 100.0 } else { 0.0 };
-        let cpu_pct = if avg_total > 0.0 { (avg_cpu / avg_total) * 100.0 } else { 0.0 };
-        let network_pct = if avg_total > 0.0 { (avg_network / avg_total) * 100.0 } else { 0.0 };
-        
+
+        let io_pct = if avg_total > 0.0 {
+            (avg_io / avg_total) * 100.0
+        } else {
+            0.0
+        };
+        let cpu_pct = if avg_total > 0.0 {
+            (avg_cpu / avg_total) * 100.0
+        } else {
+            0.0
+        };
+        let network_pct = if avg_total > 0.0 {
+            (avg_network / avg_total) * 100.0
+        } else {
+            0.0
+        };
+
         let io_stats = io_stats.get(&query_hash).cloned().unwrap_or_default();
         let blocking_info = blocking_stats.get(&query_hash).cloned();
-        
+
         let mut breakdown = QueryBreakdown {
             query_id: query_hash as i64,
             query_hash,
@@ -300,7 +291,7 @@ impl PostgresTracer {
             io_time_ms: avg_io,
             cpu_time_ms: avg_cpu,
             network_time_ms: avg_network,
-            lock_wait_time_ms: 0.0,  // Will be calculated from lock events
+            lock_wait_time_ms: 0.0, // Will be calculated from lock events
             io_percentage: io_pct,
             cpu_percentage: cpu_pct,
             network_percentage: network_pct,
@@ -310,12 +301,12 @@ impl PostgresTracer {
             recommendation: Recommendation::Investigate,
             confidence: 0.85,
         };
-        
+
         breakdown.recommendation = breakdown.recommend();
-        
+
         Some(breakdown)
     }
-    
+
     /// Get all tracked query hashes
     pub fn get_tracked_queries(&self) -> Vec<u64> {
         if let Ok(events) = self.query_events.lock() {
@@ -327,7 +318,7 @@ impl PostgresTracer {
             Vec::new()
         }
     }
-    
+
     /// Clear old data
     pub fn clear_old_data(&self, older_than: DateTime<Utc>) {
         if let Ok(mut events) = self.query_events.lock() {
@@ -348,7 +339,7 @@ impl Default for PostgresTracer {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_query_breakdown_recommendation() {
         let breakdown = QueryBreakdown {
@@ -371,7 +362,7 @@ mod tests {
             recommendation: Recommendation::Investigate,
             confidence: 0.85,
         };
-        
+
         let rec = breakdown.recommend();
         match rec {
             Recommendation::CreateIndex { confidence, .. } => {

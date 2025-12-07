@@ -18,11 +18,11 @@ pub struct WorkloadDetector {
 impl WorkloadDetector {
     pub fn new() -> Self {
         Self {
-            oltp_max_avg_duration_ms: 100.0,  // OLTP queries are fast
-            oltp_min_connections: 150,         // OLTP has many connections
-            dw_min_avg_duration_ms: 1000.0,    // DW queries are slow
-            dw_max_write_ratio: 0.2,           // DW is mostly reads
-            web_typical_connections_min: 50,   // Web apps have moderate connections
+            oltp_max_avg_duration_ms: 100.0, // OLTP queries are fast
+            oltp_min_connections: 150,       // OLTP has many connections
+            dw_min_avg_duration_ms: 1000.0,  // DW queries are slow
+            dw_max_write_ratio: 0.2,         // DW is mostly reads
+            web_typical_connections_min: 50, // Web apps have moderate connections
             web_typical_connections_max: 250,
         }
     }
@@ -45,13 +45,13 @@ impl WorkloadDetector {
     async fn get_query_stats(&self, pool: &PgPool) -> Result<QueryStats> {
         // Check if pg_stat_statements is available
         let extension_row = sqlx::query(
-            "SELECT COUNT(*) as count FROM pg_extension WHERE extname = 'pg_stat_statements'"
+            "SELECT COUNT(*) as count FROM pg_extension WHERE extname = 'pg_stat_statements'",
         )
         .fetch_one(pool)
         .await?;
 
         let ext_count: i64 = extension_row.try_get("count")?;
-        
+
         if ext_count == 0 {
             // No pg_stat_statements, use conservative estimates
             return Ok(QueryStats::default());
@@ -108,7 +108,11 @@ impl WorkloadDetector {
     }
 
     /// Classify workload based on collected statistics
-    fn classify_workload(&self, query_stats: &QueryStats, conn_stats: &ConnectionStats) -> WorkloadType {
+    fn classify_workload(
+        &self,
+        query_stats: &QueryStats,
+        conn_stats: &ConnectionStats,
+    ) -> WorkloadType {
         // Calculate key metrics
         let read_ratio = if query_stats.write_calls > 0 {
             query_stats.read_calls as f64 / query_stats.write_calls as f64
@@ -116,11 +120,11 @@ impl WorkloadDetector {
             10.0 // Assume read-heavy if no writes
         };
 
-        let _connection_utilization = 
+        let _connection_utilization =
             conn_stats.active_connections as f64 / conn_stats.max_connections as f64;
 
         // Decision tree
-        
+
         // Desktop: very few connections, local development
         if conn_stats.max_connections <= 30 && conn_stats.active_connections < 5 {
             return WorkloadType::Desktop;
@@ -138,7 +142,8 @@ impl WorkloadDetector {
         if query_stats.avg_duration_ms < self.oltp_max_avg_duration_ms
             && conn_stats.active_connections > self.oltp_min_connections
             && read_ratio < 10.0  // Not too read-heavy
-            && read_ratio > 0.5   // Not too write-heavy
+            && read_ratio > 0.5
+        // Not too write-heavy
         {
             return WorkloadType::OLTP;
         }
@@ -166,7 +171,12 @@ impl WorkloadDetector {
     }
 
     /// Get confidence level for the detection (0.0 to 1.0)
-    pub fn get_confidence(&self, workload: &WorkloadType, query_stats: &QueryStats, conn_stats: &ConnectionStats) -> f64 {
+    pub fn get_confidence(
+        &self,
+        workload: &WorkloadType,
+        query_stats: &QueryStats,
+        conn_stats: &ConnectionStats,
+    ) -> f64 {
         let read_ratio = if query_stats.write_calls > 0 {
             query_stats.read_calls as f64 / query_stats.write_calls as f64
         } else {
@@ -175,7 +185,11 @@ impl WorkloadDetector {
 
         match workload {
             WorkloadType::Desktop => {
-                if conn_stats.max_connections <= 20 { 0.95 } else { 0.70 }
+                if conn_stats.max_connections <= 20 {
+                    0.95
+                } else {
+                    0.70
+                }
             }
             WorkloadType::OLTP => {
                 let mut confidence = 0.5;
@@ -270,7 +284,7 @@ mod tests {
     #[test]
     fn test_desktop_workload_detection() {
         let detector = WorkloadDetector::new();
-        
+
         let query_stats = QueryStats {
             query_count: 50,
             avg_duration_ms: 50.0,
@@ -297,20 +311,20 @@ mod tests {
     #[test]
     fn test_oltp_workload_detection() {
         let detector = WorkloadDetector::new();
-        
+
         let query_stats = QueryStats {
             query_count: 500,
-            avg_duration_ms: 50.0,  // Fast queries
+            avg_duration_ms: 50.0, // Fast queries
             total_calls: 100000,
             read_calls: 60000,
-            write_calls: 40000,      // Balanced
+            write_calls: 40000, // Balanced
             join_ratio: 0.2,
             max_avg_duration_ms: 200.0,
         };
 
         let conn_stats = ConnectionStats {
             max_connections: 300,
-            active_connections: 200,  // High connection count
+            active_connections: 200, // High connection count
             avg_age_seconds: 300,
         };
 
@@ -324,14 +338,14 @@ mod tests {
     #[test]
     fn test_data_warehouse_detection() {
         let detector = WorkloadDetector::new();
-        
+
         let query_stats = QueryStats {
             query_count: 100,
-            avg_duration_ms: 2000.0,  // Slow queries
+            avg_duration_ms: 2000.0, // Slow queries
             total_calls: 5000,
             read_calls: 4800,
-            write_calls: 200,          // Read-heavy
-            join_ratio: 0.6,           // Complex joins
+            write_calls: 200, // Read-heavy
+            join_ratio: 0.6,  // Complex joins
             max_avg_duration_ms: 10000.0,
         };
 
@@ -351,20 +365,20 @@ mod tests {
     #[test]
     fn test_web_workload_detection() {
         let detector = WorkloadDetector::new();
-        
+
         let query_stats = QueryStats {
             query_count: 300,
-            avg_duration_ms: 150.0,   // Moderate speed
+            avg_duration_ms: 150.0, // Moderate speed
             total_calls: 50000,
             read_calls: 40000,
-            write_calls: 10000,        // Read-heavy but some writes
+            write_calls: 10000, // Read-heavy but some writes
             join_ratio: 0.3,
             max_avg_duration_ms: 1000.0,
         };
 
         let conn_stats = ConnectionStats {
             max_connections: 200,
-            active_connections: 120,  // Moderate connections
+            active_connections: 120, // Moderate connections
             avg_age_seconds: 800,
         };
 
@@ -378,7 +392,7 @@ mod tests {
     #[test]
     fn test_mixed_workload_default() {
         let detector = WorkloadDetector::new();
-        
+
         // Ambiguous stats that don't clearly match any pattern
         let query_stats = QueryStats {
             query_count: 200,
@@ -423,7 +437,8 @@ mod tests {
         assert!(desktop_confidence > 0.90);
 
         // Mixed should have moderate confidence
-        let mixed_confidence = detector.get_confidence(&WorkloadType::Mixed, &query_stats, &conn_stats);
+        let mixed_confidence =
+            detector.get_confidence(&WorkloadType::Mixed, &query_stats, &conn_stats);
         assert!(mixed_confidence >= 0.60 && mixed_confidence < 0.70);
     }
 }

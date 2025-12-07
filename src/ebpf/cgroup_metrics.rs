@@ -271,7 +271,9 @@ impl CgroupCollector {
                     for line in content.lines() {
                         if line.starts_with("0::") {
                             let path = line.trim_start_matches("0::");
-                            return Some(PathBuf::from("/sys/fs/cgroup").join(path.trim_start_matches('/')));
+                            return Some(
+                                PathBuf::from("/sys/fs/cgroup").join(path.trim_start_matches('/')),
+                            );
                         }
                     }
                 }
@@ -284,7 +286,10 @@ impl CgroupCollector {
                             let parts: Vec<&str> = line.split(':').collect();
                             if parts.len() >= 3 {
                                 let path = parts[2];
-                                return Some(PathBuf::from("/sys/fs/cgroup/memory").join(path.trim_start_matches('/')));
+                                return Some(
+                                    PathBuf::from("/sys/fs/cgroup/memory")
+                                        .join(path.trim_start_matches('/')),
+                                );
                             }
                         }
                     }
@@ -469,7 +474,8 @@ impl CgroupCollector {
         let mut io = IoMetrics::default();
 
         // Read blkio throttle stats
-        if let Ok(stat) = fs::read_to_string("/sys/fs/cgroup/blkio/blkio.throttle.io_service_bytes") {
+        if let Ok(stat) = fs::read_to_string("/sys/fs/cgroup/blkio/blkio.throttle.io_service_bytes")
+        {
             for line in stat.lines() {
                 let parts: Vec<&str> = line.split_whitespace().collect();
                 if parts.len() >= 3 {

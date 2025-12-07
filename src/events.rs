@@ -1,9 +1,9 @@
 // src/events.rs - Database event tracking for deployment correlation
 
+use anyhow::Result;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
-use anyhow::Result;
 
 /// Types of database events we track
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -83,15 +83,13 @@ pub struct EventStore {
 
 impl EventStore {
     pub fn new() -> Self {
-        Self {
-            events: Vec::new(),
-        }
+        Self { events: Vec::new() }
     }
 
     /// Load event store from file
     pub fn load<P: AsRef<Path>>(path: P) -> Result<Self> {
         let path = path.as_ref();
-        
+
         if path.exists() {
             let content = std::fs::read_to_string(path)?;
             let store: Self = serde_json::from_str(&content)?;
@@ -106,15 +104,15 @@ impl EventStore {
     /// Save event store to file
     pub fn save<P: AsRef<Path>>(&self, path: P) -> Result<()> {
         let path = path.as_ref();
-        
+
         // Create parent directory if needed
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        
+
         let json = serde_json::to_string_pretty(self)?;
         std::fs::write(path, json)?;
-        
+
         tracing::debug!("Saved {} events to {}", self.events.len(), path.display());
         Ok(())
     }
@@ -206,19 +204,33 @@ impl DatabaseEvent {
     /// Get a short summary of the event
     pub fn summary(&self) -> String {
         match &self.details {
-            EventDetails::SchemaChange { table_name, change_type, .. } => {
+            EventDetails::SchemaChange {
+                table_name,
+                change_type,
+                ..
+            } => {
                 format!("{} on {}", change_type, table_name)
             }
-            EventDetails::IndexChange { index_name, action, .. } => {
+            EventDetails::IndexChange {
+                index_name, action, ..
+            } => {
                 format!("{} index {}", action, index_name)
             }
-            EventDetails::ConfigChange { parameter, new_value, .. } => {
+            EventDetails::ConfigChange {
+                parameter,
+                new_value,
+                ..
+            } => {
                 format!("{} = {}", parameter, new_value)
             }
             EventDetails::Deployment { version, .. } => {
                 version.clone().unwrap_or_else(|| "deployment".to_string())
             }
-            EventDetails::PerformanceAnomaly { metric, deviation_pct, .. } => {
+            EventDetails::PerformanceAnomaly {
+                metric,
+                deviation_pct,
+                ..
+            } => {
                 format!("{} changed by {:.1}%", metric, deviation_pct)
             }
         }
@@ -250,7 +262,7 @@ mod tests {
             },
             EventSource::AutoApplied,
         );
-        
+
         store.add_event(event);
         assert_eq!(store.events.len(), 1);
     }
@@ -259,7 +271,7 @@ mod tests {
     fn test_save_load() -> Result<()> {
         let temp_file = NamedTempFile::new()?;
         let path = temp_file.path();
-        
+
         let mut store = EventStore::new();
         store.add_event(DatabaseEvent::new(
             EventType::Deployment,
@@ -270,20 +282,20 @@ mod tests {
             },
             EventSource::Manual,
         ));
-        
+
         store.save(path)?;
-        
+
         let loaded = EventStore::load(path)?;
         assert_eq!(loaded.events.len(), 1);
         assert_eq!(loaded.events[0].description, "v1.2.3 deployed");
-        
+
         Ok(())
     }
 
     #[test]
     fn test_get_recent_events() {
         let mut store = EventStore::new();
-        
+
         for i in 0..5 {
             store.add_event(DatabaseEvent::new(
                 EventType::SchemaChange,
@@ -296,7 +308,7 @@ mod tests {
                 EventSource::AutoDetected,
             ));
         }
-        
+
         let recent = store.get_recent_events(3);
         assert_eq!(recent.len(), 3);
     }
@@ -304,7 +316,7 @@ mod tests {
     #[test]
     fn test_prune_old_events() {
         let mut store = EventStore::new();
-        
+
         // Add an old event (manually set timestamp)
         let mut old_event = DatabaseEvent::new(
             EventType::SchemaChange,
@@ -318,7 +330,7 @@ mod tests {
         );
         old_event.timestamp = Utc::now() - chrono::Duration::days(100);
         store.add_event(old_event);
-        
+
         // Add a recent event
         store.add_event(DatabaseEvent::new(
             EventType::SchemaChange,
@@ -330,11 +342,11 @@ mod tests {
             },
             EventSource::AutoDetected,
         ));
-        
+
         assert_eq!(store.events.len(), 2);
-        
+
         store.prune_old_events(30);
-        
+
         assert_eq!(store.events.len(), 1);
         assert_eq!(store.events[0].description, "Recent change");
     }

@@ -72,7 +72,7 @@ impl EbpfDaemon {
     /// Create a new daemon instance
     pub fn new(config: DaemonConfig) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         let tracked_pids = config.tracked_pids.clone();
-        
+
         Ok(Self {
             config,
             aggregator: Arc::new(EventAggregator::new()?),
@@ -82,28 +82,28 @@ impl EbpfDaemon {
             start_time: Instant::now(),
         })
     }
-    
+
     /// Start the daemon
     pub async fn run(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         info!("Starting eBPF daemon...");
-        
+
         // Check capabilities
         self.check_capabilities()?;
-        
+
         // Remove old socket if exists
         if self.config.socket_path.exists() {
             std::fs::remove_file(&self.config.socket_path)?;
         }
-        
+
         // Create socket directory if needed
         if let Some(parent) = self.config.socket_path.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        
+
         // Bind Unix socket
         let listener = UnixListener::bind(&self.config.socket_path)?;
         listener.set_nonblocking(true)?;
-        
+
         // Set socket permissions (allow group access)
         #[cfg(unix)]
         {
@@ -113,16 +113,15 @@ impl EbpfDaemon {
                 std::fs::Permissions::from_mode(0o660),
             )?;
         }
-        
+
         info!("Daemon listening on {:?}", self.config.socket_path);
-        
+
         self.running.store(true, Ordering::SeqCst);
-        
+
         // Main event loop
-        let mut poll_interval = tokio::time::interval(
-            Duration::from_millis(self.config.poll_interval_ms)
-        );
-        
+        let mut poll_interval =
+            tokio::time::interval(Duration::from_millis(self.config.poll_interval_ms));
+
         while self.running.load(Ordering::SeqCst) {
             tokio::select! {
                 _ = poll_interval.tick() => {
@@ -131,7 +130,7 @@ impl EbpfDaemon {
                         error!("Error polling events: {}", e);
                     }
                 }
-                
+
                 // Handle incoming connections (non-blocking)
                 _ = tokio::task::yield_now() => {
                     match listener.accept() {
@@ -141,7 +140,7 @@ impl EbpfDaemon {
                             let tracked_pids = self.tracked_pids.clone();
                             let running = self.running.clone();
                             let start_time = self.start_time;
-                            
+
                             tokio::spawn(async move {
                                 if let Err(e) = Self::handle_client(
                                     stream,
@@ -165,25 +164,25 @@ impl EbpfDaemon {
                 }
             }
         }
-        
+
         // Cleanup
         let _ = std::fs::remove_file(&self.config.socket_path);
         info!("Daemon stopped");
-        
+
         Ok(())
     }
-    
+
     /// Stop the daemon
     pub fn stop(&self) {
         info!("Stopping daemon...");
         self.running.store(false, Ordering::SeqCst);
     }
-    
+
     /// Check if daemon is running
     pub fn is_running(&self) -> bool {
         self.running.load(Ordering::SeqCst)
     }
-    
+
     /// Check required capabilities
     fn check_capabilities(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         // Check if we're root or have CAP_BPF
@@ -199,35 +198,35 @@ impl EbpfDaemon {
                 );
             }
         }
-        
+
         Ok(())
     }
-    
+
     /// Poll eBPF perf buffers for events
     async fn poll_events(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         // In a real implementation, this would:
         // 1. Read from perf_event_array maps using aya
         // 2. Process lost event callbacks
         // 3. Parse and aggregate events
-        
+
         // For now, this is a placeholder that would be filled in with actual eBPF code
         // when building with the "ebpf" feature
-        
+
         #[cfg(feature = "ebpf")]
         {
             // Real eBPF implementation would go here
             // self.poll_perf_buffers().await?;
         }
-        
+
         #[cfg(not(feature = "ebpf"))]
         {
             // Mock mode - no actual eBPF
             debug!("eBPF polling (mock mode)");
         }
-        
+
         Ok(())
     }
-    
+
     /// Handle a client connection
     async fn handle_client(
         mut stream: UnixStream,
@@ -240,7 +239,7 @@ impl EbpfDaemon {
         stream.set_nonblocking(false)?;
         stream.set_read_timeout(Some(Duration::from_secs(30)))?;
         stream.set_write_timeout(Some(Duration::from_secs(30)))?;
-        
+
         loop {
             // Read message
             let msg = match ProtocolCodec::read_message(&mut stream) {
@@ -256,10 +255,10 @@ impl EbpfDaemon {
                     break;
                 }
             };
-            
+
             // Check if this is a shutdown request before processing
             let is_shutdown = matches!(msg.payload, MessagePayload::Shutdown);
-            
+
             // Process message
             let response = Self::process_message(
                 msg,
@@ -268,20 +267,21 @@ impl EbpfDaemon {
                 &tracked_pids,
                 &running,
                 start_time,
-            ).await;
-            
+            )
+            .await;
+
             // Send response
             ProtocolCodec::write_message(&mut stream, &response)?;
-            
+
             // Exit loop if shutdown was requested
             if is_shutdown {
                 break;
             }
         }
-        
+
         Ok(())
     }
-    
+
     /// Process a client message
     async fn process_message(
         msg: Message,
@@ -300,7 +300,7 @@ impl EbpfDaemon {
                 }
                 Message::new(MessagePayload::Ok)
             }
-            
+
             MessagePayload::StopProfiling { pids } => {
                 let mut tracked = tracked_pids.write().await;
                 for pid in &pids {
@@ -310,37 +310,35 @@ impl EbpfDaemon {
                 }
                 Message::new(MessagePayload::Ok)
             }
-            
-            MessagePayload::GetMetrics { pid } => {
-                match aggregator.get_system_metrics(pid).await {
-                    Some(metrics) => {
-                        let data = system_metrics_to_data(pid, &metrics);
-                        Message::new(MessagePayload::MetricsResponse(data))
-                    }
-                    None => Message::new(MessagePayload::Error {
-                        code: 404,
-                        message: format!("No metrics for PID {}", pid),
-                    }),
+
+            MessagePayload::GetMetrics { pid } => match aggregator.get_system_metrics(pid).await {
+                Some(metrics) => {
+                    let data = system_metrics_to_data(pid, &metrics);
+                    Message::new(MessagePayload::MetricsResponse(data))
                 }
-            }
-            
+                None => Message::new(MessagePayload::Error {
+                    code: 404,
+                    message: format!("No metrics for PID {}", pid),
+                }),
+            },
+
             MessagePayload::GetAllMetrics => {
                 let pids = aggregator.get_tracked_pids().await;
                 let mut all_metrics = Vec::new();
-                
+
                 for pid in pids {
                     if let Some(metrics) = aggregator.get_system_metrics(pid).await {
                         all_metrics.push(system_metrics_to_data(pid, &metrics));
                     }
                 }
-                
+
                 Message::new(MessagePayload::AllMetricsResponse(all_metrics))
             }
-            
+
             MessagePayload::GetStatus => {
                 let tracked = tracked_pids.read().await;
                 let (processed, dropped) = aggregator.get_stats();
-                
+
                 let status = DaemonStatus {
                     version: env!("CARGO_PKG_VERSION").to_string(),
                     uptime_secs: start_time.elapsed().as_secs(),
@@ -354,22 +352,22 @@ impl EbpfDaemon {
                     cpu_usage_percent: 0.0, // TODO: Self-monitoring
                     memory_usage_bytes: 0,
                 };
-                
+
                 Message::new(MessagePayload::StatusResponse(status))
             }
-            
+
             MessagePayload::SetSamplingRate { event_type, rate } => {
                 use super::events::EventType;
                 sampling.set_rate(EventType::from(event_type), rate);
                 Message::new(MessagePayload::Ok)
             }
-            
+
             MessagePayload::Shutdown => {
                 info!("Received shutdown command");
                 running.store(false, Ordering::SeqCst);
                 Message::new(MessagePayload::Ok)
             }
-            
+
             // Response messages shouldn't come from client
             _ => Message::new(MessagePayload::Error {
                 code: 400,
@@ -415,51 +413,60 @@ impl DaemonClient {
         let stream = UnixStream::connect(socket_path)?;
         stream.set_read_timeout(Some(Duration::from_secs(30)))?;
         stream.set_write_timeout(Some(Duration::from_secs(30)))?;
-        
+
         Ok(Self { stream })
     }
-    
+
     /// Connect with default socket path
     pub fn connect_default() -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         Self::connect(DEFAULT_SOCKET_PATH)
     }
-    
+
     /// Send a message and receive response
     pub fn send(&mut self, payload: MessagePayload) -> Result<MessagePayload, ProtocolError> {
         let msg = Message::new(payload);
         ProtocolCodec::write_message(&mut self.stream, &msg)?;
-        
+
         let response = ProtocolCodec::read_message(&mut self.stream)?;
         Ok(response.payload)
     }
-    
+
     /// Start profiling PIDs
-    pub fn start_profiling(&mut self, pids: Vec<u32>) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    pub fn start_profiling(
+        &mut self,
+        pids: Vec<u32>,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         match self.send(MessagePayload::StartProfiling { pids })? {
             MessagePayload::Ok => Ok(()),
             MessagePayload::Error { message, .. } => Err(message.into()),
             _ => Err("Unexpected response".into()),
         }
     }
-    
+
     /// Stop profiling PIDs
-    pub fn stop_profiling(&mut self, pids: Vec<u32>) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    pub fn stop_profiling(
+        &mut self,
+        pids: Vec<u32>,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         match self.send(MessagePayload::StopProfiling { pids })? {
             MessagePayload::Ok => Ok(()),
             MessagePayload::Error { message, .. } => Err(message.into()),
             _ => Err("Unexpected response".into()),
         }
     }
-    
+
     /// Get metrics for a PID
-    pub fn get_metrics(&mut self, pid: u32) -> Result<MetricsData, Box<dyn std::error::Error + Send + Sync>> {
+    pub fn get_metrics(
+        &mut self,
+        pid: u32,
+    ) -> Result<MetricsData, Box<dyn std::error::Error + Send + Sync>> {
         match self.send(MessagePayload::GetMetrics { pid })? {
             MessagePayload::MetricsResponse(data) => Ok(data),
             MessagePayload::Error { message, .. } => Err(message.into()),
             _ => Err("Unexpected response".into()),
         }
     }
-    
+
     /// Get daemon status
     pub fn get_status(&mut self) -> Result<DaemonStatus, Box<dyn std::error::Error + Send + Sync>> {
         match self.send(MessagePayload::GetStatus)? {
@@ -468,7 +475,7 @@ impl DaemonClient {
             _ => Err("Unexpected response".into()),
         }
     }
-    
+
     /// Shutdown the daemon
     pub fn shutdown(&mut self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         match self.send(MessagePayload::Shutdown)? {
@@ -482,7 +489,7 @@ impl DaemonClient {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_daemon_config_default() {
         let config = DaemonConfig::default();
@@ -490,7 +497,7 @@ mod tests {
         assert_eq!(config.perf_buffer_pages, 256);
         assert!(config.prometheus_enabled);
     }
-    
+
     #[tokio::test]
     async fn test_daemon_creation() {
         let config = DaemonConfig::default();

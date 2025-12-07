@@ -30,7 +30,10 @@ pub async fn get_by_id(
     Path(id): Path<String>,
 ) -> ApiResult<Json<ApiResponse<serde_json::Value>>> {
     // Placeholder - would query from persistence
-    Err(ApiError::NotFound(format!("Recommendation {} not found", id)))
+    Err(ApiError::NotFound(format!(
+        "Recommendation {} not found",
+        id
+    )))
 }
 
 /// POST /api/v1/recommendations/:id/approve - Approve recommendation for auto-apply

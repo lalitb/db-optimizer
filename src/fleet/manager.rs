@@ -1,16 +1,16 @@
-use crate::fleet::models::{DatabaseInstance, FleetSummary, InstanceStatus, InstanceMetrics};
-use crate::collector::DatabaseCollector;
 use crate::analyzer::HealthCalculator;
-use crate::recommendations::RecommendationEngine;
+use crate::collector::DatabaseCollector;
 use crate::config::AnalysisConfig;
+use crate::fleet::models::{DatabaseInstance, FleetSummary, InstanceMetrics, InstanceStatus};
 use crate::models::ReportSummary;
+use crate::recommendations::RecommendationEngine;
 use crate::remote_agent::client::AgentClient;
+use anyhow::Result;
+use chrono::Utc;
 use sqlx::postgres::PgPoolOptions;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use anyhow::Result;
-use chrono::Utc;
 
 pub struct FleetManager {
     instances: Arc<RwLock<HashMap<String, DatabaseInstance>>>,
@@ -61,7 +61,7 @@ impl FleetManager {
                 InstanceStatus::Warning => warning += 1,
                 InstanceStatus::Critical => critical += 1,
                 InstanceStatus::Unreachable => unreachable += 1,
-                InstanceStatus::Unknown => {},
+                InstanceStatus::Unknown => {}
             }
 
             if let Some(score) = instance.health_score {
@@ -76,7 +76,11 @@ impl FleetManager {
             warning_count: warning,
             critical_count: critical,
             unreachable_count: unreachable,
-            average_health_score: if scored_count > 0 { Some(total_score / scored_count as f64) } else { None },
+            average_health_score: if scored_count > 0 {
+                Some(total_score / scored_count as f64)
+            } else {
+                None
+            },
         }
     }
 
@@ -92,14 +96,17 @@ impl FleetManager {
             None => anyhow::bail!("Instance not found"),
         };
         // Connect and analyze
-        match self.analyze_database(&instance.connection_string, instance.agent_url.as_deref()).await {
+        match self
+            .analyze_database(&instance.connection_string, instance.agent_url.as_deref())
+            .await
+        {
             Ok(analysis) => {
                 instance.health_score = Some(analysis.score);
                 instance.version = Some(analysis.version);
                 instance.last_check_at = Some(Utc::now());
                 instance.metrics = Some(analysis.metrics);
                 instance.summary = Some(analysis.summary);
-                
+
                 instance.status = if analysis.score >= 90 {
                     InstanceStatus::Healthy
                 } else if analysis.score >= 70 {
@@ -138,7 +145,11 @@ impl FleetManager {
         }
     }
 
-    async fn analyze_database(&self, connection_string: &str, agent_url: Option<&str>) -> Result<InstanceAnalysis> {
+    async fn analyze_database(
+        &self,
+        connection_string: &str,
+        agent_url: Option<&str>,
+    ) -> Result<InstanceAnalysis> {
         let pool = PgPoolOptions::new()
             .max_connections(1)
             .acquire_timeout(std::time::Duration::from_secs(5))
@@ -146,7 +157,7 @@ impl FleetManager {
             .await?;
 
         let collector = DatabaseCollector::new(pool);
-        
+
         // Collect data
         let tables = collector.collect_table_info().await?;
         let indexes = collector.collect_index_info().await?;
@@ -174,13 +185,12 @@ impl FleetManager {
             &tables,
             &indexes,
             connection_stats.as_ref(),
-            total_db_size_mb
+            total_db_size_mb,
         );
-        
+
         // Run recommendation engine to get summary
-        let engine = RecommendationEngine::new()
-            .with_analysis_config(AnalysisConfig::default());
-            
+        let engine = RecommendationEngine::new().with_analysis_config(AnalysisConfig::default());
+
         let recommendations = engine.generate_recommendations(
             &queries,
             &tables,
@@ -188,19 +198,34 @@ impl FleetManager {
             connection_stats.as_ref(),
             connections.as_deref(),
         );
-        
+
         let summary = RecommendationEngine::generate_summary(&recommendations);
-        
+
         // Build metrics
         let metrics = InstanceMetrics {
             total_size_mb: total_db_size_mb,
             table_count: tables.len(),
             index_count: indexes.len(),
-            active_connections: connection_stats.as_ref().map(|s| s.total_connections).unwrap_or(0),
-            max_connections: connection_stats.as_ref().map(|s| s.max_connections).unwrap_or(0),
-            connection_usage_pct: connection_stats.as_ref().map(|s| s.usage_percentage()).unwrap_or(0.0),
-            idle_in_transaction_count: connection_stats.as_ref().map(|s| s.idle_in_transaction_count).unwrap_or(0),
-            locked_connections_count: connection_stats.as_ref().map(|s| s.locked_connections_count).unwrap_or(0),
+            active_connections: connection_stats
+                .as_ref()
+                .map(|s| s.total_connections)
+                .unwrap_or(0),
+            max_connections: connection_stats
+                .as_ref()
+                .map(|s| s.max_connections)
+                .unwrap_or(0),
+            connection_usage_pct: connection_stats
+                .as_ref()
+                .map(|s| s.usage_percentage())
+                .unwrap_or(0.0),
+            idle_in_transaction_count: connection_stats
+                .as_ref()
+                .map(|s| s.idle_in_transaction_count)
+                .unwrap_or(0),
+            locked_connections_count: connection_stats
+                .as_ref()
+                .map(|s| s.locked_connections_count)
+                .unwrap_or(0),
             ebpf_lock_summary,
         };
 

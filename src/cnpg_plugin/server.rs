@@ -1,17 +1,16 @@
-use tonic::{Request, Response, Status};
-use crate::cnpg_plugin::proto::{
-    OperatorService, OperatorLifecycleRequest, OperatorLifecycleResponse,
-    GetCapabilitiesRequest, GetCapabilitiesResponse, PluginCapability, CapabilityType,
-    OperationType,
-};
-use crate::cnpg_plugin::config::PluginConfig;
 use crate::agent::AgentState;
+use crate::analyzer::HealthCalculator;
+use crate::cnpg_plugin::config::PluginConfig;
+use crate::cnpg_plugin::proto::{
+    CapabilityType, GetCapabilitiesRequest, GetCapabilitiesResponse, OperationType,
+    OperatorLifecycleRequest, OperatorLifecycleResponse, OperatorService, PluginCapability,
+};
+use crate::collector::DatabaseCollector;
+use sqlx::postgres::PgPoolOptions;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use tracing::{info, error, debug};
-use sqlx::postgres::PgPoolOptions;
-use crate::collector::DatabaseCollector;
-use crate::analyzer::HealthCalculator;
+use tonic::{Request, Response, Status};
+use tracing::{debug, error, info};
 
 /// Vaanyze CNPG Plugin service implementation
 pub struct VaanyzeOperatorService {
@@ -24,43 +23,46 @@ pub struct VaanyzeOperatorService {
 
 impl VaanyzeOperatorService {
     pub fn new(config: PluginConfig, state: Arc<Mutex<AgentState>>) -> Self {
-        Self { 
-            config, 
+        Self {
+            config,
             state,
             #[cfg(target_os = "linux")]
             ebpf_enabled: true,
         }
     }
-    
+
     /// Analyze a PostgreSQL cluster
     async fn analyze_cluster(&self, connection_string: &str) -> anyhow::Result<ClusterAnalysis> {
-        debug!("Connecting to cluster: {}", mask_connection_string(connection_string));
-        
+        debug!(
+            "Connecting to cluster: {}",
+            mask_connection_string(connection_string)
+        );
+
         // Connect to database
         let pool = PgPoolOptions::new()
             .max_connections(5)
             .acquire_timeout(std::time::Duration::from_secs(10))
             .connect(connection_string)
             .await?;
-            
+
         // Collect metrics
         let collector = DatabaseCollector::new(pool);
         let tables = collector.collect_table_info().await?;
         let indexes = collector.collect_index_info().await?;
         let connection_stats = collector.collect_connection_stats().await.ok();
-        
+
         // Calculate health score
         let total_db_size_mb: f64 = tables.iter().map(|t| t.total_size_mb).sum();
         let health_score = HealthCalculator::calculate(
-            &tables, 
-            &indexes, 
-            connection_stats.as_ref(), 
-            total_db_size_mb
+            &tables,
+            &indexes,
+            connection_stats.as_ref(),
+            total_db_size_mb,
         );
-        
+
         // Generate recommendations
         let mut recommendations = Vec::new();
-        
+
         // Check for large tables that might need optimization
         for table in &tables {
             if table.total_size_mb > 1000.0 && table.index_size_mb < table.table_size_mb * 0.1 {
@@ -70,7 +72,7 @@ impl VaanyzeOperatorService {
                 ));
             }
         }
-        
+
         // Check for unused indexes
         for index in &indexes {
             if index.index_scans == 0 && index.index_size_mb > 10.0 {
@@ -80,7 +82,7 @@ impl VaanyzeOperatorService {
                 ));
             }
         }
-        
+
         // Check connection stats
         if let Some(stats) = &connection_stats {
             if stats.idle_in_transaction_count > 5 {
@@ -90,7 +92,7 @@ impl VaanyzeOperatorService {
                 ));
             }
         }
-        
+
         Ok(ClusterAnalysis {
             health_score,
             recommendations,
@@ -99,7 +101,7 @@ impl VaanyzeOperatorService {
             total_size_mb: total_db_size_mb,
         })
     }
-    
+
     /// Get plugin capabilities based on runtime detection
     fn detect_capabilities(&self) -> Vec<PluginCapability> {
         let mut caps = vec![
@@ -128,7 +130,7 @@ impl VaanyzeOperatorService {
                 enabled: true,
             },
         ];
-        
+
         // eBPF is only available on Linux
         #[cfg(target_os = "linux")]
         {
@@ -137,7 +139,7 @@ impl VaanyzeOperatorService {
                 enabled: self.ebpf_enabled,
             });
         }
-        
+
         #[cfg(not(target_os = "linux"))]
         {
             caps.push(PluginCapability {
@@ -145,7 +147,7 @@ impl VaanyzeOperatorService {
                 enabled: false,
             });
         }
-        
+
         caps
     }
 }
@@ -178,10 +180,10 @@ impl OperatorService for VaanyzeOperatorService {
     ) -> Result<Response<OperatorLifecycleResponse>, Status> {
         let req = request.into_inner();
         info!(
-            "Lifecycle event: {:?} for cluster {}/{} (role: {})", 
+            "Lifecycle event: {:?} for cluster {}/{} (role: {})",
             req.operation, req.namespace, req.cluster_name, req.role
         );
-        
+
         // Handle different operation types
         match req.operation {
             OperationType::Delete => {
@@ -206,7 +208,7 @@ impl OperatorService for VaanyzeOperatorService {
             }
             _ => {}
         }
-        
+
         // Only analyze primary instances for most operations
         if req.role.to_lowercase() != "primary" && req.operation == OperationType::HealthCheck {
             return Ok(Response::new(OperatorLifecycleResponse {
@@ -217,7 +219,7 @@ impl OperatorService for VaanyzeOperatorService {
                 proceed: true,
             }));
         }
-        
+
         // Perform analysis
         match self.analyze_cluster(&req.connection_string).await {
             Ok(analysis) => {
@@ -228,25 +230,26 @@ impl OperatorService for VaanyzeOperatorService {
                 } else {
                     "Critical"
                 };
-                
+
                 info!(
                     "Cluster {}/{}: score={}, tables={}, indexes={}, size={:.1}MB",
-                    req.namespace, req.cluster_name,
+                    req.namespace,
+                    req.cluster_name,
                     analysis.health_score,
                     analysis.table_count,
                     analysis.index_count,
                     analysis.total_size_mb
                 );
-                
+
                 // Update agent state
                 {
                     let mut state = self.state.lock().await;
                     state.last_run = chrono::Utc::now();
                 }
-                
+
                 let recommendations_json = serde_json::to_string(&analysis.recommendations)
                     .unwrap_or_else(|_| "[]".to_string());
-                
+
                 Ok(Response::new(OperatorLifecycleResponse {
                     status: status.to_string(),
                     message: format!(
@@ -262,7 +265,10 @@ impl OperatorService for VaanyzeOperatorService {
                 }))
             }
             Err(e) => {
-                error!("Failed to analyze cluster {}/{}: {}", req.namespace, req.cluster_name, e);
+                error!(
+                    "Failed to analyze cluster {}/{}: {}",
+                    req.namespace, req.cluster_name, e
+                );
                 Ok(Response::new(OperatorLifecycleResponse {
                     status: "Error".to_string(),
                     message: format!("Analysis failed: {}", e),
@@ -273,13 +279,13 @@ impl OperatorService for VaanyzeOperatorService {
             }
         }
     }
-    
+
     async fn get_capabilities(
         &self,
         _request: Request<GetCapabilitiesRequest>,
     ) -> Result<Response<GetCapabilitiesResponse>, Status> {
         let capabilities = self.detect_capabilities();
-        
+
         Ok(Response::new(GetCapabilitiesResponse {
             name: "vaanyze".to_string(),
             version: env!("CARGO_PKG_VERSION").to_string(),
@@ -295,25 +301,36 @@ pub async fn start_grpc_server(
 ) -> anyhow::Result<()> {
     let addr: std::net::SocketAddr = format!("0.0.0.0:{}", port).parse()?;
     let service = VaanyzeOperatorService::new(config, state);
-    
-    info!("Vaanyze CNPG Plugin v{} starting on {}", env!("CARGO_PKG_VERSION"), addr);
-    info!("Capabilities: {:?}", service.detect_capabilities().iter().filter(|c| c.enabled).count());
-    
+
+    info!(
+        "Vaanyze CNPG Plugin v{} starting on {}",
+        env!("CARGO_PKG_VERSION"),
+        addr
+    );
+    info!(
+        "Capabilities: {:?}",
+        service
+            .detect_capabilities()
+            .iter()
+            .filter(|c| c.enabled)
+            .count()
+    );
+
     // In production, this would start the actual tonic server:
     // tonic::transport::Server::builder()
     //     .add_service(OperatorServer::new(service))
     //     .serve(addr)
     //     .await?;
-    
+
     // For now, keep the service alive
     let _ = service;
-    
+
     // Signal ready
     info!("gRPC server ready on {}", addr);
-    
+
     // Keep running (in real impl, server.serve() blocks)
     tokio::signal::ctrl_c().await?;
     info!("Shutting down gRPC server");
-    
+
     Ok(())
 }

@@ -24,7 +24,9 @@ impl AgentClient {
 
     pub async fn get_status(&self) -> Result<AgentStatus> {
         let url = format!("{}/v1/health", self.base_url);
-        let status = self.client.get(&url)
+        let status = self
+            .client
+            .get(&url)
             .send()
             .await?
             .json::<AgentStatus>()
@@ -34,7 +36,9 @@ impl AgentClient {
 
     pub async fn get_metrics(&self) -> Result<AgentMetrics> {
         let url = format!("{}/v1/metrics", self.base_url);
-        let metrics = self.client.get(&url)
+        let metrics = self
+            .client
+            .get(&url)
             .send()
             .await?
             .json::<AgentMetrics>()

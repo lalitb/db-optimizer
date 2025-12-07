@@ -13,13 +13,13 @@
 //   let collector = MockEventGenerator::new(MockProfile::HighLoad);
 //   let events = collector.generate_batch(100);
 
+use rand::rngs::StdRng;
+use rand::{Rng, SeedableRng};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
-use rand::{Rng, SeedableRng};
-use rand::rngs::StdRng;
 
-use super::events::{RawEvent, EventType};
+use super::events::{EventType, RawEvent};
 use super::protocol::{Message, MessagePayload};
 
 /// Workload profiles for generating realistic mock data
@@ -100,13 +100,13 @@ impl MockProfile {
     /// Get latency distribution parameters (mean, stddev) in microseconds
     fn latency_params(&self) -> (u64, u64) {
         match self {
-            Self::Idle => (100, 50),           // 0.1ms avg
-            Self::NormalOltp => (1_000, 500),  // 1ms avg
+            Self::Idle => (100, 50),                  // 0.1ms avg
+            Self::NormalOltp => (1_000, 500),         // 1ms avg
             Self::AnalyticalRead => (50_000, 30_000), // 50ms avg
-            Self::BatchWrite => (5_000, 3_000), // 5ms avg
-            Self::HighContention => (10_000, 8_000), // 10ms avg with high variance
-            Self::HighLoad => (100_000, 80_000), // 100ms avg (overloaded)
-            Self::Mixed => (5_000, 10_000),    // 5ms avg with high variance
+            Self::BatchWrite => (5_000, 3_000),       // 5ms avg
+            Self::HighContention => (10_000, 8_000),  // 10ms avg with high variance
+            Self::HighLoad => (100_000, 80_000),      // 100ms avg (overloaded)
+            Self::Mixed => (5_000, 10_000),           // 5ms avg with high variance
         }
     }
 
@@ -143,17 +143,15 @@ impl MockEventGenerator {
     /// Create a generator with a specific seed for reproducibility
     pub fn with_seed(profile: MockProfile, seed: u64) -> Self {
         let mut rng = StdRng::seed_from_u64(seed);
-        
+
         // Generate some PIDs to use
         let num_pids = match profile {
             MockProfile::Idle => 2,
             MockProfile::HighContention | MockProfile::HighLoad => 50,
             _ => 10,
         };
-        
-        let pids: Vec<u32> = (0..num_pids)
-            .map(|_| rng.gen_range(1000..65000))
-            .collect();
+
+        let pids: Vec<u32> = (0..num_pids).map(|_| rng.gen_range(1000..65000)).collect();
 
         Self {
             profile,
@@ -168,22 +166,24 @@ impl MockEventGenerator {
     /// Generate a single event
     pub fn generate_event(&mut self) -> RawEvent {
         self.event_count += 1;
-        
+
         let timestamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
             .as_nanos() as u64;
-        
-        let pid = *self.pids.get(self.rng.gen_range(0..self.pids.len()))
+
+        let pid = *self
+            .pids
+            .get(self.rng.gen_range(0..self.pids.len()))
             .unwrap_or(&1000);
-        
+
         // Choose event type based on profile
         let event_type = self.choose_event_type();
-        
+
         // Generate latency
         let (mean, stddev) = self.profile.latency_params();
         let duration = self.generate_latency(mean, stddev);
-        
+
         // Generate I/O
         let (read_mean, write_mean) = self.profile.io_params();
         let bytes = if matches!(event_type, EventType::Read) {
@@ -221,28 +221,48 @@ impl MockEventGenerator {
         let r: f64 = self.rng.gen();
         match self.profile {
             MockProfile::AnalyticalRead => {
-                if r < 0.7 { EventType::Read }
-                else if r < 0.9 { EventType::SchedSwitch }
-                else { EventType::PageFault }
+                if r < 0.7 {
+                    EventType::Read
+                } else if r < 0.9 {
+                    EventType::SchedSwitch
+                } else {
+                    EventType::PageFault
+                }
             }
             MockProfile::BatchWrite => {
-                if r < 0.5 { EventType::Write }
-                else if r < 0.7 { EventType::Read }
-                else if r < 0.9 { EventType::Fsync }
-                else { EventType::SchedSwitch }
+                if r < 0.5 {
+                    EventType::Write
+                } else if r < 0.7 {
+                    EventType::Read
+                } else if r < 0.9 {
+                    EventType::Fsync
+                } else {
+                    EventType::SchedSwitch
+                }
             }
             MockProfile::HighContention => {
-                if r < 0.4 { EventType::LockWait }
-                else if r < 0.6 { EventType::LockWait }
-                else if r < 0.8 { EventType::SchedSwitch }
-                else { EventType::Read }
+                if r < 0.4 {
+                    EventType::LockWait
+                } else if r < 0.6 {
+                    EventType::LockWait
+                } else if r < 0.8 {
+                    EventType::SchedSwitch
+                } else {
+                    EventType::Read
+                }
             }
             _ => {
-                if r < 0.3 { EventType::Read }
-                else if r < 0.5 { EventType::Write }
-                else if r < 0.7 { EventType::SchedSwitch }
-                else if r < 0.85 { EventType::PageFault }
-                else { EventType::Fsync }
+                if r < 0.3 {
+                    EventType::Read
+                } else if r < 0.5 {
+                    EventType::Write
+                } else if r < 0.7 {
+                    EventType::SchedSwitch
+                } else if r < 0.85 {
+                    EventType::PageFault
+                } else {
+                    EventType::Fsync
+                }
             }
         }
     }
@@ -252,7 +272,7 @@ impl MockEventGenerator {
         let u1: f64 = self.rng.gen();
         let u2: f64 = self.rng.gen();
         let z = (-2.0 * u1.ln()).sqrt() * (2.0 * std::f64::consts::PI * u2).cos();
-        
+
         let value = mean as f64 + z * stddev as f64;
         value.max(1.0) as u64
     }
@@ -332,7 +352,7 @@ impl MockDaemonServer {
                     events_dropped: 0,
                     query_hash: None,
                 };
-                
+
                 Message::new(MessagePayload::MetricsResponse(mock_metrics))
             }
             MessagePayload::GetStatus => {
@@ -351,19 +371,18 @@ impl MockDaemonServer {
                 };
                 Message::new(MessagePayload::StatusResponse(status))
             }
-            MessagePayload::SetSamplingRate { event_type: _, rate: _ } => {
-                Message::new(MessagePayload::Ok)
-            }
+            MessagePayload::SetSamplingRate {
+                event_type: _,
+                rate: _,
+            } => Message::new(MessagePayload::Ok),
             MessagePayload::Shutdown => {
                 *self.running.lock().unwrap() = false;
                 Message::new(MessagePayload::Ok)
             }
-            _ => {
-                Message::new(MessagePayload::Error { 
-                    code: 1, 
-                    message: "Unknown or unhandled request".to_string() 
-                })
-            }
+            _ => Message::new(MessagePayload::Error {
+                code: 1,
+                message: "Unknown or unhandled request".to_string(),
+            }),
         }
     }
 
@@ -414,7 +433,7 @@ impl ReplayProvider {
             let start = i * event_size;
             let end = start + event_size;
             let event_data = &data[start..end];
-            
+
             match RawEvent::parse(event_data) {
                 Ok(event) => events.push(event),
                 Err(e) => return Err(format!("Failed to parse event {}: {:?}", i, e)),
@@ -643,20 +662,18 @@ mod tests {
 
     #[test]
     fn test_replay_provider_loop() {
-        let events = vec![
-            RawEvent {
-                timestamp_ns: 1,
-                pid: 1000,
-                tid: 1000,
-                event_type_raw: EventType::Read as u8,
-                _pad: [0; 3],
-                value1: 100,
-                value2: 1024,
-            },
-        ];
+        let events = vec![RawEvent {
+            timestamp_ns: 1,
+            pid: 1000,
+            tid: 1000,
+            event_type_raw: EventType::Read as u8,
+            _pad: [0; 3],
+            value1: 100,
+            value2: 1024,
+        }];
 
         let mut provider = ReplayProvider::from_events(events).loop_forever();
-        
+
         for _ in 0..10 {
             assert!(provider.next().is_some());
         }
@@ -665,13 +682,16 @@ mod tests {
     #[test]
     fn test_mock_daemon_get_status() {
         let server = MockDaemonServer::new(MockProfile::Idle);
-        
+
         let request = Message {
             version: 1,
             payload: MessagePayload::GetStatus,
         };
 
         let response = server.handle_request(&request);
-        assert!(matches!(response.payload, MessagePayload::StatusResponse(_)));
+        assert!(matches!(
+            response.payload,
+            MessagePayload::StatusResponse(_)
+        ));
     }
 }

@@ -3,11 +3,11 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
 pub enum IndexType {
-    BTree,      // Default, good for equality and range
-    Hash,       // Equality only, smaller size
-    GIN,        // Full text, JSONB, arrays
-    GiST,       // Geometric, full text, nearest-neighbor
-    BRIN,       // Block range, good for large sequential data
+    BTree, // Default, good for equality and range
+    Hash,  // Equality only, smaller size
+    GIN,   // Full text, JSONB, arrays
+    GiST,  // Geometric, full text, nearest-neighbor
+    BRIN,  // Block range, good for large sequential data
 }
 
 impl IndexType {
@@ -20,7 +20,7 @@ impl IndexType {
             IndexType::BRIN => "BRIN",
         }
     }
-    
+
     pub fn as_sql(&self) -> &str {
         match self {
             IndexType::BTree => "btree",
@@ -36,8 +36,8 @@ impl IndexType {
 pub struct IndexRecommendation {
     pub index_type: IndexType,
     pub columns: Vec<String>,
-    pub opclass: Option<String>,       // Operator class (e.g., gin_trgm_ops)
-    pub where_clause: Option<String>,  // For partial indexes
+    pub opclass: Option<String>, // Operator class (e.g., gin_trgm_ops)
+    pub where_clause: Option<String>, // For partial indexes
     pub confidence_score: f64,
     pub reasoning: String,
     pub estimated_size_mb: f64,
@@ -62,7 +62,7 @@ impl IndexTypeSelector {
             large_table_threshold: 1_000_000,
         }
     }
-    
+
     /// Select optimal index type based on column statistics
     pub fn select_index_type(
         &self,
@@ -71,7 +71,7 @@ impl IndexTypeSelector {
     ) -> IndexRecommendation {
         let decision = self.make_decision(stats);
         let ddl = self.generate_ddl(&decision, stats);
-        
+
         IndexRecommendation {
             index_type: decision.index_type,
             columns: vec![stats.column_name.clone()],
@@ -84,39 +84,39 @@ impl IndexTypeSelector {
             ddl,
         }
     }
-    
+
     fn make_decision(&self, stats: &ColumnStats) -> IndexDecision {
         // Decision tree for index type selection
-        
+
         // 1. Check for special data types first
         if let Some(decision) = self.check_special_types(stats) {
             return decision;
         }
-        
+
         // 2. Check for text search patterns
         if stats.has_text_patterns {
             return self.decide_text_index(stats);
         }
-        
+
         // 3. Check for sequential data patterns (BRIN candidate)
         if stats.is_sequential && stats.total_rows > self.large_table_threshold {
             return self.decide_brin_index(stats);
         }
-        
+
         // 4. Check cardinality for Hash vs BTree
         if stats.cardinality_ratio > self.high_cardinality_threshold && !stats.has_range_queries {
             return self.decide_high_cardinality_index(stats);
         }
-        
+
         // 5. Low cardinality might benefit from partial index
         if stats.cardinality_ratio < self.low_cardinality_threshold {
             return self.decide_low_cardinality_index(stats);
         }
-        
+
         // 6. Default to BTree
         self.default_btree_decision(stats)
     }
-    
+
     fn check_special_types(&self, stats: &ColumnStats) -> Option<IndexDecision> {
         match &stats.data_type {
             PostgresType::Jsonb | PostgresType::Json if stats.has_json_ops => {
@@ -132,7 +132,7 @@ impl IndexTypeSelector {
                     where_clause: None,
                 })
             }
-            
+
             PostgresType::Array(_) if stats.has_array_ops => {
                 Some(IndexDecision {
                     index_type: IndexType::GIN,
@@ -146,7 +146,7 @@ impl IndexTypeSelector {
                     where_clause: None,
                 })
             }
-            
+
             PostgresType::Geometry | PostgresType::Point if stats.has_geometric_ops => {
                 Some(IndexDecision {
                     index_type: IndexType::GiST,
@@ -160,7 +160,7 @@ impl IndexTypeSelector {
                     where_clause: None,
                 })
             }
-            
+
             PostgresType::Tsvector => {
                 Some(IndexDecision {
                     index_type: IndexType::GIN,
@@ -174,11 +174,11 @@ impl IndexTypeSelector {
                     where_clause: None,
                 })
             }
-            
+
             _ => None,
         }
     }
-    
+
     fn decide_text_index(&self, stats: &ColumnStats) -> IndexDecision {
         IndexDecision {
             index_type: IndexType::GIN,
@@ -193,7 +193,7 @@ impl IndexTypeSelector {
             where_clause: None,
         }
     }
-    
+
     fn decide_brin_index(&self, stats: &ColumnStats) -> IndexDecision {
         IndexDecision {
             index_type: IndexType::BRIN,
@@ -208,7 +208,7 @@ impl IndexTypeSelector {
             where_clause: None,
         }
     }
-    
+
     fn decide_high_cardinality_index(&self, stats: &ColumnStats) -> IndexDecision {
         IndexDecision {
             index_type: IndexType::Hash,
@@ -217,23 +217,25 @@ impl IndexTypeSelector {
             reasoning: format!(
                 "Hash index recommended for high cardinality column '{}' ({:.1}% unique) \
                  with equality-only queries. Smaller than BTREE but doesn't support range scans.",
-                stats.column_name, stats.cardinality_ratio * 100.0
+                stats.column_name,
+                stats.cardinality_ratio * 100.0
             ),
             where_clause: None,
         }
     }
-    
+
     fn decide_low_cardinality_index(&self, stats: &ColumnStats) -> IndexDecision {
         // Check if we should recommend partial index
-        let where_clause = if !stats.most_common_values.is_empty() 
-            && !stats.most_common_freqs.is_empty() 
-            && stats.most_common_freqs[0] > 0.3 {
+        let where_clause = if !stats.most_common_values.is_empty()
+            && !stats.most_common_freqs.is_empty()
+            && stats.most_common_freqs[0] > 0.3
+        {
             let most_common = &stats.most_common_values[0];
             Some(format!("{} != '{}'", stats.column_name, most_common))
         } else {
             None
         };
-        
+
         let reasoning = if let Some(ref clause) = where_clause {
             format!(
                 "Partial BTREE index recommended for low cardinality column '{}'. \
@@ -247,10 +249,11 @@ impl IndexTypeSelector {
         } else {
             format!(
                 "BTREE index recommended for column '{}' with {:.1}% cardinality.",
-                stats.column_name, stats.cardinality_ratio * 100.0
+                stats.column_name,
+                stats.cardinality_ratio * 100.0
             )
         };
-        
+
         IndexDecision {
             index_type: IndexType::BTree,
             opclass: None,
@@ -259,7 +262,7 @@ impl IndexTypeSelector {
             where_clause,
         }
     }
-    
+
     fn default_btree_decision(&self, stats: &ColumnStats) -> IndexDecision {
         IndexDecision {
             index_type: IndexType::BTree,
@@ -269,12 +272,13 @@ impl IndexTypeSelector {
                 "Standard BTREE index recommended for column '{}'. \
                  Good general-purpose index for equality and range queries. \
                  Column has {:.1}% cardinality.",
-                stats.column_name, stats.cardinality_ratio * 100.0
+                stats.column_name,
+                stats.cardinality_ratio * 100.0
             ),
             where_clause: None,
         }
     }
-    
+
     fn estimate_index_size(&self, stats: &ColumnStats, index_type: &IndexType) -> f64 {
         let base_size = match index_type {
             IndexType::BTree => {
@@ -300,11 +304,11 @@ impl IndexTypeSelector {
                 (stats.total_rows as f64 / 128.0) * 64.0
             }
         };
-        
+
         // Convert to MB
         base_size / (1024.0 * 1024.0)
     }
-    
+
     fn estimate_improvement(&self, stats: &ColumnStats, index_type: &IndexType) -> f64 {
         // Estimate query improvement percentage
         match index_type {
@@ -319,7 +323,11 @@ impl IndexTypeSelector {
             }
             IndexType::Hash => {
                 // O(1) for equality
-                if stats.total_rows > 1000 { 95.0 } else { 80.0 }
+                if stats.total_rows > 1000 {
+                    95.0
+                } else {
+                    80.0
+                }
             }
             IndexType::GIN => {
                 // Excellent for contained searches
@@ -327,42 +335,45 @@ impl IndexTypeSelector {
             }
             IndexType::BRIN => {
                 // Good for range scans on large tables
-                if stats.total_rows > 10_000_000 { 90.0 } else { 70.0 }
+                if stats.total_rows > 10_000_000 {
+                    90.0
+                } else {
+                    70.0
+                }
             }
-            IndexType::GiST => {
-                75.0
-            }
+            IndexType::GiST => 75.0,
         }
     }
-    
+
     fn generate_ddl(&self, decision: &IndexDecision, stats: &ColumnStats) -> String {
         let mut ddl = String::new();
-        
+
         // Index name
-        let index_name = format!("idx_{}_{}_{}", 
+        let index_name = format!(
+            "idx_{}_{}_{}",
             stats.table_name,
             stats.column_name,
             decision.index_type.as_sql()
         );
-        
+
         ddl.push_str(&format!("CREATE INDEX CONCURRENTLY {}\n", index_name));
         ddl.push_str(&format!("  ON {}.{}", stats.schema_name, stats.table_name));
         ddl.push_str(&format!(" USING {}", decision.index_type.as_sql()));
-        
+
         // Columns with operator class if specified
-        ddl.push_str(&format!(" ({}",  stats.column_name));
+        ddl.push_str(&format!(" ({}", stats.column_name));
         if let Some(opclass) = &decision.opclass {
             ddl.push_str(&format!(" {}", opclass));
         }
         ddl.push_str(")");
-        
+
         // WHERE clause for partial index
         if let Some(where_clause) = &decision.where_clause {
             ddl.push_str(&format!("\n  WHERE {}", where_clause));
         }
-        
+
         ddl.push_str(";");
-        
+
         ddl
     }
 }
@@ -394,7 +405,7 @@ pub enum QueryPredicate {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_jsonb_index_selection() {
         let stats = ColumnStats {
@@ -417,15 +428,15 @@ mod tests {
             has_range_queries: false,
             is_sequential: false,
         };
-        
+
         let selector = IndexTypeSelector::new();
         let rec = selector.select_index_type(&stats, &[]);
-        
+
         assert_eq!(rec.index_type, IndexType::GIN);
         assert_eq!(rec.opclass, Some("jsonb_path_ops".to_string()));
         assert!(rec.confidence_score > 0.9);
     }
-    
+
     #[test]
     fn test_brin_for_sequential_data() {
         let stats = ColumnStats {
@@ -448,14 +459,14 @@ mod tests {
             has_geometric_ops: false,
             has_range_queries: true,
         };
-        
+
         let selector = IndexTypeSelector::new();
         let rec = selector.select_index_type(&stats, &[]);
-        
+
         assert_eq!(rec.index_type, IndexType::BRIN);
         assert!(rec.estimated_size_mb < 5.0); // BRIN is tiny (< 5MB for 10M rows)
     }
-    
+
     #[test]
     fn test_partial_index_for_skewed_data() {
         let stats = ColumnStats {
@@ -478,10 +489,10 @@ mod tests {
             has_range_queries: false,
             is_sequential: false,
         };
-        
+
         let selector = IndexTypeSelector::new();
         let rec = selector.select_index_type(&stats, &[]);
-        
+
         assert_eq!(rec.index_type, IndexType::BTree);
         assert!(rec.where_clause.is_some());
         assert!(rec.where_clause.unwrap().contains("!= 'completed'"));

@@ -39,7 +39,7 @@ impl From<u8> for EventType {
 }
 
 /// Raw event structure from kernel
-/// 
+///
 /// This must match the `struct event` in bpf/events.bpf.c exactly.
 /// Using Pod/Zeroable for safe transmutation from raw bytes.
 #[repr(C, packed)]
@@ -59,7 +59,7 @@ impl RawEvent {
     pub fn event_type(&self) -> EventType {
         EventType::from(self.event_type_raw)
     }
-    
+
     /// Parse from raw bytes with validation
     pub fn parse(data: &[u8]) -> Result<Self, ParseError> {
         // Validate size
@@ -69,23 +69,22 @@ impl RawEvent {
                 actual: data.len(),
             });
         }
-        
+
         // Safe transmute with bytemuck
-        let event = bytemuck::try_pod_read_unaligned::<Self>(
-            &data[..std::mem::size_of::<Self>()]
-        ).map_err(|e| ParseError::InvalidData(e.to_string()))?;
-        
+        let event = bytemuck::try_pod_read_unaligned::<Self>(&data[..std::mem::size_of::<Self>()])
+            .map_err(|e| ParseError::InvalidData(e.to_string()))?;
+
         // Validate timestamp (sanity check - should be reasonable)
         if event.timestamp_ns == 0 {
             return Err(ParseError::InvalidTimestamp(event.timestamp_ns));
         }
-        
+
         // Validate PID (0 is kernel, should typically be > 0 for userspace)
         // We allow 0 for kernel threads though
-        
+
         Ok(event)
     }
-    
+
     /// Size of the event structure
     pub const fn size() -> usize {
         std::mem::size_of::<Self>()
@@ -114,7 +113,7 @@ impl fmt::Display for RawEvent {
 }
 
 /// PostgreSQL-specific event from uprobes
-/// 
+///
 /// This matches `struct pg_event` in bpf/postgres.bpf.c
 #[repr(C, packed)]
 #[derive(Debug, Clone, Copy, Pod, Zeroable)]
@@ -157,7 +156,7 @@ impl PostgresEvent {
     pub fn pg_event_type(&self) -> PgEventType {
         PgEventType::from(self.event_type)
     }
-    
+
     /// Parse from raw bytes
     pub fn parse(data: &[u8]) -> Result<Self, ParseError> {
         if data.len() < std::mem::size_of::<Self>() {
@@ -166,11 +165,10 @@ impl PostgresEvent {
                 actual: data.len(),
             });
         }
-        
-        let event = bytemuck::try_pod_read_unaligned::<Self>(
-            &data[..std::mem::size_of::<Self>()]
-        ).map_err(|e| ParseError::InvalidData(e.to_string()))?;
-        
+
+        let event = bytemuck::try_pod_read_unaligned::<Self>(&data[..std::mem::size_of::<Self>()])
+            .map_err(|e| ParseError::InvalidData(e.to_string()))?;
+
         Ok(event)
     }
 }
@@ -180,13 +178,13 @@ impl PostgresEvent {
 pub enum ParseError {
     #[error("Insufficient data: expected {expected} bytes, got {actual}")]
     InsufficientData { expected: usize, actual: usize },
-    
+
     #[error("Invalid data: {0}")]
     InvalidData(String),
-    
+
     #[error("Invalid event type: {0}")]
     InvalidEventType(u8),
-    
+
     #[error("Invalid timestamp: {0}")]
     InvalidTimestamp(u64),
 }
@@ -194,21 +192,21 @@ pub enum ParseError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_raw_event_size() {
         // Ensure structure is properly packed
         // Layout: timestamp_ns(8) + pid(4) + tid(4) + event_type_raw(1) + _pad(3) + value1(8) + value2(8) = 36
         assert_eq!(RawEvent::size(), 36);
     }
-    
+
     #[test]
     fn test_event_type_conversion() {
         assert_eq!(EventType::from(1), EventType::Read);
         assert_eq!(EventType::from(2), EventType::Write);
         assert_eq!(EventType::from(99), EventType::Unknown);
     }
-    
+
     #[test]
     fn test_raw_event_parse() {
         let mut data = [0u8; 36];
@@ -224,7 +222,7 @@ mod tests {
         // value1 = 4096 (offset 20)
         data[20..28].copy_from_slice(&4096u64.to_ne_bytes());
         // value2 = 0 (offset 28..36, leave as zeros)
-        
+
         let event = RawEvent::parse(&data).unwrap();
         // Copy values to avoid references to packed struct fields
         let pid = event.pid;
@@ -233,14 +231,14 @@ mod tests {
         assert_eq!(event.event_type(), EventType::Read);
         assert_eq!(value1, 4096);
     }
-    
+
     #[test]
     fn test_insufficient_data() {
         let data = [0u8; 10];
         let result = RawEvent::parse(&data);
         assert!(matches!(result, Err(ParseError::InsufficientData { .. })));
     }
-    
+
     #[test]
     fn test_postgres_event_types() {
         assert_eq!(PgEventType::from(100), PgEventType::QueryStart);

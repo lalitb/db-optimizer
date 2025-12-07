@@ -1,8 +1,8 @@
-use serde::{Deserialize, Serialize};
-use chrono::{DateTime, Utc};
-use uuid::Uuid;
-use crate::models::ReportSummary;
 use crate::ebpf::lock_tracer::LockContentionSummary;
+use crate::models::ReportSummary;
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DatabaseInstance {
@@ -10,14 +10,14 @@ pub struct DatabaseInstance {
     pub name: String,
     pub connection_string: String, // In a real app, this should be encrypted or stored securely
     pub agent_url: Option<String>, // URL of the Vaanyze Node Agent (e.g., http://host:9090)
-    pub environment: String, // "production", "staging", "dev"
+    pub environment: String,       // "production", "staging", "dev"
     pub tags: Vec<String>,
     pub created_at: DateTime<Utc>,
     pub last_check_at: Option<DateTime<Utc>>,
     pub health_score: Option<u8>,
     pub status: InstanceStatus,
     pub version: Option<String>,
-    
+
     // Detailed metrics
     pub metrics: Option<InstanceMetrics>,
     pub summary: Option<ReportSummary>,
@@ -29,7 +29,7 @@ pub struct InstanceMetrics {
     pub total_size_mb: f64,
     pub table_count: usize,
     pub index_count: usize,
-    
+
     // Connections
     pub active_connections: i32,
     pub max_connections: i32,

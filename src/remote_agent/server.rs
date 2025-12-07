@@ -1,14 +1,9 @@
-use axum::{
-    routing::get,
-    Router,
-    Json,
-    extract::State,
-};
+use super::models::{AgentMetrics, AgentStatus};
+use crate::ebpf::manager::EbpfManager;
+use axum::{extract::State, routing::get, Json, Router};
+use chrono::Utc;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use crate::ebpf::manager::EbpfManager;
-use super::models::{AgentMetrics, AgentStatus};
-use chrono::Utc;
 
 pub struct AgentServerState {
     pub ebpf_manager: Arc<RwLock<EbpfManager>>,
@@ -28,14 +23,14 @@ pub async fn run_agent_server(manager: Arc<RwLock<EbpfManager>>, port: u16) {
 
     let addr = std::net::SocketAddr::from(([0, 0, 0, 0], port));
     tracing::info!("Agent server listening on {}", addr);
-    
+
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     axum::serve(listener, app).await.unwrap();
 }
 
 async fn health_check(State(state): State<Arc<AgentServerState>>) -> Json<AgentStatus> {
     let manager = state.ebpf_manager.read().await;
-    
+
     Json(AgentStatus {
         version: env!("CARGO_PKG_VERSION").to_string(),
         uptime_seconds: (Utc::now() - state.start_time).num_seconds() as u64,
@@ -46,7 +41,7 @@ async fn health_check(State(state): State<Arc<AgentServerState>>) -> Json<AgentS
 
 async fn get_metrics(State(state): State<Arc<AgentServerState>>) -> Json<AgentMetrics> {
     let manager = state.ebpf_manager.read().await;
-    
+
     // Get lock summary
     let lock_summary = if manager.is_running() {
         Some(manager.get_summary())

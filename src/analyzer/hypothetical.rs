@@ -1,6 +1,6 @@
-use sqlx::{PgPool, Row, Transaction, Postgres};
-use anyhow::{Result, Context};
+use anyhow::{Context, Result};
 use serde_json::Value;
+use sqlx::{PgPool, Postgres, Row, Transaction};
 
 /// Analyzer for "What-If" scenarios using hypopg
 pub struct HypotheticalAnalyzer {
@@ -26,7 +26,7 @@ impl HypotheticalAnalyzer {
         let result = sqlx::query("SELECT 1 FROM pg_extension WHERE extname = 'hypopg'")
             .fetch_optional(&self.pool)
             .await;
-        
+
         match result {
             Ok(Some(_)) => true,
             _ => false,
@@ -34,7 +34,7 @@ impl HypotheticalAnalyzer {
     }
 
     /// Evaluate a hypothetical index
-    /// 
+    ///
     /// This creates a virtual index, runs EXPLAIN, and compares the cost.
     /// It runs inside a transaction that is rolled back, so no changes persist.
     pub async fn evaluate_index(&self, query: &str, index_def: &str) -> Result<HypotheticalResult> {
@@ -54,10 +54,10 @@ impl HypotheticalAnalyzer {
 
         // 3. Get new cost (with index)
         let new_cost = self.get_query_cost(&mut tx, query).await?;
-        
+
         // 4. Get plan to see if index was used
         let plan = self.get_explain_text(&mut tx, query).await?;
-        
+
         // hypopg indexes usually show up with their name or as "Index Scan using <hypothetical>"
         // We can also check if the cost went down significantly
         let index_used = new_cost < baseline_cost && plan.to_lowercase().contains("index");
@@ -83,14 +83,14 @@ impl HypotheticalAnalyzer {
     async fn get_query_cost(&self, tx: &mut Transaction<'_, Postgres>, query: &str) -> Result<f64> {
         // Use EXPLAIN (FORMAT JSON) to get precise cost
         let explain_sql = format!("EXPLAIN (FORMAT JSON) {}", query);
-        
+
         let row = sqlx::query(&explain_sql)
             .fetch_one(&mut **tx)
             .await
             .context("Failed to run EXPLAIN")?;
-            
+
         let json_val: Value = row.try_get(0)?;
-        
+
         // Parse: [ { "Plan": { "Total Cost": 123.45, ... } } ]
         if let Some(array) = json_val.as_array() {
             if let Some(first) = array.first() {
@@ -101,29 +101,30 @@ impl HypotheticalAnalyzer {
                 }
             }
         }
-        
+
         Ok(0.0)
     }
-    
-    async fn get_explain_text(&self, tx: &mut Transaction<'_, Postgres>, query: &str) -> Result<String> {
+
+    async fn get_explain_text(
+        &self,
+        tx: &mut Transaction<'_, Postgres>,
+        query: &str,
+    ) -> Result<String> {
         let explain_sql = format!("EXPLAIN {}", query);
-        let row = sqlx::query(&explain_sql)
-            .fetch_one(&mut **tx)
-            .await?;
-            
+        let row = sqlx::query(&explain_sql).fetch_one(&mut **tx).await?;
+
         // EXPLAIN returns a set of rows, but fetch_one gets the first line which usually contains the top node
         // For a full plan we'd need fetch_all, but for checking index usage, the top node or first few lines are often enough
         // Actually, let's fetch all to be sure we see the index scan
-        
-        let rows = sqlx::query(&explain_sql)
-            .fetch_all(&mut **tx)
-            .await?;
-            
-        let plan: String = rows.iter()
+
+        let rows = sqlx::query(&explain_sql).fetch_all(&mut **tx).await?;
+
+        let plan: String = rows
+            .iter()
             .map(|r| r.get::<String, _>(0))
             .collect::<Vec<String>>()
             .join("\n");
-            
+
         Ok(plan)
     }
 }

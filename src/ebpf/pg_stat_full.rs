@@ -375,7 +375,9 @@ impl PgStatIntegrator {
     pub async fn record_ebpf_io(&self, query_id: i64, latency_us: u64, is_write: bool) {
         let mut metrics = self.ebpf_io_metrics.write().await;
 
-        let entry = metrics.entry(query_id).or_insert_with(EbpfQueryMetrics::default);
+        let entry = metrics
+            .entry(query_id)
+            .or_insert_with(EbpfQueryMetrics::default);
         entry.samples += 1;
         entry.total_io_latency_us += latency_us;
         entry.min_io_latency_us = entry.min_io_latency_us.min(latency_us);
@@ -406,7 +408,9 @@ impl PgStatIntegrator {
     /// Record eBPF lock event for a query
     pub async fn record_ebpf_lock(&self, query_id: i64, wait_us: u64) {
         let mut metrics = self.ebpf_io_metrics.write().await;
-        let entry = metrics.entry(query_id).or_insert_with(EbpfQueryMetrics::default);
+        let entry = metrics
+            .entry(query_id)
+            .or_insert_with(EbpfQueryMetrics::default);
         entry.lock_wait_us += wait_us;
     }
 
@@ -427,7 +431,12 @@ impl PgStatIntegrator {
                 (
                     Some(samples[len * 50 / 100] as f64),
                     Some(samples[len * 95 / 100] as f64),
-                    Some(samples.get(len * 99 / 100).copied().unwrap_or(samples[len - 1]) as f64),
+                    Some(
+                        samples
+                            .get(len * 99 / 100)
+                            .copied()
+                            .unwrap_or(samples[len - 1]) as f64,
+                    ),
                 )
             } else {
                 (None, None, None)
@@ -460,7 +469,11 @@ impl PgStatIntegrator {
     pub async fn get_top_queries_by_time(&self, limit: usize) -> Vec<CorrelatedQueryMetrics> {
         let statements = self.statements.read().await;
         let mut sorted: Vec<_> = statements.values().cloned().collect();
-        sorted.sort_by(|a, b| b.total_exec_time.partial_cmp(&a.total_exec_time).unwrap_or(std::cmp::Ordering::Equal));
+        sorted.sort_by(|a, b| {
+            b.total_exec_time
+                .partial_cmp(&a.total_exec_time)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
 
         drop(statements);
 
@@ -586,7 +599,9 @@ fn rand_u64() -> u64 {
         .duration_since(SystemTime::UNIX_EPOCH)
         .unwrap_or(Duration::ZERO)
         .as_nanos();
-    (nanos as u64).wrapping_mul(6364136223846793005).wrapping_add(1)
+    (nanos as u64)
+        .wrapping_mul(6364136223846793005)
+        .wrapping_add(1)
 }
 
 #[cfg(test)]

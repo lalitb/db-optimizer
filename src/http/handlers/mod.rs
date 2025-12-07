@@ -1,18 +1,19 @@
 // HTTP request handlers
 
 pub mod config_tuning;
+pub mod fleet;
 pub mod locks;
 pub mod queries;
 pub mod recommendations;
 pub mod stats;
-pub mod fleet;
 
 use crate::http::{ApiResponse, HealthStatus};
 use axum::{response::Html, Json};
 
 /// Root endpoint - API information
 pub async fn root() -> Html<&'static str> {
-    Html(r#"
+    Html(
+        r#"
 <!DOCTYPE html>
 <html>
 <head>
@@ -113,5 +114,6 @@ pub async fn root() -> Html<&'static str> {
     </div>
 </body>
 </html>
-    "#)
+    "#,
+    )
 }

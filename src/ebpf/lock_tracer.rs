@@ -3,7 +3,7 @@
 
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
@@ -138,7 +138,7 @@ impl LockContentionMetrics {
         // - Average wait time (>100ms is concerning)
         // - Failed acquisitions (indicates high contention)
         // - Slowpath usage (fastpath bypass means contention)
-        
+
         let wait_score = (self.avg_wait_time_ms() / 100.0).min(1.0);
         let failure_rate = if self.wait_count > 0 {
             self.failed_count as f64 / self.wait_count as f64
@@ -164,7 +164,8 @@ impl LockContentionMetrics {
         self.avg_wait_time_ms() > 50.0
             || (self.wait_count > 10 && (self.failed_count as f64 / self.wait_count as f64) > 0.05)
             || (self.wait_count > 10
-                && (self.slowpath_count as f64 / (self.fastpath_count + self.slowpath_count) as f64)
+                && (self.slowpath_count as f64
+                    / (self.fastpath_count + self.slowpath_count) as f64)
                     > 0.5)
     }
 }
@@ -180,10 +181,10 @@ struct LockStatsKey {
 pub struct LockTracer {
     /// Aggregated statistics per table/lock_mode
     stats: Arc<Mutex<HashMap<LockStatsKey, LockContentionMetrics>>>,
-    
+
     /// Table OID to name mapping (populated from PostgreSQL metadata)
     table_names: Arc<Mutex<HashMap<u32, String>>>,
-    
+
     /// Recent events (for debugging/analysis)
     recent_events: Arc<Mutex<Vec<LockEvent>>>,
     max_recent_events: usize,
@@ -333,7 +334,11 @@ impl LockTracer {
         let stats = self.stats.lock().unwrap();
         let events = self.recent_events.lock().unwrap();
 
-        let total_tables = stats.keys().map(|k| k.table_oid).collect::<std::collections::HashSet<_>>().len();
+        let total_tables = stats
+            .keys()
+            .map(|k| k.table_oid)
+            .collect::<std::collections::HashSet<_>>()
+            .len();
         let high_contention_count = stats.values().filter(|m| m.is_high_contention()).count();
         let total_wait_time_ms: f64 = stats.values().map(|m| m.total_wait_time_ms()).sum();
         let total_failed: u64 = stats.values().map(|m| m.failed_count).sum();

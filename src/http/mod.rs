@@ -7,15 +7,15 @@ pub mod models;
 
 use crate::config::HttpServerConfig;
 use crate::ebpf::EbpfManager;
-use crate::persistence::PersistenceStore;
 use crate::fleet::FleetManager;
+use crate::persistence::PersistenceStore;
 use axum::{
-    routing::{get, post, delete},
+    routing::{delete, get, post},
     Router,
 };
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use tower_http::cors::{CorsLayer, Any};
+use tower_http::cors::{Any, CorsLayer};
 use tower_http::services::ServeDir;
 use tower_http::trace::TraceLayer;
 use tracing::info;
@@ -40,42 +40,49 @@ pub fn create_router(state: AppState) -> Router {
         .route("/health", get(handlers::stats::health))
         .route("/stats/summary", get(handlers::stats::summary))
         .route("/stats/metrics", get(handlers::stats::metrics))
-        
         // Lock Endpoints
         .route("/locks/contention", get(handlers::locks::contention))
         .route("/locks/summary", get(handlers::locks::summary))
         .route("/locks/events", get(handlers::locks::events))
         .route("/locks/table/:oid", get(handlers::locks::table_locks))
-        
         // Query Endpoints
         .route("/queries/slow", get(handlers::queries::slow_queries))
         .route("/queries/analyze", post(handlers::queries::analyze_query))
         .route("/queries/rewrite", post(handlers::queries::rewrite_query))
-        
         // Fleet Management Endpoints
-        .route("/fleet", get(handlers::fleet::list_instances).post(handlers::fleet::register_instance))
+        .route(
+            "/fleet",
+            get(handlers::fleet::list_instances).post(handlers::fleet::register_instance),
+        )
         .route("/fleet/summary", get(handlers::fleet::get_summary))
-        .route("/fleet/:id", get(handlers::fleet::get_instance).delete(handlers::fleet::remove_instance))
+        .route(
+            "/fleet/:id",
+            get(handlers::fleet::get_instance).delete(handlers::fleet::remove_instance),
+        )
         .route("/fleet/:id/check", post(handlers::fleet::check_instance))
-        
         // Recommendations
         .route("/recommendations", get(handlers::recommendations::list))
-        .route("/recommendations/:id/approve", post(handlers::recommendations::approve));
-        
+        .route(
+            "/recommendations/:id/approve",
+            post(handlers::recommendations::approve),
+        );
+
     let api_v1 = api_v1.with_state(state.clone());
-    
+
     // Add config tuning routes if database pool is available
     let api_v1 = if let Some(pool) = &state.db_pool {
-        let config_state = Arc::new(handlers::config_tuning::ConfigTuningState {
-            pool: pool.clone(),
-        });
-        
+        let config_state =
+            Arc::new(handlers::config_tuning::ConfigTuningState { pool: pool.clone() });
+
         let config_router = Router::new()
             .route("/tune", post(handlers::config_tuning::tune_config))
             .route("/validate", get(handlers::config_tuning::validate_config))
-            .route("/detect-workload", get(handlers::config_tuning::detect_workload))
+            .route(
+                "/detect-workload",
+                get(handlers::config_tuning::detect_workload),
+            )
             .with_state(config_state);
-        
+
         api_v1.nest("/config", config_router)
     } else {
         api_v1
@@ -102,9 +109,9 @@ pub async fn serve(
     db_pool: Option<sqlx::PgPool>,
 ) -> anyhow::Result<()> {
     let addr = format!("{}:{}", config.bind_address, config.port);
-    
+
     let fleet_manager = Arc::new(FleetManager::new());
-    
+
     // Start background fleet monitoring task
     let fleet_monitor = fleet_manager.clone();
     tokio::spawn(async move {
@@ -115,7 +122,7 @@ pub async fn serve(
             fleet_monitor.check_all_instances().await;
         }
     });
-    
+
     let state = AppState {
         persistence,
         ebpf_manager,
@@ -125,11 +132,11 @@ pub async fn serve(
     };
 
     let app = create_router(state);
-    
+
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     info!("HTTP server listening on {}", addr);
-    
+
     axum::serve(listener, app).await?;
-    
+
     Ok(())
 }

@@ -4,11 +4,11 @@
 // periodically polling pg_stat_activity. This bridges the gap between
 // kernel-level PIDs and application-level query context.
 
+use chrono::{DateTime, Utc};
+use sqlx::PgPool;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
-use chrono::{DateTime, Utc};
-use sqlx::PgPool;
 use tokio::sync::RwLock;
 use tracing::{debug, error, warn};
 
@@ -57,7 +57,7 @@ impl PgStatCorrelator {
     pub fn new(pool: PgPool) -> Self {
         Self::with_interval(pool, Duration::from_secs(1))
     }
-    
+
     /// Create with custom refresh interval
     pub fn with_interval(pool: PgPool, interval: Duration) -> Self {
         Self {
@@ -67,20 +67,20 @@ impl PgStatCorrelator {
             refresh_interval: interval,
         }
     }
-    
+
     /// Start the background refresh loop
     pub async fn run(&self) {
         let mut interval = tokio::time::interval(self.refresh_interval);
-        
+
         loop {
             interval.tick().await;
-            
+
             if let Err(e) = self.refresh().await {
                 error!("Failed to refresh pg_stat_activity: {}", e);
             }
         }
     }
-    
+
     /// Refresh the cache from pg_stat_activity
     pub async fn refresh(&self) -> Result<(), sqlx::Error> {
         let rows = sqlx::query_as::<_, PgStatActivityRow>(
@@ -101,18 +101,18 @@ impl PgStatCorrelator {
             WHERE pid != pg_backend_pid()
               AND state IS NOT NULL
               AND query IS NOT NULL
-            "#
+            "#,
         )
         .fetch_all(&self.pool)
         .await?;
-        
+
         let mut cache = self.active_queries.write().await;
         cache.clear();
-        
+
         for row in rows {
             let query_str = row.query.as_deref().unwrap_or("");
             let query_hash = compute_query_hash(query_str);
-            
+
             let active = ActiveQuery {
                 pid: row.pid as u32,
                 datname: row.datname.unwrap_or_default(),
@@ -127,57 +127,61 @@ impl PgStatCorrelator {
                 backend_start: row.backend_start,
                 query_hash,
             };
-            
+
             cache.insert(active.pid, active);
         }
-        
-        debug!("Refreshed pg_stat_activity: {} active backends", cache.len());
+
+        debug!(
+            "Refreshed pg_stat_activity: {} active backends",
+            cache.len()
+        );
         Ok(())
     }
-    
+
     /// Get query info for a PID
     pub async fn get_query(&self, pid: u32) -> Option<ActiveQuery> {
         let cache = self.active_queries.read().await;
         cache.get(&pid).cloned()
     }
-    
+
     /// Get query hash for a PID
     pub async fn get_query_hash(&self, pid: u32) -> Option<u64> {
         let cache = self.active_queries.read().await;
         cache.get(&pid).map(|q| q.query_hash)
     }
-    
+
     /// Get all active PIDs
     pub async fn get_active_pids(&self) -> Vec<u32> {
         let cache = self.active_queries.read().await;
         cache.keys().cloned().collect()
     }
-    
+
     /// Check if a PID is currently running a query
     pub async fn is_active(&self, pid: u32) -> bool {
         let cache = self.active_queries.read().await;
-        cache.get(&pid)
+        cache
+            .get(&pid)
             .map(|q| q.state == "active")
             .unwrap_or(false)
     }
-    
+
     /// Get wait event for a PID (for lock correlation)
     pub async fn get_wait_event(&self, pid: u32) -> Option<(String, String)> {
         let cache = self.active_queries.read().await;
-        cache.get(&pid).and_then(|q| {
-            match (&q.wait_event_type, &q.wait_event) {
+        cache
+            .get(&pid)
+            .and_then(|q| match (&q.wait_event_type, &q.wait_event) {
                 (Some(t), Some(e)) => Some((t.clone(), e.clone())),
                 _ => None,
-            }
-        })
+            })
     }
-    
+
     /// Register a prepared statement mapping
     /// Called when we see a Parse message in the eBPF trace
     pub async fn register_prepared_statement(&self, pid: u32, portal_hash: u64, query_hash: u64) {
         let mut cache = self.prepared_statements.write().await;
         cache.insert((pid, portal_hash), query_hash);
-        
+
         // Limit cache size
         if cache.len() > 10000 {
             // Simple eviction - remove oldest entries
@@ -187,13 +191,13 @@ impl PgStatCorrelator {
             }
         }
     }
-    
+
     /// Look up query hash for a prepared statement execution
     pub async fn get_prepared_query_hash(&self, pid: u32, portal_hash: u64) -> Option<u64> {
         let cache = self.prepared_statements.read().await;
         cache.get(&(pid, portal_hash)).cloned()
     }
-    
+
     /// Get queries waiting on a specific blocking PID
     pub async fn get_blocked_by(&self, blocking_pid: u32) -> Vec<ActiveQuery> {
         // This requires pg_blocking_pids() which may not be available in all versions
@@ -213,15 +217,16 @@ impl PgStatCorrelator {
                 backend_start
             FROM pg_stat_activity
             WHERE $1 = ANY(pg_blocking_pids(pid))
-            "#
+            "#,
         )
         .bind(blocking_pid as i32)
         .fetch_all(&self.pool)
         .await;
-        
+
         match result {
-            Ok(rows) => {
-                rows.into_iter().map(|row| {
+            Ok(rows) => rows
+                .into_iter()
+                .map(|row| {
                     let query_hash = compute_query_hash(&row.query.as_deref().unwrap_or(""));
                     ActiveQuery {
                         pid: row.pid as u32,
@@ -237,8 +242,8 @@ impl PgStatCorrelator {
                         backend_start: row.backend_start,
                         query_hash,
                     }
-                }).collect()
-            }
+                })
+                .collect(),
             Err(e) => {
                 warn!("Failed to get blocked queries: {}", e);
                 Vec::new()
@@ -264,15 +269,15 @@ struct PgStatActivityRow {
 }
 
 /// Compute a hash for query normalization
-/// 
+///
 /// This is a simplified version - for production, use proper query normalization
 fn compute_query_hash(query: &str) -> u64 {
     use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hash, Hasher};
-    
+
     // Simple normalization: lowercase, collapse whitespace, remove literals
     let normalized = normalize_query(query);
-    
+
     let mut hasher = DefaultHasher::new();
     normalized.hash(&mut hasher);
     hasher.finish()
@@ -281,16 +286,16 @@ fn compute_query_hash(query: &str) -> u64 {
 /// Normalize a query for consistent hashing
 fn normalize_query(query: &str) -> String {
     let mut result = query.to_lowercase();
-    
+
     // Collapse whitespace
     result = result.split_whitespace().collect::<Vec<_>>().join(" ");
-    
+
     // Remove numeric literals (simple regex-like replacement)
     let mut normalized = String::with_capacity(result.len());
     let mut in_number = false;
     let mut in_string = false;
     let mut prev_char = ' ';
-    
+
     for c in result.chars() {
         if c == '\'' {
             if !in_string {
@@ -313,41 +318,41 @@ fn normalize_query(query: &str) -> String {
         }
         prev_char = c;
     }
-    
+
     normalized
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_normalize_query() {
         assert_eq!(
             normalize_query("SELECT * FROM users WHERE id = 123"),
             "select * from users where id = ?"
         );
-        
+
         assert_eq!(
             normalize_query("SELECT * FROM users WHERE name = 'John'"),
             "select * from users where name = ?"
         );
-        
+
         assert_eq!(
             normalize_query("SELECT * FROM orders WHERE total > 100.50"),
             "select * from orders where total > ?.?"
         );
     }
-    
+
     #[test]
     fn test_query_hash_consistency() {
         let q1 = "SELECT * FROM users WHERE id = 123";
         let q2 = "SELECT * FROM users WHERE id = 456";
         let q3 = "SELECT * FROM orders WHERE id = 123";
-        
+
         // Same query with different params should have same hash
         assert_eq!(compute_query_hash(q1), compute_query_hash(q2));
-        
+
         // Different queries should have different hashes
         assert_ne!(compute_query_hash(q1), compute_query_hash(q3));
     }

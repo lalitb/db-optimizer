@@ -1,48 +1,48 @@
+use anyhow::{bail, Context, Result};
+use chrono::{Datelike, Timelike, Utc, Weekday};
 use serde::{Deserialize, Serialize};
-use anyhow::{Result, Context, bail};
 use std::collections::HashMap;
 use std::path::Path;
-use chrono::{Weekday, Utc, Timelike, Datelike};
 
 /// Main application configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
     /// Database connection settings
     pub database: DatabaseConfig,
-    
+
     /// Operation mode for the optimizer
     pub operation_mode: OperationMode,
-    
+
     /// Analysis configuration
     pub analysis: AnalysisConfig,
-    
+
     /// Safety and governance rules
     pub safety: SafetyConfig,
-    
+
     /// Maintenance window configuration
     #[serde(default)]
     pub maintenance_window: MaintenanceWindow,
-    
+
     /// eBPF configuration
     #[serde(default)]
     pub ebpf: EbpfConfig,
-    
+
     /// Auto-apply configuration
     #[serde(default)]
     pub auto_apply: AutoApplyConfigExtended,
-    
+
     /// Persistence configuration
     #[serde(default)]
     pub persistence: PersistenceConfig,
-    
+
     /// HTTP server configuration
     #[serde(default)]
     pub http_server: HttpServerConfig,
-    
+
     /// Notification configuration
     #[serde(default)]
     pub notifications: NotificationConfig,
-    
+
     /// Guardrails configuration for system resource limits
     #[serde(default)]
     pub guardrails: GuardrailsConfig,
@@ -65,19 +65,18 @@ impl Config {
             guardrails: GuardrailsConfig::default(),
         })
     }
-    
+
     /// Load configuration from a YAML file
     pub fn from_file<P: AsRef<Path>>(path: P) -> Result<Self> {
-        let content = std::fs::read_to_string(path.as_ref())
-            .context("Failed to read config file")?;
-        
-        let config: Self = serde_yaml::from_str(&content)
-            .context("Failed to parse config file")?;
-        
+        let content =
+            std::fs::read_to_string(path.as_ref()).context("Failed to read config file")?;
+
+        let config: Self = serde_yaml::from_str(&content).context("Failed to parse config file")?;
+
         config.validate()?;
         Ok(config)
     }
-    
+
     /// Load configuration from YAML file with environment variable overrides
     pub fn from_file_with_env<P: AsRef<Path>>(path: P) -> Result<Self> {
         let mut config = Self::from_file(path)?;
@@ -85,7 +84,7 @@ impl Config {
         config.validate()?;
         Ok(config)
     }
-    
+
     /// Apply environment variable overrides with DBO_ prefix
     fn apply_env_overrides(&mut self) -> Result<()> {
         // Database overrides
@@ -94,99 +93,101 @@ impl Config {
         } else if let Ok(url) = std::env::var("DATABASE_URL") {
             self.database.url = url;
         }
-        
+
         // Operation mode override
         if let Ok(mode) = std::env::var("DBO_OPERATION_MODE") {
             self.operation_mode = mode.parse()?;
         } else if let Ok(mode) = std::env::var("OPERATION_MODE") {
             self.operation_mode = mode.parse()?;
         }
-        
+
         // Slack webhook override
         if let Ok(webhook) = std::env::var("DBO_SLACK_WEBHOOK") {
             self.notifications.slack_webhook = Some(webhook);
         } else if let Ok(webhook) = std::env::var("SLACK_WEBHOOK") {
             self.notifications.slack_webhook = Some(webhook);
         }
-        
+
         // Guardrails overrides
         if let Ok(enabled) = std::env::var("DBO_GUARDRAILS_ENABLED") {
             self.guardrails.enabled = enabled.parse().unwrap_or(true);
         }
-        
+
         if let Ok(mem) = std::env::var("DBO_GUARDRAILS_MEMORY_THRESHOLD") {
             if let Ok(threshold) = mem.parse() {
                 self.guardrails.memory_threshold_percent = threshold;
             }
         }
-        
+
         if let Ok(cpu) = std::env::var("DBO_GUARDRAILS_CPU_THRESHOLD") {
             if let Ok(threshold) = cpu.parse() {
                 self.guardrails.cpu_threshold_percent = threshold;
             }
         }
-        
+
         if let Ok(disk) = std::env::var("DBO_GUARDRAILS_DISK_THRESHOLD") {
             if let Ok(threshold) = disk.parse() {
                 self.guardrails.disk_threshold_percent = threshold;
             }
         }
-        
+
         if let Ok(conn) = std::env::var("DBO_GUARDRAILS_MAX_CONNECTIONS") {
             if let Ok(max) = conn.parse() {
                 self.guardrails.max_connections_threshold = max;
             }
         }
-        
+
         // eBPF override
         if let Ok(enabled) = std::env::var("DBO_EBPF_ENABLED") {
             self.ebpf.enabled = enabled.parse().unwrap_or(false);
         }
-        
+
         // HTTP server overrides
         if let Ok(enabled) = std::env::var("DBO_HTTP_ENABLED") {
             self.http_server.enabled = enabled.parse().unwrap_or(false);
         }
-        
+
         if let Ok(port) = std::env::var("DBO_HTTP_PORT") {
             if let Ok(p) = port.parse() {
                 self.http_server.port = p;
             }
         }
-        
+
         Ok(())
     }
-    
+
     /// Validate configuration
     pub fn validate(&self) -> Result<()> {
         // Validate database URL is not empty
         if self.database.url.is_empty() {
             bail!("Database URL cannot be empty");
         }
-        
+
         // Validate safety limits
         if self.safety.max_index_size_mb <= 0.0 {
             bail!("max_index_size_mb must be positive");
         }
-        
+
         if self.safety.max_ddl_lock_time_secs == 0 {
             bail!("max_ddl_lock_time_secs must be positive");
         }
-        
+
         // Validate eBPF config
         if self.ebpf.enabled && self.ebpf.sampling_interval_ms == 0 {
             bail!("eBPF sampling_interval_ms must be positive when enabled");
         }
-        
+
         // Validate auto-apply thresholds
         if self.auto_apply.base.min_savings_threshold < 0.0 {
             bail!("min_savings_threshold cannot be negative");
         }
-        
-        if self.auto_apply.base.min_improvement_threshold <= 0.0 || self.auto_apply.base.min_improvement_threshold > 100.0 {
+
+        if self.auto_apply.base.min_improvement_threshold <= 0.0
+            || self.auto_apply.base.min_improvement_threshold > 100.0
+        {
             bail!("min_improvement_threshold must be between 0 and 100");
         }
-        
+
         // Validate maintenance window
         if self.maintenance_window.enabled {
             let (start, end) = self.maintenance_window.allowed_hours_utc;
@@ -194,7 +195,7 @@ impl Config {
                 bail!("Maintenance window hours must be 0-23");
             }
         }
-        
+
         // Validate guardrails
         if self.guardrails.enabled {
             if self.guardrails.memory_threshold_percent > 100 {
@@ -207,25 +208,25 @@ impl Config {
                 bail!("Disk threshold cannot exceed 100%");
             }
         }
-        
+
         Ok(())
     }
-    
+
     /// Check if we are currently in a maintenance window
     pub fn in_maintenance_window(&self) -> bool {
         if !self.maintenance_window.enabled {
             return true; // No restrictions if disabled
         }
-        
+
         let now = Utc::now();
         let current_hour = now.hour() as u8;
         let current_day = now.weekday();
-        
+
         // Check if current day is allowed
         if !self.maintenance_window.allowed_days.contains(&current_day) {
             return false;
         }
-        
+
         // Check if current hour is in range
         let (start, end) = self.maintenance_window.allowed_hours_utc;
         if start <= end {
@@ -242,11 +243,11 @@ impl Config {
 pub struct DatabaseConfig {
     /// PostgreSQL connection string
     pub url: String,
-    
+
     /// Maximum number of connections in the pool
     #[serde(default = "default_max_connections")]
     pub max_connections: u32,
-    
+
     /// Connection timeout in seconds
     #[serde(default = "default_connection_timeout")]
     pub connection_timeout_secs: u64,
@@ -263,8 +264,12 @@ impl DatabaseConfig {
     }
 }
 
-fn default_max_connections() -> u32 { 5 }
-fn default_connection_timeout() -> u64 { 30 }
+fn default_max_connections() -> u32 {
+    5
+}
+fn default_connection_timeout() -> u64 {
+    30
+}
 
 /// Operation mode for the optimizer
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -272,10 +277,10 @@ fn default_connection_timeout() -> u64 { 30 }
 pub enum OperationMode {
     /// Read-only analysis, no changes to database
     ObserveOnly,
-    
+
     /// Auto-apply only safe operations (e.g., CREATE INDEX CONCURRENTLY)
     SafeAuto,
-    
+
     /// More aggressive optimization (for staging or explicit opt-in)
     /// WARNING: Use with caution in production
     Aggressive,
@@ -288,11 +293,11 @@ impl OperationMode {
             .and_then(|s| s.parse().ok())
             .unwrap_or(Self::ObserveOnly)
     }
-    
+
     pub fn allows_auto_apply(&self) -> bool {
         matches!(self, Self::SafeAuto | Self::Aggressive)
     }
-    
+
     pub fn is_aggressive(&self) -> bool {
         matches!(self, Self::Aggressive)
     }
@@ -300,13 +305,16 @@ impl OperationMode {
 
 impl std::str::FromStr for OperationMode {
     type Err = anyhow::Error;
-    
+
     fn from_str(s: &str) -> Result<Self> {
         match s.to_lowercase().as_str() {
             "observe_only" | "observe" => Ok(Self::ObserveOnly),
             "safe_auto" | "safe" => Ok(Self::SafeAuto),
             "aggressive" | "aggro" => Ok(Self::Aggressive),
-            _ => bail!("Invalid operation mode: {}. Valid options: observe_only, safe_auto, aggressive", s),
+            _ => bail!(
+                "Invalid operation mode: {}. Valid options: observe_only, safe_auto, aggressive",
+                s
+            ),
         }
     }
 }
@@ -327,11 +335,11 @@ pub struct AnalysisConfig {
     /// Number of top queries to analyze
     #[serde(default = "default_query_limit")]
     pub query_limit: i64,
-    
+
     /// Database compute cost per hour (USD) for cost estimation
     #[serde(default = "default_cost_per_hour")]
     pub cost_per_hour_usd: f64,
-    
+
     /// Minimum severity to include in reports
     #[serde(default)]
     pub min_severity: crate::models::Severity,
@@ -366,9 +374,15 @@ impl Default for ThresholdConfig {
     }
 }
 
-fn default_slow_query_ms() -> f64 { 1000.0 }
-fn default_high_volume_calls() -> i64 { 10_000 }
-fn default_unused_index_size_mb() -> f64 { 1.0 }
+fn default_slow_query_ms() -> f64 {
+    1000.0
+}
+fn default_high_volume_calls() -> i64 {
+    10_000
+}
+fn default_unused_index_size_mb() -> f64 {
+    1.0
+}
 
 impl AnalysisConfig {
     pub fn from_env() -> Self {
@@ -398,8 +412,12 @@ impl Default for AnalysisConfig {
     }
 }
 
-fn default_query_limit() -> i64 { 100 }
-fn default_cost_per_hour() -> f64 { 0.07 }
+fn default_query_limit() -> i64 {
+    100
+}
+fn default_cost_per_hour() -> f64 {
+    0.07
+}
 
 /// Safety and governance configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -407,31 +425,31 @@ pub struct SafetyConfig {
     /// Schemas that cannot be modified by auto-apply
     #[serde(default)]
     pub protected_schemas: Vec<String>,
-    
+
     /// Tables that cannot be modified by auto-apply
     #[serde(default)]
     pub protected_tables: Vec<String>,
-    
+
     /// Columns that cannot be modified (table -> columns)
     #[serde(default)]
     pub protected_columns: HashMap<String, Vec<String>>,
-    
+
     /// Maximum allowed index size in MB
     #[serde(default = "default_max_index_size")]
     pub max_index_size_mb: f64,
-    
+
     /// Maximum allowed DDL lock time in seconds
     #[serde(default = "default_max_ddl_lock_time")]
     pub max_ddl_lock_time_secs: u64,
-    
+
     /// Never modify primary keys
     #[serde(default = "default_true")]
     pub protect_primary_keys: bool,
-    
+
     /// Never modify unique constraints
     #[serde(default = "default_true")]
     pub protect_unique_constraints: bool,
-    
+
     /// Require explicit approval for foreign key changes
     #[serde(default = "default_true")]
     pub protect_foreign_keys: bool,
@@ -452,9 +470,15 @@ impl Default for SafetyConfig {
     }
 }
 
-fn default_max_index_size() -> f64 { 10_000.0 } // 10 GB
-fn default_max_ddl_lock_time() -> u64 { 300 } // 5 minutes
-fn default_true() -> bool { true }
+fn default_max_index_size() -> f64 {
+    10_000.0
+} // 10 GB
+fn default_max_ddl_lock_time() -> u64 {
+    300
+} // 5 minutes
+fn default_true() -> bool {
+    true
+}
 
 /// Maintenance window configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -462,11 +486,11 @@ pub struct MaintenanceWindow {
     /// Whether maintenance window is enabled
     #[serde(default)]
     pub enabled: bool,
-    
+
     /// Allowed days of week for DDL operations
     #[serde(default = "default_all_days")]
     pub allowed_days: Vec<Weekday>,
-    
+
     /// Allowed hours (UTC) for DDL operations (start, end inclusive)
     #[serde(default = "default_hours")]
     pub allowed_hours_utc: (u8, u8),
@@ -504,27 +528,27 @@ pub struct EbpfConfig {
     /// Whether eBPF collection is enabled
     #[serde(default)]
     pub enabled: bool,
-    
+
     /// Sampling interval in milliseconds
     #[serde(default = "default_sampling_interval")]
     pub sampling_interval_ms: u64,
-    
+
     /// Collect CPU metrics
     #[serde(default = "default_true")]
     pub collect_cpu_metrics: bool,
-    
+
     /// Collect I/O metrics
     #[serde(default = "default_true")]
     pub collect_io_metrics: bool,
-    
+
     /// Collect memory metrics
     #[serde(default = "default_true")]
     pub collect_memory_metrics: bool,
-    
+
     /// Collect lock/contention metrics
     #[serde(default = "default_true")]
     pub collect_lock_metrics: bool,
-    
+
     /// Maximum events to buffer before dropping
     #[serde(default = "default_max_events")]
     pub max_events_buffer: usize,
@@ -544,8 +568,12 @@ impl Default for EbpfConfig {
     }
 }
 
-fn default_sampling_interval() -> u64 { 100 } // 100ms
-fn default_max_events() -> usize { 10_000 }
+fn default_sampling_interval() -> u64 {
+    100
+} // 100ms
+fn default_max_events() -> usize {
+    10_000
+}
 
 /// Extended auto-apply configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -553,15 +581,15 @@ pub struct AutoApplyConfigExtended {
     /// Base auto-apply config (from models.rs)
     #[serde(flatten)]
     pub base: crate::models::AutoApplyConfig,
-    
+
     /// Custom success criteria beyond default improvement threshold
     #[serde(default)]
     pub custom_success_criteria: Vec<SuccessCriterion>,
-    
+
     /// Soak period in seconds before declaring success
     #[serde(default = "default_soak_period")]
     pub soak_period_secs: u64,
-    
+
     /// Maximum concurrent auto-apply operations
     #[serde(default = "default_max_concurrent")]
     pub max_concurrent_applies: usize,
@@ -578,15 +606,19 @@ impl Default for AutoApplyConfigExtended {
     }
 }
 
-fn default_soak_period() -> u64 { 60 } // 1 minute
-fn default_max_concurrent() -> usize { 1 } // One at a time by default
+fn default_soak_period() -> u64 {
+    60
+} // 1 minute
+fn default_max_concurrent() -> usize {
+    1
+} // One at a time by default
 
 /// Custom success criterion for auto-apply verification
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SuccessCriterion {
     /// Metric to evaluate
     pub metric: SuccessMetric,
-    
+
     /// Minimum improvement required (percentage)
     pub min_improvement_pct: f64,
 }
@@ -596,31 +628,31 @@ pub struct SuccessCriterion {
 pub enum SuccessMetric {
     /// Mean execution time
     MeanTime,
-    
+
     /// P95 execution time
     P95Time,
-    
+
     /// P99 execution time
     P99Time,
-    
+
     /// Mean latency (alias for MeanTime)
     MeanLatency,
-    
+
     /// P95 latency (alias for P95Time)
     P95Latency,
-    
+
     /// Throughput (queries per second)
     Throughput,
-    
+
     /// Error rate (percentage)
     ErrorRate,
-    
+
     /// CPU time (from eBPF)
     CpuTime,
-    
+
     /// IO wait time (from eBPF)
     IoWaitTime,
-    
+
     /// IO wait (alias for IoWaitTime)
     IoWait,
 }
@@ -631,18 +663,18 @@ pub struct PersistenceConfig {
     /// Backend type
     #[serde(default)]
     pub backend: PersistenceBackend,
-    
+
     /// SQLite database path (if backend is SQLite)
     #[serde(default = "default_sqlite_path")]
     pub sqlite_path: String,
-    
+
     /// Whether to use the same Postgres DB for persistence (if backend is Postgres)
     #[serde(default = "default_true")]
     pub use_same_db: bool,
-    
+
     /// Separate Postgres URL for persistence (if use_same_db is false)
     pub persistence_db_url: Option<String>,
-    
+
     /// Retention period for query samples in days
     #[serde(default = "default_retention_days")]
     pub retention_days: u32,
@@ -665,10 +697,10 @@ impl Default for PersistenceConfig {
 pub enum PersistenceBackend {
     /// No persistence
     None,
-    
+
     /// SQLite embedded database
     Sqlite,
-    
+
     /// PostgreSQL database
     Postgres,
 }
@@ -683,7 +715,9 @@ fn default_sqlite_path() -> String {
     "~/.db-optimizer/state.db".to_string()
 }
 
-fn default_retention_days() -> u32 { 30 }
+fn default_retention_days() -> u32 {
+    30
+}
 
 /// HTTP server configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -691,18 +725,18 @@ pub struct HttpServerConfig {
     /// Whether HTTP server is enabled
     #[serde(default)]
     pub enabled: bool,
-    
+
     /// Bind address
     #[serde(default = "default_bind_address")]
     pub bind_address: String,
-    
+
     /// Port
     #[serde(default = "default_port")]
     pub port: u16,
-    
+
     /// Optional bearer token for authentication
     pub auth_token: Option<String>,
-    
+
     /// Enable CORS
     #[serde(default = "default_true")]
     pub enable_cors: bool,
@@ -720,15 +754,19 @@ impl Default for HttpServerConfig {
     }
 }
 
-fn default_bind_address() -> String { "127.0.0.1".to_string() }
-fn default_port() -> u16 { 9090 }
+fn default_bind_address() -> String {
+    "127.0.0.1".to_string()
+}
+fn default_port() -> u16 {
+    9090
+}
 
 /// Notification configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NotificationConfig {
     /// Slack webhook URL
     pub slack_webhook: Option<String>,
-    
+
     /// Email configuration (future)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub email: Option<EmailConfig>,
@@ -758,23 +796,23 @@ pub struct GuardrailsConfig {
     /// Whether guardrails are enabled
     #[serde(default = "default_true")]
     pub enabled: bool,
-    
+
     /// Memory usage threshold (percentage). Stop auto-apply if exceeded.
     #[serde(default = "default_memory_threshold")]
     pub memory_threshold_percent: u8,
-    
+
     /// CPU usage threshold (percentage). Stop auto-apply if exceeded.
     #[serde(default = "default_cpu_threshold")]
     pub cpu_threshold_percent: u8,
-    
+
     /// Disk usage threshold (percentage). Stop auto-apply if exceeded.
     #[serde(default = "default_disk_threshold")]
     pub disk_threshold_percent: u8,
-    
+
     /// Maximum active connections threshold. Stop auto-apply if exceeded.
     #[serde(default = "default_max_connections_threshold")]
     pub max_connections_threshold: u32,
-    
+
     /// Check interval in seconds
     #[serde(default = "default_guardrail_check_interval")]
     pub check_interval_secs: u64,
@@ -793,24 +831,43 @@ impl Default for GuardrailsConfig {
     }
 }
 
-fn default_memory_threshold() -> u8 { 90 }
-fn default_cpu_threshold() -> u8 { 85 }
-fn default_disk_threshold() -> u8 { 95 }
-fn default_max_connections_threshold() -> u32 { 1000 }
-fn default_guardrail_check_interval() -> u64 { 30 }
+fn default_memory_threshold() -> u8 {
+    90
+}
+fn default_cpu_threshold() -> u8 {
+    85
+}
+fn default_disk_threshold() -> u8 {
+    95
+}
+fn default_max_connections_threshold() -> u32 {
+    1000
+}
+fn default_guardrail_check_interval() -> u64 {
+    30
+}
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_operation_mode_parse() {
-        assert_eq!("observe_only".parse::<OperationMode>().unwrap(), OperationMode::ObserveOnly);
-        assert_eq!("safe_auto".parse::<OperationMode>().unwrap(), OperationMode::SafeAuto);
-        assert_eq!("aggressive".parse::<OperationMode>().unwrap(), OperationMode::Aggressive);
+        assert_eq!(
+            "observe_only".parse::<OperationMode>().unwrap(),
+            OperationMode::ObserveOnly
+        );
+        assert_eq!(
+            "safe_auto".parse::<OperationMode>().unwrap(),
+            OperationMode::SafeAuto
+        );
+        assert_eq!(
+            "aggressive".parse::<OperationMode>().unwrap(),
+            OperationMode::Aggressive
+        );
         assert!("invalid".parse::<OperationMode>().is_err());
     }
-    
+
     #[test]
     fn test_default_config_validation() {
         let config = Config {
@@ -835,10 +892,10 @@ mod tests {
             notifications: NotificationConfig::default(),
             guardrails: GuardrailsConfig::default(),
         };
-        
+
         assert!(config.validate().is_ok());
     }
-    
+
     #[test]
     fn test_maintenance_window_all_allowed() {
         let config = Config {
@@ -862,11 +919,11 @@ mod tests {
             notifications: NotificationConfig::default(),
             guardrails: GuardrailsConfig::default(),
         };
-        
+
         // Should always be in maintenance window when disabled
         assert!(config.in_maintenance_window());
     }
-    
+
     #[test]
     fn test_guardrails_defaults() {
         let guardrails = GuardrailsConfig::default();
@@ -876,7 +933,7 @@ mod tests {
         assert_eq!(guardrails.disk_threshold_percent, 95);
         assert_eq!(guardrails.max_connections_threshold, 1000);
     }
-    
+
     #[test]
     fn test_env_var_prefix() {
         // Test that DBO_ prefix works
@@ -898,7 +955,7 @@ mod tests {
             notifications: NotificationConfig::default(),
             guardrails: GuardrailsConfig::default(),
         };
-        
+
         config.apply_env_overrides().unwrap();
         assert_eq!(config.operation_mode, OperationMode::SafeAuto);
         std::env::remove_var("DBO_OPERATION_MODE");

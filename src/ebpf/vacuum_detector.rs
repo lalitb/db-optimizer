@@ -480,9 +480,12 @@ impl VacuumDetector {
         let mut total_duration = Duration::ZERO;
 
         for vacuum in completed.iter() {
-            *tables_vacuum_count.entry(vacuum.table_name.clone()).or_default() += 1;
-            *tables_dead_tuples.entry(vacuum.table_name.clone()).or_default() +=
-                vacuum.dead_tuples_removed;
+            *tables_vacuum_count
+                .entry(vacuum.table_name.clone())
+                .or_default() += 1;
+            *tables_dead_tuples
+                .entry(vacuum.table_name.clone())
+                .or_default() += vacuum.dead_tuples_removed;
             total_duration += vacuum.duration;
         }
 
@@ -688,8 +691,14 @@ mod tests {
 
     #[test]
     fn test_vacuum_phase_parsing() {
-        assert_eq!(VacuumPhase::from_str("scanning heap"), VacuumPhase::ScanningHeap);
-        assert_eq!(VacuumPhase::from_str("vacuuming indexes"), VacuumPhase::VacuumingIndexes);
+        assert_eq!(
+            VacuumPhase::from_str("scanning heap"),
+            VacuumPhase::ScanningHeap
+        );
+        assert_eq!(
+            VacuumPhase::from_str("vacuuming indexes"),
+            VacuumPhase::VacuumingIndexes
+        );
         assert_eq!(VacuumPhase::from_str("unknown stuff"), VacuumPhase::Unknown);
     }
 }

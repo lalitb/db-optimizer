@@ -673,7 +673,7 @@ mod tests {
     async fn test_stats_tracking() {
         let manager = LiveMapManager::new();
         *manager.daemon_connected.write().await = false;
-        
+
         // Reset the rate limiter to allow immediate updates
         *manager.last_update.write().await = Instant::now() - std::time::Duration::from_secs(1);
 

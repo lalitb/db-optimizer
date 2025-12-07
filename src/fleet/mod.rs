@@ -1,5 +1,5 @@
-pub mod models;
 pub mod manager;
+pub mod models;
 
-pub use models::{DatabaseInstance, FleetSummary, CreateInstanceRequest};
 pub use manager::FleetManager;
+pub use models::{CreateInstanceRequest, DatabaseInstance, FleetSummary};

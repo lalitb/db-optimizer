@@ -171,7 +171,7 @@ impl SessionTracker {
     /// Get or create a session for a PID
     pub async fn get_or_create_session(&self, pid: u32) -> SessionState {
         let mut sessions = self.sessions.write().await;
-        
+
         if let Some(session) = sessions.get(&pid) {
             return session.clone();
         }
@@ -189,8 +189,10 @@ impl SessionTracker {
     /// Record a simple query start (direct SQL execution)
     pub async fn record_simple_query_start(&self, pid: u32, query_hash: u64) {
         let mut sessions = self.sessions.write().await;
-        
-        let session = sessions.entry(pid).or_insert_with(|| SessionState::new(pid));
+
+        let session = sessions
+            .entry(pid)
+            .or_insert_with(|| SessionState::new(pid));
         session.start_query(query_hash, false);
 
         let mut stats = self.stats.write().await;
@@ -202,7 +204,7 @@ impl SessionTracker {
     /// Record a query end
     pub async fn record_query_end(&self, pid: u32) {
         let mut sessions = self.sessions.write().await;
-        
+
         if let Some(session) = sessions.get_mut(&pid) {
             session.end_query();
             trace!(pid = pid, "Query ended");
@@ -210,9 +212,15 @@ impl SessionTracker {
     }
 
     /// Record a Parse message (prepared statement creation)
-    pub async fn record_parse(&self, pid: u32, stmt_name: String, query_hash: u64, query_text: String) {
+    pub async fn record_parse(
+        &self,
+        pid: u32,
+        stmt_name: String,
+        query_hash: u64,
+        query_text: String,
+    ) {
         let stmt = PreparedStatement::new(stmt_name.clone(), query_hash, query_text);
-        
+
         let mut stmts = self.prepared_stmts.write().await;
         stmts.insert((pid, stmt_name.clone()), stmt);
 
@@ -270,7 +278,9 @@ impl SessionTracker {
 
         // Update session
         let mut sessions = self.sessions.write().await;
-        let session = sessions.entry(pid).or_insert_with(|| SessionState::new(pid));
+        let session = sessions
+            .entry(pid)
+            .or_insert_with(|| SessionState::new(pid));
         session.start_query(query_hash, true);
         session.prepared_stmt_name = stmt_name.clone();
 
@@ -294,19 +304,19 @@ impl SessionTracker {
             CloseType::Statement => {
                 let mut stmts = self.prepared_stmts.write().await;
                 stmts.remove(&(pid, name.clone()));
-                
+
                 let mut stats = self.stats.write().await;
                 stats.prepared_stmts_count = stmts.len();
-                
+
                 trace!(pid = pid, stmt = %name, "Prepared statement closed");
             }
             CloseType::Portal => {
                 let mut portals = self.portals.write().await;
                 portals.remove(&(pid, name.clone()));
-                
+
                 let mut stats = self.stats.write().await;
                 stats.portals_count = portals.len();
-                
+
                 trace!(pid = pid, portal = %name, "Portal closed");
             }
         }
@@ -322,7 +332,7 @@ impl SessionTracker {
         username: Option<String>,
     ) {
         let mut sessions = self.sessions.write().await;
-        
+
         if let Some(session) = sessions.get_mut(&pid) {
             session.application_name = application_name;
             session.client_addr = client_addr;
@@ -371,10 +381,10 @@ impl SessionTracker {
 
         for pid in &pids_to_remove {
             sessions.remove(pid);
-            
+
             // Remove associated prepared statements
             stmts.retain(|(p, _), _| p != pid);
-            
+
             // Remove associated portals
             portals.retain(|(p, _), _| p != pid);
         }
@@ -385,7 +395,7 @@ impl SessionTracker {
             stats.active_sessions = sessions.len();
             stats.prepared_stmts_count = stmts.len();
             stats.portals_count = portals.len();
-            
+
             debug!("Cleaned up {} idle sessions", count);
         }
 
@@ -483,7 +493,12 @@ mod tests {
 
         // Parse: create prepared statement
         tracker
-            .record_parse(1000, "stmt1".to_string(), 12345, "SELECT * FROM users".to_string())
+            .record_parse(
+                1000,
+                "stmt1".to_string(),
+                12345,
+                "SELECT * FROM users".to_string(),
+            )
             .await;
 
         // Bind: create portal

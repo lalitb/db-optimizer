@@ -41,65 +41,65 @@ impl IoType {
     /// Classify a file path by I/O type
     pub fn from_path(path: &str) -> Self {
         let path_lower = path.to_lowercase();
-        
+
         // WAL files
         if path_lower.contains("/pg_wal/") || path_lower.contains("/pg_xlog/") {
             return IoType::Wal;
         }
-        
+
         // Temporary files
         if path_lower.contains("/pgsql_tmp/") || path_lower.contains("/pg_tmp/") {
             return IoType::TempFile;
         }
-        
+
         // CLOG
         if path_lower.contains("/pg_clog/") || path_lower.contains("/pg_xact/") {
             return IoType::Clog;
         }
-        
+
         // Subtransaction
         if path_lower.contains("/pg_subtrans/") {
             return IoType::Subtrans;
         }
-        
+
         // Multixact
         if path_lower.contains("/pg_multixact/") {
             return IoType::Multixact;
         }
-        
+
         // Stats
         if path_lower.contains("/pg_stat/") || path_lower.contains("/pg_stat_tmp/") {
             return IoType::Stats;
         }
-        
+
         // Relation map
         if path_lower.ends_with("/pg_filenode.map") {
             return IoType::RelMap;
         }
-        
+
         // Control file
         if path_lower.ends_with("/global/pg_control") {
             return IoType::Control;
         }
-        
+
         // Config files
         if path_lower.ends_with(".conf") {
             return IoType::Config;
         }
-        
+
         // Data files (base directory)
         if path_lower.contains("/base/") || path_lower.contains("/global/") {
             return IoType::DataFile;
         }
-        
+
         IoType::Other
     }
-    
+
     /// Whether this I/O type should be attributed to queries
     pub fn is_query_attributable(&self) -> bool {
         matches!(self, IoType::DataFile | IoType::TempFile)
     }
-    
+
     /// Whether this is background/system I/O
     pub fn is_background(&self) -> bool {
         matches!(
@@ -245,11 +245,12 @@ impl FdResolver {
         match std::fs::read_link(&link_path) {
             Ok(target) => {
                 let path_str = target.to_string_lossy().to_string();
-                
+
                 // Cache the result
                 if self.fd_cache.len() >= self.max_cache_size {
                     // Simple eviction: clear half the cache
-                    let to_remove: Vec<_> = self.fd_cache
+                    let to_remove: Vec<_> = self
+                        .fd_cache
                         .keys()
                         .take(self.max_cache_size / 2)
                         .cloned()
@@ -258,7 +259,7 @@ impl FdResolver {
                         self.fd_cache.remove(&key);
                     }
                 }
-                
+
                 self.fd_cache.insert((pid, fd), path_str.clone());
                 Some(path_str)
             }
@@ -364,7 +365,7 @@ impl WalIoCorrelator {
         {
             let mut stats = self.io_stats.write().await;
             let type_stats = stats.entry(io_type).or_insert_with(IoStats::default);
-            
+
             if is_write {
                 type_stats.write_bytes += bytes;
                 type_stats.write_count += 1;
@@ -383,7 +384,7 @@ impl WalIoCorrelator {
             wal.write_count += 1;
             wal.total_latency_us += latency_us;
             wal.last_write = Instant::now();
-            
+
             if let Some(p) = &path {
                 // Extract WAL segment name
                 if let Some(segment) = p.rsplit('/').next() {
@@ -408,7 +409,7 @@ impl WalIoCorrelator {
             if io_type.is_query_attributable() {
                 let mut query_io = self.query_io.write().await;
                 let stats = query_io.entry(hash).or_insert_with(IoStats::default);
-                
+
                 if is_write {
                     stats.write_bytes += bytes;
                     stats.write_count += 1;
@@ -439,32 +440,32 @@ impl WalIoCorrelator {
         checkpoint.in_progress = true;
         checkpoint.start_time = Some(Instant::now());
         checkpoint.checkpoint_io_bytes = 0;
-        
+
         debug!("Checkpoint started");
     }
 
     /// Record checkpoint end
     pub async fn checkpoint_end(&self) {
         let mut checkpoint = self.checkpoint_info.write().await;
-        
+
         if let Some(start) = checkpoint.start_time {
             let duration = start.elapsed();
             checkpoint.last_duration = Some(duration);
             checkpoint.completed_count += 1;
-            
+
             // Update average
             let n = checkpoint.completed_count as f64;
             let old_avg = checkpoint.avg_duration_ms;
             let new_sample = duration.as_secs_f64() * 1000.0;
             checkpoint.avg_duration_ms = old_avg + (new_sample - old_avg) / n;
-            
+
             debug!(
                 duration_ms = duration.as_millis(),
                 io_bytes = checkpoint.checkpoint_io_bytes,
                 "Checkpoint completed"
             );
         }
-        
+
         checkpoint.in_progress = false;
         checkpoint.start_time = None;
     }
@@ -604,10 +605,7 @@ mod tests {
             IoType::from_path("/var/lib/postgresql/14/main/global/pg_control"),
             IoType::Control
         );
-        assert_eq!(
-            IoType::from_path("/some/random/file.txt"),
-            IoType::Other
-        );
+        assert_eq!(IoType::from_path("/some/random/file.txt"), IoType::Other);
     }
 
     #[test]

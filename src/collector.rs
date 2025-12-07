@@ -1,6 +1,9 @@
-use sqlx::{PgPool, Row};
-use crate::models::{QueryStats, IndexInfo, TableInfo, ConnectionInfo, ConnectionState, WaitEventType, ConnectionStats};
+use crate::models::{
+    ConnectionInfo, ConnectionState, ConnectionStats, IndexInfo, QueryStats, TableInfo,
+    WaitEventType,
+};
 use anyhow::Result;
+use sqlx::{PgPool, Row};
 use std::collections::HashMap;
 
 pub struct DatabaseCollector {
@@ -11,20 +14,20 @@ impl DatabaseCollector {
     pub fn new(pool: PgPool) -> Self {
         Self { pool }
     }
-    
+
     /// Check if pg_stat_statements extension is enabled
     pub async fn check_pg_stat_statements(&self) -> Result<bool> {
         let result: (bool,) = sqlx::query_as(
             "SELECT EXISTS (
                 SELECT 1 FROM pg_extension WHERE extname = 'pg_stat_statements'
-            )"
+            )",
         )
         .fetch_one(&self.pool)
         .await?;
-        
+
         Ok(result.0)
     }
-    
+
     /// Collect top queries by total execution time
     pub async fn collect_query_stats(&self, limit: i64) -> Result<Vec<QueryStats>> {
         let rows = sqlx::query(
@@ -45,12 +48,12 @@ impl DatabaseCollector {
               AND dbid = (SELECT oid FROM pg_database WHERE datname = current_database())
             ORDER BY total_exec_time DESC
             LIMIT $1
-            "#
+            "#,
         )
         .bind(limit)
         .fetch_all(&self.pool)
         .await?;
-        
+
         let queries: Vec<QueryStats> = rows
             .into_iter()
             .map(|row| QueryStats {
@@ -64,10 +67,10 @@ impl DatabaseCollector {
                 shared_blks_hit: row.get("shared_blks_hit"),
             })
             .collect();
-        
+
         Ok(queries)
     }
-    
+
     /// Collect index usage statistics
     pub async fn collect_index_info(&self) -> Result<Vec<IndexInfo>> {
         let rows = sqlx::query(
@@ -88,7 +91,7 @@ impl DatabaseCollector {
         )
         .fetch_all(&self.pool)
         .await?;
-        
+
         let indexes: Vec<IndexInfo> = rows
             .into_iter()
             .map(|row| IndexInfo {
@@ -101,10 +104,10 @@ impl DatabaseCollector {
                 is_primary: row.get("is_primary"),
             })
             .collect();
-        
+
         Ok(indexes)
     }
-    
+
     /// Collect table statistics
     pub async fn collect_table_info(&self) -> Result<Vec<TableInfo>> {
         let rows = sqlx::query(
@@ -123,7 +126,7 @@ impl DatabaseCollector {
         )
         .fetch_all(&self.pool)
         .await?;
-        
+
         let tables: Vec<TableInfo> = rows
             .into_iter()
             .map(|row| TableInfo {
@@ -135,17 +138,16 @@ impl DatabaseCollector {
                 index_size_mb: row.get("index_size_mb"),
             })
             .collect();
-        
+
         Ok(tables)
     }
-    
+
     /// Get database name and version
     pub async fn get_database_info(&self) -> Result<(String, String)> {
-        let result: (String, String) = sqlx::query_as(
-            "SELECT current_database() as db_name, version() as pg_version"
-        )
-        .fetch_one(&self.pool)
-        .await?;
+        let result: (String, String) =
+            sqlx::query_as("SELECT current_database() as db_name, version() as pg_version")
+                .fetch_one(&self.pool)
+                .await?;
 
         Ok(result)
     }
@@ -175,7 +177,7 @@ impl DatabaseCollector {
             WHERE pid != pg_backend_pid()  -- Exclude our own connection
               AND backend_type = 'client backend'
             ORDER BY state_change ASC  -- Oldest first
-            "#
+            "#,
         )
         .fetch_all(&self.pool)
         .await?;
@@ -209,11 +211,10 @@ impl DatabaseCollector {
     /// Get aggregated connection statistics
     pub async fn collect_connection_stats(&self) -> Result<ConnectionStats> {
         // Get max_connections setting
-        let max_connections: (i32,) = sqlx::query_as(
-            "SELECT setting::int FROM pg_settings WHERE name = 'max_connections'"
-        )
-        .fetch_one(&self.pool)
-        .await?;
+        let max_connections: (i32,) =
+            sqlx::query_as("SELECT setting::int FROM pg_settings WHERE name = 'max_connections'")
+                .fetch_one(&self.pool)
+                .await?;
 
         let connections = self.collect_connections().await?;
         let total_connections = connections.len() as i32;
@@ -237,7 +238,7 @@ impl DatabaseCollector {
                     oldest_idle_transaction_secs = Some(
                         oldest_idle_transaction_secs
                             .map(|old| old.max(duration))
-                            .unwrap_or(duration)
+                            .unwrap_or(duration),
                     );
                 }
             }
@@ -249,7 +250,7 @@ impl DatabaseCollector {
                     oldest_locked_query_secs = Some(
                         oldest_locked_query_secs
                             .map(|old| old.max(duration))
-                            .unwrap_or(duration)
+                            .unwrap_or(duration),
                     );
                 }
             }
@@ -267,14 +268,19 @@ impl DatabaseCollector {
     }
 
     /// Get connections that are idle in transaction for longer than threshold_secs
-    pub async fn get_long_idle_transactions(&self, threshold_secs: i64) -> Result<Vec<ConnectionInfo>> {
+    pub async fn get_long_idle_transactions(
+        &self,
+        threshold_secs: i64,
+    ) -> Result<Vec<ConnectionInfo>> {
         let connections = self.collect_connections().await?;
 
         let long_idle: Vec<ConnectionInfo> = connections
             .into_iter()
             .filter(|conn| {
-                conn.state.is_problematic() &&
-                conn.state_duration_secs().map_or(false, |d| d > threshold_secs)
+                conn.state.is_problematic()
+                    && conn
+                        .state_duration_secs()
+                        .map_or(false, |d| d > threshold_secs)
             })
             .collect();
 
@@ -308,7 +314,7 @@ impl DatabaseCollector {
                 sum(temp_bytes) as total_temp_bytes
             FROM pg_stat_database
             WHERE datname = current_database()
-            "#
+            "#,
         )
         .fetch_one(&self.pool)
         .await?;
@@ -330,11 +336,11 @@ impl DatabaseCollector {
             100.0
         };
 
-        // Note: TPS and Rows/sec are cumulative since reset. 
-        // For real-time rates, we would need to sample twice. 
+        // Note: TPS and Rows/sec are cumulative since reset.
+        // For real-time rates, we would need to sample twice.
         // For now, we return the raw counters or derived ratios where possible.
         // In a real agent, we'd diff these against the previous sample.
-        
+
         Ok(crate::models::DatabaseMetrics {
             transactions_per_sec: total_xact as f64, // Placeholder: This is total, not per sec
             rows_fetched_per_sec: total_fetched as f64,

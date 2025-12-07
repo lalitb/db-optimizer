@@ -1,7 +1,7 @@
-use crate::models::*;
-use crate::analyzer::{QueryAnalyzer, ConnectionAnalyzer};
-use crate::cost_estimator::{CostEstimator, PricingConfig};
+use crate::analyzer::{ConnectionAnalyzer, QueryAnalyzer};
 use crate::config::AnalysisConfig;
+use crate::cost_estimator::{CostEstimator, PricingConfig};
+use crate::models::*;
 pub struct RecommendationEngine {
     analyzer: QueryAnalyzer,
     connection_analyzer: ConnectionAnalyzer,
@@ -21,12 +21,12 @@ impl RecommendationEngine {
         self.analyzer = QueryAnalyzer::new(config);
         self
     }
-    
+
     pub fn with_pricing_config(mut self, config: PricingConfig) -> Self {
         self.cost_estimator = CostEstimator::new(config);
         self
     }
-    
+
     /// Generate all recommendations
     pub fn generate_recommendations(
         &self,
@@ -62,32 +62,48 @@ impl RecommendationEngine {
 
         // Sort by severity then by cost savings
         recommendations.sort_by(|a, b| {
-            b.severity.cmp(&a.severity)
-                .then_with(|| {
-                    let a_savings = a.estimated_cost_savings_usd_monthly.unwrap_or(0.0);
-                    let b_savings = b.estimated_cost_savings_usd_monthly.unwrap_or(0.0);
-                    b_savings.partial_cmp(&a_savings).unwrap_or(std::cmp::Ordering::Equal)
-                })
+            b.severity.cmp(&a.severity).then_with(|| {
+                let a_savings = a.estimated_cost_savings_usd_monthly.unwrap_or(0.0);
+                let b_savings = b.estimated_cost_savings_usd_monthly.unwrap_or(0.0);
+                b_savings
+                    .partial_cmp(&a_savings)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
         });
 
         recommendations
     }
-    
+
     /// Generate summary statistics
     pub fn generate_summary(recommendations: &[Recommendation]) -> ReportSummary {
         let issues_found = recommendations.len();
-        let critical_issues = recommendations.iter().filter(|r| r.severity == Severity::Critical).count();
-        let high_priority_issues = recommendations.iter().filter(|r| r.severity == Severity::High).count();
-        
-        let slow_queries = recommendations.iter().filter(|r| r.issue_type == IssueType::SlowQuery).count();
-        let missing_indexes = recommendations.iter().filter(|r| r.issue_type == IssueType::MissingIndex).count();
-        let unused_indexes = recommendations.iter().filter(|r| r.issue_type == IssueType::UnusedIndex).count();
-        
+        let critical_issues = recommendations
+            .iter()
+            .filter(|r| r.severity == Severity::Critical)
+            .count();
+        let high_priority_issues = recommendations
+            .iter()
+            .filter(|r| r.severity == Severity::High)
+            .count();
+
+        let slow_queries = recommendations
+            .iter()
+            .filter(|r| r.issue_type == IssueType::SlowQuery)
+            .count();
+        let missing_indexes = recommendations
+            .iter()
+            .filter(|r| r.issue_type == IssueType::MissingIndex)
+            .count();
+        let unused_indexes = recommendations
+            .iter()
+            .filter(|r| r.issue_type == IssueType::UnusedIndex)
+            .count();
+
         let total_savings: f64 = recommendations
             .iter()
             .filter_map(|r| r.estimated_cost_savings_usd_monthly)
             .sum();
-        
+
         ReportSummary {
             issues_found,
             critical_issues,

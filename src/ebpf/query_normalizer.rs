@@ -126,10 +126,7 @@ impl QueryNormalizer {
         match stmt {
             Statement::Query(query) => self.normalize_query(query),
             Statement::Insert { table_name, .. } => {
-                format!(
-                    "INSERT INTO {} (...) VALUES (...)",
-                    table_name
-                )
+                format!("INSERT INTO {} (...) VALUES (...)", table_name)
             }
             Statement::Update { table, .. } => {
                 format!("UPDATE {} SET ... WHERE ...", table.relation)
@@ -171,11 +168,8 @@ impl QueryNormalizer {
 
                 // FROM clause
                 if !select.from.is_empty() {
-                    let tables: Vec<String> = select
-                        .from
-                        .iter()
-                        .map(|t| t.relation.to_string())
-                        .collect();
+                    let tables: Vec<String> =
+                        select.from.iter().map(|t| t.relation.to_string()).collect();
                     parts.push(format!("FROM {}", tables.join(", ")));
                 }
 
@@ -195,7 +189,9 @@ impl QueryNormalizer {
                     parts.push("HAVING ...".to_string());
                 }
             }
-            SetExpr::SetOperation { op, left, right, .. } => {
+            SetExpr::SetOperation {
+                op, left, right, ..
+            } => {
                 parts.push(format!("{:?} (UNION/INTERSECT/EXCEPT)", op));
             }
             _ => {
@@ -241,9 +237,11 @@ impl QueryNormalizer {
 
             // Column references stay as-is
             Expr::Identifier(ident) => ident.value.clone(),
-            Expr::CompoundIdentifier(idents) => {
-                idents.iter().map(|i| i.value.as_str()).collect::<Vec<_>>().join(".")
-            }
+            Expr::CompoundIdentifier(idents) => idents
+                .iter()
+                .map(|i| i.value.as_str())
+                .collect::<Vec<_>>()
+                .join("."),
 
             // Binary operations
             Expr::BinaryOp { left, op, right } => {
@@ -271,13 +269,21 @@ impl QueryNormalizer {
             }
 
             // IN list
-            Expr::InList { expr, list, negated } => {
+            Expr::InList {
+                expr,
+                list,
+                negated,
+            } => {
                 let neg = if *negated { "NOT " } else { "" };
                 format!("{} {}IN (?...)", self.normalize_expr(expr), neg)
             }
 
             // IN subquery
-            Expr::InSubquery { expr, subquery, negated } => {
+            Expr::InSubquery {
+                expr,
+                subquery,
+                negated,
+            } => {
                 let neg = if *negated { "NOT " } else { "" };
                 format!(
                     "{} {}IN ({})",
@@ -288,17 +294,23 @@ impl QueryNormalizer {
             }
 
             // BETWEEN
-            Expr::Between { expr, negated, low, high } => {
+            Expr::Between {
+                expr,
+                negated,
+                low,
+                high,
+            } => {
                 let neg = if *negated { "NOT " } else { "" };
-                format!(
-                    "{} {}BETWEEN ? AND ?",
-                    self.normalize_expr(expr),
-                    neg
-                )
+                format!("{} {}BETWEEN ? AND ?", self.normalize_expr(expr), neg)
             }
 
             // LIKE
-            Expr::Like { expr, pattern, negated, .. } => {
+            Expr::Like {
+                expr,
+                pattern,
+                negated,
+                ..
+            } => {
                 let neg = if *negated { "NOT " } else { "" };
                 format!("{} {}LIKE ?", self.normalize_expr(expr), neg)
             }
@@ -311,7 +323,9 @@ impl QueryNormalizer {
             Expr::Case { .. } => "CASE...END".to_string(),
 
             // Cast
-            Expr::Cast { expr, data_type, .. } => {
+            Expr::Cast {
+                expr, data_type, ..
+            } => {
                 format!("CAST({} AS {:?})", self.normalize_expr(expr), data_type)
             }
 
@@ -430,7 +444,7 @@ pub fn quick_hash(query: &str) -> u64 {
 /// Compute a normalized hash synchronously (for use in BPF correlation)
 pub fn sync_normalize_hash(query: &str) -> u64 {
     let dialect = PostgreSqlDialect {};
-    
+
     match Parser::parse_sql(&dialect, query) {
         Ok(statements) if !statements.is_empty() => {
             // Simple normalization: just get statement type + table names
@@ -463,7 +477,10 @@ mod tests {
             .normalize_and_hash("SELECT * FROM users WHERE id = 456")
             .await;
 
-        assert_eq!(hash1, hash2, "Same query with different values should have same hash");
+        assert_eq!(
+            hash1, hash2,
+            "Same query with different values should have same hash"
+        );
     }
 
     #[tokio::test]
@@ -477,7 +494,10 @@ mod tests {
             .normalize_and_hash("SELECT * FROM orders WHERE id = 123")
             .await;
 
-        assert_ne!(hash1, hash2, "Different tables should have different hashes");
+        assert_ne!(
+            hash1, hash2,
+            "Different tables should have different hashes"
+        );
     }
 
     #[tokio::test]

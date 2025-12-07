@@ -351,7 +351,7 @@ impl EbpfLoader {
                 // Check kernel version support
                 let version = *self.kernel_version.read().await;
                 let min_ver = def.prog_type.min_kernel_version();
-                
+
                 if version.0 < min_ver.0 || (version.0 == min_ver.0 && version.1 < min_ver.1) {
                     if def.optional {
                         warnings.push(format!(
@@ -500,7 +500,11 @@ impl EbpfLoader {
     /// Check if fully loaded and attached
     pub async fn is_ready(&self) -> bool {
         let programs = self.programs.read().await;
-        !programs.is_empty() && programs.values().filter(|p| !p.def.optional).all(|p| p.attached)
+        !programs.is_empty()
+            && programs
+                .values()
+                .filter(|p| !p.def.optional)
+                .all(|p| p.attached)
     }
 
     /// Get kernel version

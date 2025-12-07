@@ -2,7 +2,7 @@
 
 use crate::http::{
     error::ApiResult,
-    models::{ApiResponse, HealthStatus, PrometheusMetrics, MetricLine, StatsSummary},
+    models::{ApiResponse, HealthStatus, MetricLine, PrometheusMetrics, StatsSummary},
     AppState,
 };
 use axum::{extract::State, Json};
@@ -14,10 +14,7 @@ lazy_static::lazy_static! {
 
 /// GET /api/v1/health - Health check
 pub async fn health(State(state): State<AppState>) -> ApiResult<Json<ApiResponse<HealthStatus>>> {
-    let uptime = START_TIME
-        .elapsed()
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
+    let uptime = START_TIME.elapsed().map(|d| d.as_secs()).unwrap_or(0);
 
     let status = HealthStatus {
         status: "healthy".to_string(),
@@ -32,7 +29,8 @@ pub async fn health(State(state): State<AppState>) -> ApiResult<Json<ApiResponse
 /// GET /api/v1/stats/summary - Overall system statistics
 pub async fn summary(State(state): State<AppState>) -> ApiResult<Json<ApiResponse<StatsSummary>>> {
     // Get lock contention count if eBPF enabled
-    let high_contention_count = state.ebpf_manager
+    let high_contention_count = state
+        .ebpf_manager
         .as_ref()
         .map(|mgr| mgr.get_high_contention().len())
         .unwrap_or(0);
@@ -56,31 +54,50 @@ pub async fn metrics(State(state): State<AppState>) -> ApiResult<String> {
 
     // Uptime metric
     let uptime = START_TIME.elapsed().map(|d| d.as_secs()).unwrap_or(0);
-    lines.push(format!("# HELP db_optimizer_uptime_seconds Uptime in seconds"));
+    lines.push(format!(
+        "# HELP db_optimizer_uptime_seconds Uptime in seconds"
+    ));
     lines.push(format!("# TYPE db_optimizer_uptime_seconds counter"));
     lines.push(format!("db_optimizer_uptime_seconds {}", uptime));
 
     // eBPF status
     let ebpf_enabled = if state.ebpf_manager.is_some() { 1 } else { 0 };
-    lines.push(format!("# HELP db_optimizer_ebpf_enabled eBPF status (1=enabled, 0=disabled)"));
+    lines.push(format!(
+        "# HELP db_optimizer_ebpf_enabled eBPF status (1=enabled, 0=disabled)"
+    ));
     lines.push(format!("# TYPE db_optimizer_ebpf_enabled gauge"));
     lines.push(format!("db_optimizer_ebpf_enabled {}", ebpf_enabled));
 
     // Lock contention metrics if available
     if let Some(ref manager) = state.ebpf_manager {
         let summary = manager.get_summary();
-        
-        lines.push(format!("# HELP db_optimizer_tables_tracked Total tables tracked"));
+
+        lines.push(format!(
+            "# HELP db_optimizer_tables_tracked Total tables tracked"
+        ));
         lines.push(format!("# TYPE db_optimizer_tables_tracked gauge"));
-        lines.push(format!("db_optimizer_tables_tracked {}", summary.total_tables_tracked));
+        lines.push(format!(
+            "db_optimizer_tables_tracked {}",
+            summary.total_tables_tracked
+        ));
 
-        lines.push(format!("# HELP db_optimizer_high_contention_tables Tables with high contention"));
+        lines.push(format!(
+            "# HELP db_optimizer_high_contention_tables Tables with high contention"
+        ));
         lines.push(format!("# TYPE db_optimizer_high_contention_tables gauge"));
-        lines.push(format!("db_optimizer_high_contention_tables {}", summary.high_contention_tables));
+        lines.push(format!(
+            "db_optimizer_high_contention_tables {}",
+            summary.high_contention_tables
+        ));
 
-        lines.push(format!("# HELP db_optimizer_total_lock_events Total lock events processed"));
+        lines.push(format!(
+            "# HELP db_optimizer_total_lock_events Total lock events processed"
+        ));
         lines.push(format!("# TYPE db_optimizer_total_lock_events counter"));
-        lines.push(format!("db_optimizer_total_lock_events {}", summary.total_lock_events));
+        lines.push(format!(
+            "db_optimizer_total_lock_events {}",
+            summary.total_lock_events
+        ));
     }
 
     Ok(lines.join("\n"))

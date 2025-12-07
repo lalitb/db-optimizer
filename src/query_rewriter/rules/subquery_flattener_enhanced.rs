@@ -1,12 +1,12 @@
 use crate::query_rewriter::RewriteRule;
-use sqlparser::ast::{
-    Statement, Query, SetExpr, Select, Expr, SelectItem, Join, JoinOperator,
-    JoinConstraint, TableFactor, TableWithJoins, Ident,
-};
 use anyhow::Result;
+use sqlparser::ast::{
+    Expr, Ident, Join, JoinConstraint, JoinOperator, Query, Select, SelectItem, SetExpr, Statement,
+    TableFactor, TableWithJoins,
+};
 
 /// Enhanced Subquery Flattener with actual JOIN conversion
-/// 
+///
 /// Converts IN (SELECT...) subqueries into JOIN operations.
 /// This implementation handles simple cases where the subquery selects a single column.
 pub struct SubqueryFlattenerEnhanced;
@@ -15,7 +15,7 @@ impl SubqueryFlattenerEnhanced {
     pub fn new() -> Self {
         Self
     }
-    
+
     fn has_simple_in_subquery(stmt: &Statement) -> bool {
         match stmt {
             Statement::Query(query) => {
@@ -32,7 +32,7 @@ impl SubqueryFlattenerEnhanced {
             _ => false,
         }
     }
-    
+
     fn contains_simple_in_subquery(expr: &Expr) -> bool {
         match expr {
             Expr::InSubquery { subquery, .. } => {
@@ -45,13 +45,12 @@ impl SubqueryFlattenerEnhanced {
                 }
             }
             Expr::BinaryOp { left, right, .. } => {
-                Self::contains_simple_in_subquery(left)
-                    || Self::contains_simple_in_subquery(right)
+                Self::contains_simple_in_subquery(left) || Self::contains_simple_in_subquery(right)
             }
             _ => false,
         }
     }
-    
+
     /// Convert IN subquery to JOIN
     fn flatten_in_subquery(&self, mut outer_select: Box<Select>) -> Result<Box<Select>> {
         if let Some(selection) = &outer_select.selection {
@@ -76,16 +75,16 @@ impl SubqueryFlattenerEnhanced {
                             ])),
                         })),
                     };
-                    
+
                     from_item.joins.push(join);
-                    
+
                     // Remove the IN clause from WHERE
                     // For simplicity, if WHERE only has the IN clause, remove it entirely
                     // Otherwise keep the WHERE as-is
                     if Self::is_only_in_subquery(selection) {
                         outer_select.selection = None;
                     }
-                    
+
                     // Add DISTINCT if needed (IN semantics require distinct results)
                     if outer_select.distinct.is_none() {
                         outer_select.distinct = Some(sqlparser::ast::Distinct::Distinct);
@@ -93,13 +92,17 @@ impl SubqueryFlattenerEnhanced {
                 }
             }
         }
-        
+
         Ok(outer_select)
     }
-    
+
     fn extract_in_subquery(expr: &Expr) -> Option<(Expr, SubqueryInfo)> {
         match expr {
-            Expr::InSubquery { expr: left, subquery, negated } if !negated => {
+            Expr::InSubquery {
+                expr: left,
+                subquery,
+                negated,
+            } if !negated => {
                 // Extract column name from subquery projection
                 if let SetExpr::Select(select) = &*subquery.body {
                     if let Some(SelectItem::UnnamedExpr(Expr::Identifier(col_name))) =
@@ -119,7 +122,7 @@ impl SubqueryFlattenerEnhanced {
             _ => None,
         }
     }
-    
+
     fn is_only_in_subquery(expr: &Expr) -> bool {
         matches!(expr, Expr::InSubquery { .. })
     }
@@ -134,15 +137,15 @@ impl RewriteRule for SubqueryFlattenerEnhanced {
     fn name(&self) -> &str {
         "Enhanced Subquery Flattening"
     }
-    
+
     fn description(&self) -> &str {
         "Converts IN (SELECT...) to JOIN for better performance"
     }
-    
+
     fn applies_to(&self, stmt: &Statement) -> bool {
         Self::has_simple_in_subquery(stmt)
     }
-    
+
     fn rewrite(&self, stmt: Statement) -> Result<Statement> {
         match stmt {
             Statement::Query(mut query) => {
@@ -157,7 +160,7 @@ impl RewriteRule for SubqueryFlattenerEnhanced {
             _ => Ok(stmt),
         }
     }
-    
+
     fn estimated_improvement(&self) -> f64 {
         40.0
     }
@@ -174,54 +177,50 @@ mod tests {
     use super::*;
     use sqlparser::dialect::PostgreSqlDialect;
     use sqlparser::parser::Parser;
-    
+
     fn parse(sql: &str) -> Statement {
         let dialect = PostgreSqlDialect {};
         let mut ast = Parser::parse_sql(&dialect, sql).unwrap();
         ast.pop().unwrap()
     }
-    
+
     #[test]
     fn test_detects_simple_in_subquery() {
         let rule = SubqueryFlattenerEnhanced::new();
-        let stmt = parse(
-            "SELECT * FROM users WHERE id IN (SELECT user_id FROM orders)"
-        );
-        
+        let stmt = parse("SELECT * FROM users WHERE id IN (SELECT user_id FROM orders)");
+
         assert!(rule.applies_to(&stmt));
     }
-    
+
     #[test]
     fn test_flattens_to_join() {
         let rule = SubqueryFlattenerEnhanced::new();
-        let stmt = parse(
-            "SELECT * FROM users WHERE id IN (SELECT user_id FROM orders)"
-        );
-        
+        let stmt = parse("SELECT * FROM users WHERE id IN (SELECT user_id FROM orders)");
+
         let result = rule.rewrite(stmt).unwrap();
         let sql = format!("{}", result);
-        
+
         // Verify JOIN was added
         assert!(sql.to_uppercase().contains("JOIN"));
         assert!(sql.to_uppercase().contains("DISTINCT"));
     }
-    
+
     #[test]
     fn test_ignores_complex_subquery() {
         let rule = SubqueryFlattenerEnhanced::new();
         let stmt = parse(
             "SELECT * FROM users WHERE id IN (SELECT user_id, COUNT(*) FROM orders GROUP BY user_id)"
         );
-        
+
         // Should not apply to complex subqueries
         assert!(!rule.applies_to(&stmt));
     }
-    
+
     #[test]
     fn test_ignores_simple_query() {
         let rule = SubqueryFlattenerEnhanced::new();
         let stmt = parse("SELECT * FROM users WHERE id = 1");
-        
+
         assert!(!rule.applies_to(&stmt));
     }
 }

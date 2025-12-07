@@ -82,7 +82,9 @@ impl Histogram {
     /// Create histogram with default latency buckets (in microseconds)
     pub fn new_latency() -> Self {
         // Buckets: 10us, 50us, 100us, 500us, 1ms, 5ms, 10ms, 50ms, 100ms, 500ms, 1s
-        let buckets = vec![10, 50, 100, 500, 1_000, 5_000, 10_000, 50_000, 100_000, 500_000, 1_000_000];
+        let buckets = vec![
+            10, 50, 100, 500, 1_000, 5_000, 10_000, 50_000, 100_000, 500_000, 1_000_000,
+        ];
         let counts = buckets.iter().map(|_| AtomicU64::new(0)).collect();
         Self {
             buckets,
@@ -497,7 +499,7 @@ impl Timer {
     }
 
     /// Start a timer that will record to a histogram on drop
-    /// 
+    ///
     /// # Safety
     /// The histogram must outlive this timer
     pub fn start_with_histogram(histogram: &Histogram) -> Self {
@@ -569,16 +571,16 @@ mod tests {
     fn test_histogram() {
         let histogram = Histogram::new_latency();
 
-        histogram.observe(5);   // 10us bucket
-        histogram.observe(25);  // 50us bucket
-        histogram.observe(75);  // 100us bucket
+        histogram.observe(5); // 10us bucket
+        histogram.observe(25); // 50us bucket
+        histogram.observe(75); // 100us bucket
 
         assert_eq!(histogram.get_count(), 3);
         assert_eq!(histogram.get_sum(), 105);
 
         let buckets = histogram.get_buckets();
-        assert_eq!(buckets[0], (10, 1));  // 10us bucket has 1 observation
-        assert_eq!(buckets[1], (50, 1));  // 50us bucket has 1 observation
+        assert_eq!(buckets[0], (10, 1)); // 10us bucket has 1 observation
+        assert_eq!(buckets[1], (50, 1)); // 50us bucket has 1 observation
         assert_eq!(buckets[2], (100, 1)); // 100us bucket has 1 observation
     }
 

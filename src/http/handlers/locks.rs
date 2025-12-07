@@ -11,8 +11,11 @@ use axum::{
 };
 
 /// GET /api/v1/locks/contention - High contention tables
-pub async fn contention(State(state): State<AppState>) -> ApiResult<Json<ApiResponse<LockContentionResponse>>> {
-    let manager = state.ebpf_manager
+pub async fn contention(
+    State(state): State<AppState>,
+) -> ApiResult<Json<ApiResponse<LockContentionResponse>>> {
+    let manager = state
+        .ebpf_manager
         .ok_or_else(|| ApiError::ServiceUnavailable("eBPF not enabled".to_string()))?;
 
     let high_contention = manager.get_high_contention();
@@ -25,8 +28,11 @@ pub async fn contention(State(state): State<AppState>) -> ApiResult<Json<ApiResp
 }
 
 /// GET /api/v1/locks/summary - Lock statistics summary
-pub async fn summary(State(state): State<AppState>) -> ApiResult<Json<ApiResponse<serde_json::Value>>> {
-    let manager = state.ebpf_manager
+pub async fn summary(
+    State(state): State<AppState>,
+) -> ApiResult<Json<ApiResponse<serde_json::Value>>> {
+    let manager = state
+        .ebpf_manager
         .ok_or_else(|| ApiError::ServiceUnavailable("eBPF not enabled".to_string()))?;
 
     let summary = manager.get_summary();
@@ -38,11 +44,12 @@ pub async fn events(
     State(state): State<AppState>,
     Query(params): Query<PaginationParams>,
 ) -> ApiResult<Json<ApiResponse<serde_json::Value>>> {
-    let manager = state.ebpf_manager
+    let manager = state
+        .ebpf_manager
         .ok_or_else(|| ApiError::ServiceUnavailable("eBPF not enabled".to_string()))?;
 
     let all_metrics = manager.get_lock_metrics();
-    
+
     // Apply pagination
     let total = all_metrics.len();
     let paginated: Vec<_> = all_metrics
@@ -64,17 +71,18 @@ pub async fn table_locks(
     State(state): State<AppState>,
     Path(oid): Path<u32>,
 ) -> ApiResult<Json<ApiResponse<serde_json::Value>>> {
-    let manager = state.ebpf_manager
+    let manager = state
+        .ebpf_manager
         .ok_or_else(|| ApiError::ServiceUnavailable("eBPF not enabled".to_string()))?;
 
     let metrics = manager.get_lock_metrics();
-    let table_metrics: Vec<_> = metrics
-        .into_iter()
-        .filter(|m| m.table_oid == oid)
-        .collect();
+    let table_metrics: Vec<_> = metrics.into_iter().filter(|m| m.table_oid == oid).collect();
 
     if table_metrics.is_empty() {
-        return Err(ApiError::NotFound(format!("No lock data for table OID {}", oid)));
+        return Err(ApiError::NotFound(format!(
+            "No lock data for table OID {}",
+            oid
+        )));
     }
 
     Ok(Json(ApiResponse::ok(serde_json::json!({

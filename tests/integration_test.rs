@@ -1,5 +1,5 @@
-use pg_query_advisor::*;
 use pg_query_advisor::analyzer::ConnectionAnalyzer;
+use pg_query_advisor::*;
 use sqlx::Row;
 
 #[tokio::test]
@@ -7,39 +7,51 @@ use sqlx::Row;
 async fn test_basic_workflow() {
     // This test requires a real Postgres database
     // Set TEST_DATABASE_URL environment variable to run
-    
+
     let database_url = std::env::var("TEST_DATABASE_URL")
         .unwrap_or_else(|_| "postgresql://postgres:postgres@localhost/test".to_string());
-    
+
     let pool = sqlx::postgres::PgPoolOptions::new()
         .max_connections(5)
         .connect(&database_url)
         .await
         .expect("Failed to connect to test database");
-    
+
     // Test database collector
     let collector = DatabaseCollector::new(pool.clone());
-    
+
     // Check pg_stat_statements (might not be enabled in test DB)
-    let has_extension = collector.check_pg_stat_statements().await
+    let has_extension = collector
+        .check_pg_stat_statements()
+        .await
         .expect("Failed to check pg_stat_statements");
-    
+
     if !has_extension {
         println!("Skipping test - pg_stat_statements not enabled");
         return;
     }
-    
+
     // Collect data
-    let queries = collector.collect_query_stats(10).await
+    let queries = collector
+        .collect_query_stats(10)
+        .await
         .expect("Failed to collect queries");
-    let tables = collector.collect_table_info().await
+    let tables = collector
+        .collect_table_info()
+        .await
         .expect("Failed to collect tables");
-    let indexes = collector.collect_index_info().await
+    let indexes = collector
+        .collect_index_info()
+        .await
         .expect("Failed to collect indexes");
-    
-    println!("Collected {} queries, {} tables, {} indexes", 
-        queries.len(), tables.len(), indexes.len());
-    
+
+    println!(
+        "Collected {} queries, {} tables, {} indexes",
+        queries.len(),
+        tables.len(),
+        indexes.len()
+    );
+
     // Test recommendation engine
     let engine = RecommendationEngine::new();
     let recommendations = engine.generate_recommendations(&queries, &tables, &indexes, None, None);
@@ -47,7 +59,9 @@ async fn test_basic_workflow() {
     println!("Generated {} recommendations", recommendations.len());
 
     // Test report generation
-    let (db_name, pg_version) = collector.get_database_info().await
+    let (db_name, pg_version) = collector
+        .get_database_info()
+        .await
         .expect("Failed to get database info");
 
     let report = AnalysisReport {
@@ -62,27 +76,26 @@ async fn test_basic_workflow() {
         connection_stats: None,
         health_score: 85,
     };
-    
+
     // Test output formatters
     let terminal_output = OutputFormatter::format_terminal(&report);
     assert!(!terminal_output.is_empty());
-    
-    let json_output = OutputFormatter::format_json(&report)
-        .expect("Failed to format JSON");
+
+    let json_output = OutputFormatter::format_json(&report).expect("Failed to format JSON");
     assert!(!json_output.is_empty());
-    
+
     let markdown_output = OutputFormatter::format_markdown(&report);
     assert!(!markdown_output.is_empty());
-    
+
     println!("All tests passed!");
 }
 
 #[test]
 fn test_analyzer_logic() {
-    use pg_query_advisor::{QueryAnalyzer, QueryStats, AnalysisConfig};
-    
+    use pg_query_advisor::{AnalysisConfig, QueryAnalyzer, QueryStats};
+
     let analyzer = QueryAnalyzer::new(AnalysisConfig::default());
-    
+
     // Test slow query detection
     let slow_query = QueryStats {
         queryid: Some(1),
@@ -94,7 +107,7 @@ fn test_analyzer_logic() {
         shared_blks_read: 0,
         shared_blks_hit: 0,
     };
-    
+
     let very_slow_query = QueryStats {
         queryid: Some(2),
         query: "SELECT * FROM orders".to_string(),
@@ -105,25 +118,31 @@ fn test_analyzer_logic() {
         shared_blks_read: 0,
         shared_blks_hit: 0,
     };
-    
+
     let queries = vec![slow_query, very_slow_query];
     let recommendations = analyzer.find_slow_queries(&queries);
-    
+
     assert_eq!(recommendations.len(), 1); // Only the very slow query should trigger
-    assert!(recommendations[0].severity == Severity::Critical || recommendations[0].severity == Severity::High);
-    
+    assert!(
+        recommendations[0].severity == Severity::Critical
+            || recommendations[0].severity == Severity::High
+    );
+
     // Verify the correct query was flagged
-    assert!(recommendations[0].title.contains("5000ms") || recommendations[0].description.contains("5000"));
+    assert!(
+        recommendations[0].title.contains("5000ms")
+            || recommendations[0].description.contains("5000")
+    );
 }
 
 #[test]
 fn test_cost_estimation() {
     use pg_query_advisor::{CostEstimator, PricingConfig};
-    
+
     let mut config = PricingConfig::default();
     config.cost_per_vcpu_hour = 0.10;
     let estimator = CostEstimator::new(config);
-    
+
     let mut rec = Recommendation {
         id: "test".to_string(),
         title: "Test".to_string(),
@@ -139,9 +158,9 @@ fn test_cost_estimation() {
         affected_table: None,
         affected_query: None,
     };
-    
+
     estimator.estimate_savings(&mut rec);
-    
+
     assert!(rec.estimated_cost_savings_usd_monthly.is_some());
     assert!(rec.estimated_cost_savings_usd_monthly.unwrap() > 0.0);
 }
@@ -153,13 +172,13 @@ fn test_cost_estimation() {
 async fn test_auto_apply_dry_run() {
     let database_url = std::env::var("TEST_DATABASE_URL")
         .unwrap_or_else(|_| "postgresql://postgres:postgres@localhost/test".to_string());
-    
+
     let pool = sqlx::postgres::PgPoolOptions::new()
         .max_connections(5)
         .connect(&database_url)
         .await
         .expect("Failed to connect");
-    
+
     // Create test recommendation
     let recommendation = Recommendation {
         id: "test-dry-run".to_string(),
@@ -176,7 +195,7 @@ async fn test_auto_apply_dry_run() {
         affected_table: Some("test_table".to_string()),
         affected_query: None,
     };
-    
+
     // Configure for dry-run
     let config = AutoApplyConfig {
         enabled: true,
@@ -190,11 +209,13 @@ async fn test_auto_apply_dry_run() {
         require_manual_approval: vec![],
         slack_webhook: None,
     };
-    
+
     let mut orchestrator = AutoApplyOrchestrator::new(pool, config);
-    let result = orchestrator.process_recommendation(&recommendation).await
+    let result = orchestrator
+        .process_recommendation(&recommendation)
+        .await
         .expect("Failed to process recommendation");
-    
+
     // In dry-run, should be simulated
     assert_eq!(result.status, ApplyStatus::Simulated);
     assert!(!result.rollback_executed);
@@ -219,7 +240,7 @@ async fn test_auto_apply_safety_filter() {
         affected_table: None,
         affected_query: Some("SELECT * FROM users".to_string()),
     };
-    
+
     let config = AutoApplyConfig {
         enabled: true,
         dry_run: false,
@@ -232,19 +253,21 @@ async fn test_auto_apply_safety_filter() {
         require_manual_approval: vec![],
         slack_webhook: None,
     };
-    
+
     let database_url = std::env::var("TEST_DATABASE_URL")
         .unwrap_or_else(|_| "postgresql://postgres:postgres@localhost/test".to_string());
-    
+
     let pool = sqlx::postgres::PgPoolOptions::new()
         .connect(&database_url)
         .await
         .expect("Failed to connect");
-    
+
     let mut orchestrator = AutoApplyOrchestrator::new(pool, config);
-    let result = orchestrator.process_recommendation(&recommendation).await
+    let result = orchestrator
+        .process_recommendation(&recommendation)
+        .await
         .expect("Failed to process");
-    
+
     // Should be skipped due to high risk
     assert_eq!(result.status, ApplyStatus::Skipped);
 }
@@ -267,7 +290,7 @@ async fn test_auto_apply_savings_threshold() {
         affected_table: Some("test".to_string()),
         affected_query: None,
     };
-    
+
     let config = AutoApplyConfig {
         enabled: true,
         dry_run: false,
@@ -280,19 +303,21 @@ async fn test_auto_apply_savings_threshold() {
         require_manual_approval: vec![],
         slack_webhook: None,
     };
-    
+
     let database_url = std::env::var("TEST_DATABASE_URL")
         .unwrap_or_else(|_| "postgresql://postgres:postgres@localhost/test".to_string());
-    
+
     let pool = sqlx::postgres::PgPoolOptions::new()
         .connect(&database_url)
         .await
         .expect("Failed to connect");
-    
+
     let mut orchestrator = AutoApplyOrchestrator::new(pool, config);
-    let result = orchestrator.process_recommendation(&recommendation).await
+    let result = orchestrator
+        .process_recommendation(&recommendation)
+        .await
         .expect("Failed to process");
-    
+
     // Should be skipped due to low savings
     assert_eq!(result.status, ApplyStatus::Skipped);
 }
@@ -300,7 +325,7 @@ async fn test_auto_apply_savings_threshold() {
 #[test]
 fn test_risk_assessment() {
     use pg_query_advisor::auto_apply::safety_filter::SafetyFilter;
-    
+
     let config = AutoApplyConfig {
         enabled: true,
         dry_run: false,
@@ -313,9 +338,9 @@ fn test_risk_assessment() {
         require_manual_approval: vec![],
         slack_webhook: None,
     };
-    
+
     let filter = SafetyFilter::new(config);
-    
+
     // Test missing index (should be low risk)
     let rec1 = Recommendation {
         id: "test-1".to_string(),
@@ -332,10 +357,10 @@ fn test_risk_assessment() {
         affected_table: Some("test".to_string()),
         affected_query: None,
     };
-    
+
     let applicable1 = filter.assess(&rec1);
     assert_eq!(applicable1.risk_assessment.risk_level, RiskLevel::Low);
-    
+
     // Test slow query (should be high risk)
     let rec2 = Recommendation {
         id: "test-2".to_string(),
@@ -352,7 +377,7 @@ fn test_risk_assessment() {
         affected_table: None,
         affected_query: Some("SELECT * FROM users".to_string()),
     };
-    
+
     let applicable2 = filter.assess(&rec2);
     assert_eq!(applicable2.risk_assessment.risk_level, RiskLevel::High);
     assert!(applicable2.requires_approval);
@@ -361,10 +386,10 @@ fn test_risk_assessment() {
 #[test]
 fn test_sql_parsing() {
     use pg_query_advisor::auto_apply::safety_filter::SafetyFilter;
-    
+
     let config = AutoApplyConfig::default();
     let filter = SafetyFilter::new(config);
-    
+
     // Test parsing CREATE INDEX
     let sql1 = "CREATE INDEX CONCURRENTLY idx_users_email ON users(email);";
     let rec1 = Recommendation {
@@ -382,16 +407,21 @@ fn test_sql_parsing() {
         affected_table: None,
         affected_query: None,
     };
-    
+
     let applicable1 = filter.assess(&rec1);
-    if let ApplyStrategy::CreateIndexConcurrently { index_name, table_name, columns } = applicable1.apply_strategy {
+    if let ApplyStrategy::CreateIndexConcurrently {
+        index_name,
+        table_name,
+        columns,
+    } = applicable1.apply_strategy
+    {
         assert_eq!(index_name, "idx_users_email");
         assert_eq!(table_name, "users");
         assert_eq!(columns, vec!["email"]);
     } else {
         panic!("Expected CreateIndexConcurrently strategy");
     }
-    
+
     // Test parsing DROP INDEX
     let sql2 = "DROP INDEX IF EXISTS public.idx_old_index;";
     let rec2 = Recommendation {
@@ -409,7 +439,7 @@ fn test_sql_parsing() {
         affected_table: None,
         affected_query: None,
     };
-    
+
     let applicable2 = filter.assess(&rec2);
     if let ApplyStrategy::DropIndex { schema, index_name } = applicable2.apply_strategy {
         assert_eq!(schema, "public");
@@ -421,9 +451,9 @@ fn test_sql_parsing() {
 
 #[test]
 fn test_improvement_calculation() {
-    use pg_query_advisor::PerformanceBaseline;
     use chrono::Utc;
-    
+    use pg_query_advisor::PerformanceBaseline;
+
     let baseline = PerformanceBaseline {
         captured_at: Utc::now(),
         query_id: None,
@@ -438,7 +468,7 @@ fn test_improvement_calculation() {
         index_size_mb: None,
         total_queries_analyzed: 100,
     };
-    
+
     let post_apply = PerformanceBaseline {
         captured_at: Utc::now(),
         query_id: None,
@@ -453,11 +483,12 @@ fn test_improvement_calculation() {
         index_size_mb: Some(10.0),
         total_queries_analyzed: 100,
     };
-    
+
     // Calculate improvement
-    let improvement = (baseline.mean_exec_time_ms - post_apply.mean_exec_time_ms) 
-        / baseline.mean_exec_time_ms * 100.0;
-    
+    let improvement = (baseline.mean_exec_time_ms - post_apply.mean_exec_time_ms)
+        / baseline.mean_exec_time_ms
+        * 100.0;
+
     assert_eq!(improvement, 80.0);
     assert!(improvement > 10.0); // Meets typical threshold
 }
@@ -479,28 +510,42 @@ async fn test_connection_monitoring_integration() {
     let collector = DatabaseCollector::new(pool.clone());
 
     // Test 1: Collect connection stats
-    let connection_stats = collector.collect_connection_stats().await
+    let connection_stats = collector
+        .collect_connection_stats()
+        .await
         .expect("Failed to collect connection stats");
 
     println!("Connection Stats:");
-    println!("  Total: {} / {} max", connection_stats.total_connections, connection_stats.max_connections);
+    println!(
+        "  Total: {} / {} max",
+        connection_stats.total_connections, connection_stats.max_connections
+    );
     println!("  Usage: {:.1}%", connection_stats.usage_percentage());
-    println!("  Idle in transaction: {}", connection_stats.idle_in_transaction_count);
+    println!(
+        "  Idle in transaction: {}",
+        connection_stats.idle_in_transaction_count
+    );
     println!("  Locked: {}", connection_stats.locked_connections_count);
 
     // Verify basic stats
-    assert!(connection_stats.total_connections > 0, "Should have at least one connection (this test)");
+    assert!(
+        connection_stats.total_connections > 0,
+        "Should have at least one connection (this test)"
+    );
     assert!(connection_stats.max_connections > 0);
     assert!(connection_stats.usage_percentage() >= 0.0);
     assert!(connection_stats.usage_percentage() <= 100.0);
 
     // Test 2: Collect individual connections
-    let connections = collector.collect_connections().await
+    let connections = collector
+        .collect_connections()
+        .await
         .expect("Failed to collect connections");
 
     println!("\nActive Connections: {}", connections.len());
     for conn in &connections {
-        println!("  PID {}: {:?} - {} - {}",
+        println!(
+            "  PID {}: {:?} - {} - {}",
             conn.pid,
             conn.state,
             conn.database,
@@ -524,11 +569,7 @@ async fn test_connection_monitoring_integration() {
 
     println!("\nConnection Recommendations: {}", recommendations.len());
     for rec in &recommendations {
-        println!("  [{:?}] {}: {:?}",
-            rec.severity,
-            rec.title,
-            rec.issue_type
-        );
+        println!("  [{:?}] {}: {:?}", rec.severity, rec.title, rec.issue_type);
     }
 
     // Verify recommendations structure
@@ -539,20 +580,24 @@ async fn test_connection_monitoring_integration() {
         assert!(!rec.migration_sql.is_empty());
         assert!(matches!(
             rec.issue_type,
-            IssueType::ConnectionPoolExhaustion |
-            IssueType::IdleInTransaction |
-            IssueType::LockContention
+            IssueType::ConnectionPoolExhaustion
+                | IssueType::IdleInTransaction
+                | IssueType::LockContention
         ));
     }
 
     // Test 4: Get long idle transactions (if any)
-    let long_idle = collector.get_long_idle_transactions(30).await
+    let long_idle = collector
+        .get_long_idle_transactions(30)
+        .await
         .expect("Failed to get long idle transactions");
 
     println!("\nLong idle transactions (>30s): {}", long_idle.len());
 
     // Test 5: Get locked connections (if any)
-    let locked = collector.get_locked_connections().await
+    let locked = collector
+        .get_locked_connections()
+        .await
         .expect("Failed to get locked connections");
 
     println!("Locked connections: {}", locked.len());
@@ -571,19 +616,28 @@ async fn test_connection_monitoring_integration() {
         Some(&connections),
     );
 
-    println!("\nTotal Recommendations (all types): {}", all_recommendations.len());
+    println!(
+        "\nTotal Recommendations (all types): {}",
+        all_recommendations.len()
+    );
 
     // Count connection-related recommendations
-    let connection_recs: Vec<_> = all_recommendations.iter()
-        .filter(|r| matches!(
-            r.issue_type,
-            IssueType::ConnectionPoolExhaustion |
-            IssueType::IdleInTransaction |
-            IssueType::LockContention
-        ))
+    let connection_recs: Vec<_> = all_recommendations
+        .iter()
+        .filter(|r| {
+            matches!(
+                r.issue_type,
+                IssueType::ConnectionPoolExhaustion
+                    | IssueType::IdleInTransaction
+                    | IssueType::LockContention
+            )
+        })
         .collect();
 
-    println!("Connection-related recommendations: {}", connection_recs.len());
+    println!(
+        "Connection-related recommendations: {}",
+        connection_recs.len()
+    );
 
     // Test 7: Verify ConnectionStats helper methods
     assert!(connection_stats.usage_percentage() >= 0.0);
@@ -625,14 +679,15 @@ async fn test_connection_state_enum_parsing() {
         .expect("Failed to connect");
 
     // Query pg_stat_activity directly
-    let rows = sqlx::query(
-        "SELECT DISTINCT state FROM pg_stat_activity WHERE state IS NOT NULL"
-    )
-    .fetch_all(&pool)
-    .await
-    .expect("Failed to query pg_stat_activity");
+    let rows = sqlx::query("SELECT DISTINCT state FROM pg_stat_activity WHERE state IS NOT NULL")
+        .fetch_all(&pool)
+        .await
+        .expect("Failed to query pg_stat_activity");
 
-    println!("Found {} distinct connection states in pg_stat_activity", rows.len());
+    println!(
+        "Found {} distinct connection states in pg_stat_activity",
+        rows.len()
+    );
 
     for row in rows {
         let state_str: String = row.get("state");
@@ -644,7 +699,10 @@ async fn test_connection_state_enum_parsing() {
         let back_to_str = parsed_state.as_str();
 
         // Allow for normalization (e.g., "disabled" might not round-trip exactly)
-        assert!(!back_to_str.is_empty(), "State should serialize to non-empty string");
+        assert!(
+            !back_to_str.is_empty(),
+            "State should serialize to non-empty string"
+        );
     }
 
     println!("✅ All connection state parsing tests passed!");
@@ -677,10 +735,15 @@ async fn test_simulated_idle_in_transaction() {
     tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
 
     let collector = DatabaseCollector::new(pool.clone());
-    let connection_stats = collector.collect_connection_stats().await
+    let connection_stats = collector
+        .collect_connection_stats()
+        .await
         .expect("Failed to collect stats");
 
-    println!("Idle in transaction count: {}", connection_stats.idle_in_transaction_count);
+    println!(
+        "Idle in transaction count: {}",
+        connection_stats.idle_in_transaction_count
+    );
 
     // Note: This might be 0 if the transaction is too fast or if pg_stat_activity
     // hasn't updated yet. This is expected behavior.

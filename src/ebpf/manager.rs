@@ -8,8 +8,8 @@
 
 use super::aggregator::AggregatedMetrics;
 use super::daemon::DaemonClient;
-use super::loader::{EbpfProgram, EbpfEventStream, EbpfTarget, EventStreamStats};
-use super::lock_tracer::{LockEvent, LockTracer, LockContentionMetrics, LockContentionSummary};
+use super::loader::{EbpfEventStream, EbpfProgram, EbpfTarget, EventStreamStats};
+use super::lock_tracer::{LockContentionMetrics, LockContentionSummary, LockEvent, LockTracer};
 use super::metrics::{EbpfMetrics, SharedMetrics};
 use super::protocol::MetricsData;
 use super::SystemMetrics;
@@ -20,7 +20,7 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::{RwLock, mpsc};
+use tokio::sync::{mpsc, RwLock};
 use tracing::{debug, error, info};
 
 /// Mode of operation for the eBPF manager
@@ -77,7 +77,7 @@ impl EbpfManager {
         } else {
             EbpfMode::Disabled
         };
-        
+
         Self {
             config,
             mode,
@@ -113,7 +113,7 @@ impl EbpfManager {
         } else {
             EbpfMode::Disabled
         };
-        
+
         Self {
             config,
             mode,
@@ -148,7 +148,7 @@ impl EbpfManager {
     }
 
     /// Start the eBPF manager
-    /// 
+    ///
     /// Behavior depends on mode:
     /// - Disabled: Does nothing
     /// - Client: Connects to daemon via Unix socket
@@ -161,30 +161,39 @@ impl EbpfManager {
                 return Ok(());
             }
             EbpfMode::Client { socket_path } => {
-                info!("Starting eBPF manager in client mode, connecting to {:?}", socket_path);
+                info!(
+                    "Starting eBPF manager in client mode, connecting to {:?}",
+                    socket_path
+                );
                 let socket_str = socket_path.to_string_lossy();
-                let client = DaemonClient::connect(&socket_str)
-                    .map_err(|e| anyhow::anyhow!("Failed to connect to daemon at {:?}: {}", socket_path, e))?;
+                let client = DaemonClient::connect(&socket_str).map_err(|e| {
+                    anyhow::anyhow!("Failed to connect to daemon at {:?}: {}", socket_path, e)
+                })?;
                 self.daemon_client = Some(client);
-                
+
                 let mut stats = self.stats.write().await;
                 stats.mode = "client".to_string();
                 stats.daemon_connected = true;
             }
             EbpfMode::Privileged => {
-                info!("Starting eBPF manager in privileged mode with {} programs", self.programs.len());
-                
+                info!(
+                    "Starting eBPF manager in privileged mode with {} programs",
+                    self.programs.len()
+                );
+
                 // Load all programs
                 for program in &mut self.programs {
-                    program.load()
-                        .with_context(|| format!("Failed to load eBPF program: {}", program.name()))?;
+                    program.load().with_context(|| {
+                        format!("Failed to load eBPF program: {}", program.name())
+                    })?;
                     info!("Loaded eBPF program: {}", program.name());
                 }
 
                 // Attach all programs
                 for program in &mut self.programs {
-                    program.attach(&target)
-                        .with_context(|| format!("Failed to attach eBPF program: {}", program.name()))?;
+                    program.attach(&target).with_context(|| {
+                        format!("Failed to attach eBPF program: {}", program.name())
+                    })?;
                     info!("Attached eBPF program: {} to {:?}", program.name(), target);
                 }
 
@@ -207,7 +216,7 @@ impl EbpfManager {
     }
 
     /// Stop the eBPF manager
-    /// 
+    ///
     /// Detaches and unloads all programs
     pub async fn stop(&mut self) -> Result<()> {
         if !self.running.load(Ordering::SeqCst) {
@@ -239,7 +248,7 @@ impl EbpfManager {
     }
 
     /// Process events from an event stream
-    /// 
+    ///
     /// This would be called in a loop for each event stream
     pub async fn process_lock_events<S>(&self, stream: &mut S) -> Result<usize>
     where
@@ -285,7 +294,7 @@ impl EbpfManager {
     }
 
     /// Update table name mappings
-    /// 
+    ///
     /// Call this periodically to keep table names in sync with database
     pub fn update_table_names(&self, oid_to_name: HashMap<u32, String>) {
         self.lock_tracer.update_table_names(oid_to_name);
@@ -302,13 +311,15 @@ impl EbpfManager {
     }
 
     /// Poll for metrics from daemon (client mode only)
-    /// 
+    ///
     /// Returns None if not in client mode or not connected
     pub fn get_pid_metrics(&mut self, pid: u32) -> Option<MetricsData> {
         if let Some(ref mut client) = self.daemon_client {
             match client.get_metrics(pid) {
                 Ok(metrics_data) => {
-                    self.metrics.events_received.inc_by(metrics_data.events_processed);
+                    self.metrics
+                        .events_received
+                        .inc_by(metrics_data.events_processed);
                     Some(metrics_data)
                 }
                 Err(e) => {
@@ -515,7 +526,7 @@ mod tests {
         };
 
         let mut manager = EbpfManager::new(config);
-        
+
         // Should succeed but do nothing
         manager.start(EbpfTarget::ProcessPid(1234)).await.unwrap();
         assert!(!manager.is_running());

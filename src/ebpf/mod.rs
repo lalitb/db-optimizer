@@ -26,55 +26,82 @@ pub mod protocol;
 pub mod sampling;
 
 // Additional feature modules
-pub mod query_normalizer;
-pub mod session_tracker;
-pub mod wal_correlator;
-pub mod vacuum_detector;
 pub mod cgroup_metrics;
 pub mod degradation;
 pub mod live_maps;
 pub mod pg_stat_full;
 pub mod program_loader;
 pub mod prometheus;
+pub mod query_normalizer;
+pub mod session_tracker;
+pub mod vacuum_detector;
+pub mod wal_correlator;
 
 use std::error::Error as StdError;
 use std::fmt;
 
 // Core re-exports
 pub use correlator::DefaultMetricsCorrelator;
-pub use loader::{EbpfProgram, EbpfEventStream, EbpfTarget, EventStreamStats};
+pub use loader::{EbpfEventStream, EbpfProgram, EbpfTarget, EventStreamStats};
 pub use lock_tracer::{
-    LockContentionMetrics, LockContentionSummary, LockEvent, LockEventType,
-    LockMode, LockTracer,
+    LockContentionMetrics, LockContentionSummary, LockEvent, LockEventType, LockMode, LockTracer,
 };
 pub use manager::{EbpfManager, EbpfMode, ManagerStats};
-pub use metrics_collector::{EbpfMetricsCollector, MockSystemMetricsCollector, EbpfCollectorConfig};
+pub use metrics_collector::{
+    EbpfCollectorConfig, EbpfMetricsCollector, MockSystemMetricsCollector,
+};
 pub use postgres_tracer::{
-    PostgresTracer, PostgresQueryEvent, QueryStatus, QueryIoStats,
-    LockContentionEvent, BlockingStats, QueryBreakdown, Recommendation,
+    BlockingStats, LockContentionEvent, PostgresQueryEvent, PostgresTracer, QueryBreakdown,
+    QueryIoStats, QueryStatus, Recommendation,
 };
 
 // New v2 re-exports
-pub use aggregator::{EventAggregator, AggregatedMetrics};
-pub use daemon::{EbpfDaemon, DaemonConfig, DaemonClient};
-pub use events::{RawEvent, EventType, ParseError};
-pub use metrics::{EbpfMetrics, SharedMetrics, Counter, Gauge, Histogram, Timer, new_shared_metrics};
-pub use mock::{MockEventGenerator, MockProfile, MockDaemonServer, ReplayProvider, MockScenarioBuilder};
+pub use aggregator::{AggregatedMetrics, EventAggregator};
+pub use daemon::{DaemonClient, DaemonConfig, EbpfDaemon};
+pub use events::{EventType, ParseError, RawEvent};
+pub use metrics::{
+    new_shared_metrics, Counter, EbpfMetrics, Gauge, Histogram, SharedMetrics, Timer,
+};
+pub use mock::{
+    MockDaemonServer, MockEventGenerator, MockProfile, MockScenarioBuilder, ReplayProvider,
+};
 pub use pg_stat_correlator::PgStatCorrelator;
-pub use protocol::{Message, MessagePayload, ProtocolCodec, MetricsData, DaemonStatus};
+pub use protocol::{DaemonStatus, Message, MessagePayload, MetricsData, ProtocolCodec};
 pub use sampling::SamplingController;
 
 // Additional feature re-exports
-pub use query_normalizer::{QueryNormalizer, NormalizerStats};
-pub use session_tracker::{SessionTracker, SessionState, PreparedStatement, Portal, TrackerStats, CloseType, QueryContext};
-pub use wal_correlator::{WalIoCorrelator, IoType, ClassifiedIoEvent, WalWriteInfo, CheckpointInfo, IoStats, IoSummary};
-pub use vacuum_detector::{VacuumDetector, VacuumType, VacuumPhase, ActiveVacuum, CompletedVacuum, AutovacuumWorker, VacuumStats, VacuumAnalysis};
-pub use cgroup_metrics::{CgroupCollector, ContainerRuntime, CgroupVersion, CpuMetrics, MemoryMetrics, IoMetrics, ContainerMetrics, ResourceLimits};
-pub use degradation::{DegradationManager, CapabilityLevel, DegradationReason, DegradationEvent, RecoveryEvent, DegradationStatus};
-pub use live_maps::{LiveMapManager, LiveMapConfig, SamplingConfig, PidFilterConfig, LatencyThresholds, MapUpdateResult, MapUpdateStats};
-pub use pg_stat_full::{PgStatIntegrator, PgStatStatement, PgStatActivity, PgStatTable, PgStatIndex, PgStatBgWriter, CorrelatedQueryMetrics, CorrelationSummary};
-pub use program_loader::{EbpfLoader, LoaderConfig, LoadResult, ProgramType, MapType, ProgramDef, MapDef, LoadedProgram, LoadedMap};
-pub use prometheus::{PrometheusRegistry, MetricType, MetricValue};
+pub use cgroup_metrics::{
+    CgroupCollector, CgroupVersion, ContainerMetrics, ContainerRuntime, CpuMetrics, IoMetrics,
+    MemoryMetrics, ResourceLimits,
+};
+pub use degradation::{
+    CapabilityLevel, DegradationEvent, DegradationManager, DegradationReason, DegradationStatus,
+    RecoveryEvent,
+};
+pub use live_maps::{
+    LatencyThresholds, LiveMapConfig, LiveMapManager, MapUpdateResult, MapUpdateStats,
+    PidFilterConfig, SamplingConfig,
+};
+pub use pg_stat_full::{
+    CorrelatedQueryMetrics, CorrelationSummary, PgStatActivity, PgStatBgWriter, PgStatIndex,
+    PgStatIntegrator, PgStatStatement, PgStatTable,
+};
+pub use program_loader::{
+    EbpfLoader, LoadResult, LoadedMap, LoadedProgram, LoaderConfig, MapDef, MapType, ProgramDef,
+    ProgramType,
+};
+pub use prometheus::{MetricType, MetricValue, PrometheusRegistry};
+pub use query_normalizer::{NormalizerStats, QueryNormalizer};
+pub use session_tracker::{
+    CloseType, Portal, PreparedStatement, QueryContext, SessionState, SessionTracker, TrackerStats,
+};
+pub use vacuum_detector::{
+    ActiveVacuum, AutovacuumWorker, CompletedVacuum, VacuumAnalysis, VacuumDetector, VacuumPhase,
+    VacuumStats, VacuumType,
+};
+pub use wal_correlator::{
+    CheckpointInfo, ClassifiedIoEvent, IoStats, IoSummary, IoType, WalIoCorrelator, WalWriteInfo,
+};
 
 /// System metrics collected from kernel events
 #[derive(Debug, Clone, Default)]
@@ -84,20 +111,20 @@ pub struct SystemMetrics {
     pub cpu_time_us: u64,
     pub io_wait_time_us: u64,
     pub lock_wait_time_us: u64,
-    
+
     // I/O metrics
     pub bytes_read: u64,
     pub bytes_written: u64,
     pub read_syscalls: u32,
     pub write_syscalls: u32,
     pub fsync_count: u32,
-    
+
     // Memory metrics
     pub page_cache_hits: u32,
     pub page_cache_misses: u32,
     pub page_faults: u32,
     pub context_switches: u32,
-    
+
     // Event quality
     pub events_processed: u64,
     pub events_dropped: u64,
@@ -109,18 +136,18 @@ impl SystemMetrics {
         if self.events_processed == 0 {
             return 0.0;
         }
-        
+
         let total = self.events_processed + self.events_dropped;
         let success_rate = self.events_processed as f64 / total as f64;
-        
+
         match success_rate {
-            r if r >= 0.99 => 0.95,  // <1% loss = high confidence
-            r if r >= 0.95 => 0.80,  // <5% loss = medium confidence
-            r if r >= 0.90 => 0.60,  // <10% loss = low confidence
-            _ => 0.40,                // >10% loss = very low confidence
+            r if r >= 0.99 => 0.95, // <1% loss = high confidence
+            r if r >= 0.95 => 0.80, // <5% loss = medium confidence
+            r if r >= 0.90 => 0.60, // <10% loss = low confidence
+            _ => 0.40,              // >10% loss = very low confidence
         }
     }
-    
+
     /// Get I/O percentage of total time
     pub fn io_percentage(&self) -> f64 {
         if self.total_time_us == 0 {
@@ -128,7 +155,7 @@ impl SystemMetrics {
         }
         (self.io_wait_time_us as f64 / self.total_time_us as f64) * 100.0
     }
-    
+
     /// Get CPU percentage of total time
     pub fn cpu_percentage(&self) -> f64 {
         if self.total_time_us == 0 {

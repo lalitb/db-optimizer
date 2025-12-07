@@ -76,7 +76,13 @@ impl MetricValue {
     }
 
     /// Create a new histogram
-    pub fn histogram(name: &str, help: &str, buckets: Vec<(f64, u64)>, sum: f64, count: u64) -> Self {
+    pub fn histogram(
+        name: &str,
+        help: &str,
+        buckets: Vec<(f64, u64)>,
+        sum: f64,
+        count: u64,
+    ) -> Self {
         Self {
             name: name.to_string(),
             metric_type: MetricType::Histogram,
@@ -140,7 +146,10 @@ impl MetricValue {
                                 .collect();
                             format!("{{le=\"{}\",{}}}", le, pairs.join(","))
                         };
-                        output.push_str(&format!("{}_bucket{} {}\n", self.name, bucket_labels, count));
+                        output.push_str(&format!(
+                            "{}_bucket{} {}\n",
+                            self.name, bucket_labels, count
+                        ));
                     }
                     // +Inf bucket
                     let inf_labels = if self.labels.is_empty() {
@@ -295,14 +304,22 @@ impl PrometheusRegistry {
         .await;
 
         self.add_metric(
-            MetricValue::gauge("query_io_time_us", "Query I/O time in microseconds", io_time_us)
-                .with_label("query_hash", query_hash),
+            MetricValue::gauge(
+                "query_io_time_us",
+                "Query I/O time in microseconds",
+                io_time_us,
+            )
+            .with_label("query_hash", query_hash),
         )
         .await;
 
         self.add_metric(
-            MetricValue::gauge("query_cpu_time_us", "Query CPU time in microseconds", cpu_time_us)
-                .with_label("query_hash", query_hash),
+            MetricValue::gauge(
+                "query_cpu_time_us",
+                "Query CPU time in microseconds",
+                cpu_time_us,
+            )
+            .with_label("query_hash", query_hash),
         )
         .await;
 
@@ -372,8 +389,12 @@ impl PrometheusRegistry {
         throttle_pct: f64,
     ) {
         self.add_metric(
-            MetricValue::gauge("container_cpu_usage_percent", "Container CPU usage percentage", cpu_usage_pct)
-                .with_label("container_id", container_id),
+            MetricValue::gauge(
+                "container_cpu_usage_percent",
+                "Container CPU usage percentage",
+                cpu_usage_pct,
+            )
+            .with_label("container_id", container_id),
         )
         .await;
 
@@ -455,17 +476,23 @@ impl PrometheusRegistry {
     }
 
     /// Record eBPF status
-    pub async fn record_ebpf_status(&self, capability_level: &str, events_per_sec: f64, drop_rate: f64) {
-        self.add_metric(
-            MetricValue::gauge("ebpf_capability_level", "eBPF capability level (0=disabled, 4=full)", 
-                match capability_level {
-                    "Full" => 4.0,
-                    "Limited" => 3.0,
-                    "DaemonOnly" => 2.0,
-                    "PgStatOnly" => 1.0,
-                    _ => 0.0,
-                })
-        )
+    pub async fn record_ebpf_status(
+        &self,
+        capability_level: &str,
+        events_per_sec: f64,
+        drop_rate: f64,
+    ) {
+        self.add_metric(MetricValue::gauge(
+            "ebpf_capability_level",
+            "eBPF capability level (0=disabled, 4=full)",
+            match capability_level {
+                "Full" => 4.0,
+                "Limited" => 3.0,
+                "DaemonOnly" => 2.0,
+                "PgStatOnly" => 1.0,
+                _ => 0.0,
+            },
+        ))
         .await;
 
         self.add_metric(MetricValue::gauge(

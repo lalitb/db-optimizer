@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use crate::ebpf::lock_tracer::LockContentionSummary;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentStatus {
