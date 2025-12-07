@@ -1,6 +1,6 @@
 use crate::query_rewriter::RewriteRule;
 use anyhow::Result;
-use sqlparser::ast::{Expr, Join, JoinOperator, SelectItem, SetExpr, Statement, TableFactor};
+use sqlparser::ast::{Expr, SetExpr, Statement};
 
 /// Flattens IN subqueries into JOINs for better performance
 ///

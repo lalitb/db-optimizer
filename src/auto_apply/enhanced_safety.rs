@@ -1,9 +1,9 @@
 // src/auto_apply/enhanced_safety.rs - Enhanced safety filtering and governance
 
-use anyhow::{anyhow, Result};
-use chrono::{DateTime, Datelike, Timelike, Utc, Weekday};
+use anyhow::Result;
+use chrono::{DateTime, Utc, Weekday};
 
-use crate::config::{MaintenanceWindow, OperationMode, SafetyConfig};
+use crate::config::{OperationMode, SafetyConfig};
 use crate::models::Recommendation;
 
 /// Enhanced safety filter with comprehensive governance rules

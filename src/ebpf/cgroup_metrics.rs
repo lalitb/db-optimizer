@@ -7,12 +7,11 @@
 //!
 //! Reads cgroup v1 and v2 metrics to understand resource limits and usage.
 
-use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use tracing::{debug, trace, warn};
+use tracing::debug;
 
 /// Container runtime type
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

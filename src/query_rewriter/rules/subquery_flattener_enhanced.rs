@@ -2,7 +2,7 @@ use crate::query_rewriter::RewriteRule;
 use anyhow::Result;
 use sqlparser::ast::{
     Expr, Ident, Join, JoinConstraint, JoinOperator, Query, Select, SelectItem, SetExpr, Statement,
-    TableFactor, TableWithJoins,
+    TableFactor,
 };
 
 /// Enhanced Subquery Flattener with actual JOIN conversion

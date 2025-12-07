@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
-use tracing::{debug, trace, warn};
+use tracing::{debug, trace};
 
 /// I/O type classification
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -518,7 +518,7 @@ impl WalIoCorrelator {
     /// Get summary of I/O by category
     pub async fn get_io_summary(&self) -> IoSummary {
         let stats = self.io_stats.read().await;
-        let wal = self.wal_info.read().await;
+        let _wal = self.wal_info.read().await;
         let checkpoint = self.checkpoint_info.read().await;
 
         let mut summary = IoSummary::default();

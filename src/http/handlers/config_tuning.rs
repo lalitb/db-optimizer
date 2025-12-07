@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 use crate::config_tuner::{
-    models::{DiskType, OptimalConfig, OsType, SystemInfo, ValidationReport, WorkloadType},
+    models::{DiskType, OptimalConfig, OsType, SystemInfo, WorkloadType},
     ConfigTuner, ConfigValidator, WorkloadDetector,
 };
 use crate::http::{error::ApiError, models::ApiResponse};
@@ -69,7 +69,7 @@ pub async fn tune_config(
     Json(req): Json<TuneConfigRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
     // Get or detect system info
-    let mut system_info = if req.ram_gb.is_some() || req.cpu_count.is_some() {
+    let system_info = if req.ram_gb.is_some() || req.cpu_count.is_some() {
         // User provided overrides
         let base = SystemInfo::detect()
             .map_err(|e| ApiError::Internal(format!("Failed to detect system info: {}", e)))?;

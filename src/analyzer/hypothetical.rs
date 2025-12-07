@@ -111,12 +111,8 @@ impl HypotheticalAnalyzer {
         query: &str,
     ) -> Result<String> {
         let explain_sql = format!("EXPLAIN {}", query);
-        let row = sqlx::query(&explain_sql).fetch_one(&mut **tx).await?;
 
-        // EXPLAIN returns a set of rows, but fetch_one gets the first line which usually contains the top node
-        // For a full plan we'd need fetch_all, but for checking index usage, the top node or first few lines are often enough
-        // Actually, let's fetch all to be sure we see the index scan
-
+        // Fetch all rows of EXPLAIN output
         let rows = sqlx::query(&explain_sql).fetch_all(&mut **tx).await?;
 
         let plan: String = rows

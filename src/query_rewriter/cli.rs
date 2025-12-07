@@ -4,7 +4,6 @@ use anyhow::{Context, Result};
 use std::fs;
 use std::io::{self, Read};
 
-use crate::cost_estimator::CostEstimator;
 use crate::query_rewriter::{QueryRewriter, RewriteResult};
 
 /// Input source for SQL queries

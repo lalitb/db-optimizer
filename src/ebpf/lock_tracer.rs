@@ -1,7 +1,7 @@
 // Lock contention tracking and analysis
 // Collects lock events from eBPF probes and provides aggregated metrics
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;

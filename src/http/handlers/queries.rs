@@ -8,7 +8,7 @@ use crate::http::{
     },
     AppState,
 };
-use crate::query_rewriter::{QueryRewriter, RewriteRule};
+use crate::query_rewriter::QueryRewriter;
 use axum::{
     extract::{Path, Query, State},
     Json,

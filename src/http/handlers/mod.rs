@@ -7,8 +7,7 @@ pub mod queries;
 pub mod recommendations;
 pub mod stats;
 
-use crate::http::{ApiResponse, HealthStatus};
-use axum::{response::Html, Json};
+use axum::response::Html;
 
 /// Root endpoint - API information
 pub async fn root() -> Html<&'static str> {

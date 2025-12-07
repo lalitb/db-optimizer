@@ -1,7 +1,7 @@
 use crate::query_rewriter::RewriteRule;
 use anyhow::Result;
 use sqlparser::ast::{
-    BinaryOperator, Expr, Ident, Select, SelectItem, SetExpr, Statement, TableWithJoins,
+    BinaryOperator, Expr, Select, SelectItem, SetExpr, Statement, TableWithJoins,
 };
 use std::collections::HashSet;
 

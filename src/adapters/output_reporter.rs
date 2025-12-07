@@ -1,7 +1,6 @@
 // src/adapters/output_reporter.rs - Reporter trait implementation
 
 use anyhow::Result;
-use async_trait::async_trait;
 
 use crate::models::AnalysisReport;
 use crate::output::OutputFormatter;

@@ -1,6 +1,6 @@
 use crate::query_rewriter::RewriteRule;
 use anyhow::{Context, Result};
-use sqlparser::ast::{Expr, Ident, ObjectName, SelectItem, SetExpr, Statement, TableFactor};
+use sqlparser::ast::{Expr, Ident, SelectItem, SetExpr, Statement, TableFactor};
 use sqlx::PgPool;
 
 /// Enhanced SELECT * Remover with schema access

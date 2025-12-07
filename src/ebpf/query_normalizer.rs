@@ -11,7 +11,7 @@ use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use tracing::{debug, warn};
+use tracing::debug;
 
 /// Query normalizer that produces consistent hashes for parameterized queries
 pub struct QueryNormalizer {
@@ -190,7 +190,7 @@ impl QueryNormalizer {
                 }
             }
             SetExpr::SetOperation {
-                op, left, right, ..
+                op, left: _, right: _, ..
             } => {
                 parts.push(format!("{:?} (UNION/INTERSECT/EXCEPT)", op));
             }
@@ -271,7 +271,7 @@ impl QueryNormalizer {
             // IN list
             Expr::InList {
                 expr,
-                list,
+                list: _,
                 negated,
             } => {
                 let neg = if *negated { "NOT " } else { "" };
@@ -297,8 +297,8 @@ impl QueryNormalizer {
             Expr::Between {
                 expr,
                 negated,
-                low,
-                high,
+                low: _,
+                high: _,
             } => {
                 let neg = if *negated { "NOT " } else { "" };
                 format!("{} {}BETWEEN ? AND ?", self.normalize_expr(expr), neg)
@@ -307,7 +307,7 @@ impl QueryNormalizer {
             // LIKE
             Expr::Like {
                 expr,
-                pattern,
+                pattern: _,
                 negated,
                 ..
             } => {

@@ -2,11 +2,11 @@
 
 use crate::http::{
     error::ApiResult,
-    models::{ApiResponse, HealthStatus, MetricLine, PrometheusMetrics, StatsSummary},
+    models::{ApiResponse, HealthStatus, StatsSummary},
     AppState,
 };
 use axum::{extract::State, Json};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::SystemTime;
 
 lazy_static::lazy_static! {
     static ref START_TIME: SystemTime = SystemTime::now();

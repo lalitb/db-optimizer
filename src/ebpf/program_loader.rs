@@ -7,11 +7,10 @@
 //! - Safe program lifecycle management
 
 use std::collections::HashMap;
-use std::path::Path;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 use tokio::sync::RwLock;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, info};
 
 /// eBPF program type
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -439,7 +438,7 @@ impl EbpfLoader {
     /// Attach all loaded programs
     pub async fn attach_all(&self) -> LoadResult {
         let mut programs = self.programs.write().await;
-        let mut errors = Vec::new();
+        let errors = Vec::new();
 
         for (name, prog) in programs.iter_mut() {
             if prog.attached {

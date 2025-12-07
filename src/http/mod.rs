@@ -10,7 +10,7 @@ use crate::ebpf::EbpfManager;
 use crate::fleet::FleetManager;
 use crate::persistence::PersistenceStore;
 use axum::{
-    routing::{delete, get, post},
+    routing::{get, post},
     Router,
 };
 use std::sync::Arc;

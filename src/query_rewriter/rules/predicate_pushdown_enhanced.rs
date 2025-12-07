@@ -1,6 +1,6 @@
 use crate::query_rewriter::RewriteRule;
 use anyhow::Result;
-use sqlparser::ast::{Expr, Query, Select, SetExpr, Statement, TableFactor, TableWithJoins};
+use sqlparser::ast::{Expr, Select, SetExpr, Statement, TableFactor};
 
 /// Enhanced Predicate Pushdown with actual rewriting capability
 ///

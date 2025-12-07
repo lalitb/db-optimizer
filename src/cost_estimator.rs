@@ -1,6 +1,5 @@
 use crate::models::*;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum CloudProvider {

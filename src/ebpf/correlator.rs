@@ -2,7 +2,6 @@
 
 use anyhow::Result;
 use async_trait::async_trait;
-use std::collections::HashMap;
 
 use crate::models::QueryStats;
 use crate::traits::{

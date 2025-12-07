@@ -1,7 +1,7 @@
 // src/auto_apply/enhanced_verifier.rs - Enhanced verification with system metrics
 
 use anyhow::Result;
-use chrono::{DateTime, Duration, Utc};
+use chrono::{DateTime, Utc};
 
 use crate::config::SuccessCriterion;
 use crate::models::{ApplyResult, ApplyStatus, PerformanceBaseline, QueryStats};
@@ -198,7 +198,7 @@ impl EnhancedVerifier {
         use crate::config::SuccessMetric;
 
         let mut passed_criteria = 0;
-        let mut total_criteria = self.success_criteria.len();
+        let total_criteria = self.success_criteria.len();
         let mut details = Vec::new();
 
         for criterion in &self.success_criteria {

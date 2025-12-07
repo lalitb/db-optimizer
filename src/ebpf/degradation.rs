@@ -9,7 +9,7 @@
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
-use tracing::{debug, error, info, warn};
+use tracing::{info, warn};
 
 /// eBPF capability level (ordered from worst to best for comparison)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]

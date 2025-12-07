@@ -11,7 +11,6 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
-use tracing::{debug, error, info, warn};
 
 /// Query statistics from pg_stat_statements
 #[derive(Debug, Clone)]

@@ -105,7 +105,7 @@ impl AzureMetadataCollector {
     /// Detect Postgres-specific metadata
     async fn detect_postgres_metadata(
         &self,
-        resource_group: &str,
+        _resource_group: &str,
     ) -> (
         Option<String>,
         Option<String>,

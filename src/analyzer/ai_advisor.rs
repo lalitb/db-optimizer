@@ -2,7 +2,7 @@ use crate::models::{IndexInfo, IssueType, QueryStats, Recommendation, Severity, 
 use anyhow::{Context, Result};
 use async_trait::async_trait;
 use reqwest::Client;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_json::json;
 
 /// Interface for LLM interaction
