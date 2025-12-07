@@ -20,6 +20,7 @@ pub struct EbpfMetricsCollector {
     metrics_cache: Arc<Mutex<HashMap<i64, Vec<MetricSample>>>>,
 
     /// Configuration for eBPF collection
+    #[allow(dead_code)] // Used when eBPF collection is fully implemented
     config: EbpfCollectorConfig,
 }
 
@@ -60,6 +61,7 @@ impl Default for EbpfCollectorConfig {
 #[derive(Debug, Clone)]
 struct MetricSample {
     timestamp: DateTime<Utc>,
+    #[allow(dead_code)] // Reserved for query-level metric correlation
     query_id: Option<i64>,
     cpu_time_us: u64,
     io_wait_time_us: u64,

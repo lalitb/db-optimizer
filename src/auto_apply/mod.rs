@@ -20,6 +20,7 @@ use safety_filter::SafetyFilter;
 use verifier::Verifier;
 
 pub struct AutoApplyOrchestrator {
+    #[allow(dead_code)] // Reserved for direct pool operations
     pool: PgPool,
     config: AutoApplyConfig,
     safety_filter: SafetyFilter,
@@ -356,9 +357,9 @@ impl AutoApplyOrchestrator {
             for (i, part) in parts.iter().enumerate() {
                 if part.to_uppercase() == "INDEX" {
                     // Next non-CONCURRENTLY token is the index name
-                    for j in (i + 1)..parts.len() {
-                        if parts[j].to_uppercase() != "CONCURRENTLY" {
-                            return Some(parts[j].trim_end_matches(';').to_string());
+                    for part_after in parts.iter().skip(i + 1) {
+                        if part_after.to_uppercase() != "CONCURRENTLY" {
+                            return Some(part_after.trim_end_matches(';').to_string());
                         }
                     }
                 }
@@ -368,9 +369,9 @@ impl AutoApplyOrchestrator {
             let parts: Vec<&str> = sql.split_whitespace().collect();
             for (i, part) in parts.iter().enumerate() {
                 if part.to_uppercase() == "INDEX" {
-                    for j in (i + 1)..parts.len() {
-                        if parts[j].to_uppercase() != "CONCURRENTLY" {
-                            return Some(parts[j].trim_end_matches(';').to_string());
+                    for part_after in parts.iter().skip(i + 1) {
+                        if part_after.to_uppercase() != "CONCURRENTLY" {
+                            return Some(part_after.trim_end_matches(';').to_string());
                         }
                     }
                 }

@@ -270,6 +270,7 @@ pub struct OptimizerConfig {
 /// The main optimizer pipeline that coordinates all components
 pub struct OptimizerPipeline {
     metrics_collector: Box<dyn MetricsCollector>,
+    #[allow(dead_code)] // Used for advanced analysis
     analyzer: Box<dyn Analyzer>,
     recommendation_generator: Box<dyn RecommendationGenerator>,
     reporter: Box<dyn Reporter>,

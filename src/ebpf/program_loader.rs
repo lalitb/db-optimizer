@@ -7,11 +7,10 @@
 //! - Safe program lifecycle management
 
 use std::collections::HashMap;
-use std::path::Path;
 use std::sync::Arc;
 use std::time::Instant;
 use tokio::sync::RwLock;
-use tracing::{debug, info, warn};
+use tracing::{debug, info};
 
 /// eBPF program type
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -189,6 +188,7 @@ pub struct EbpfLoader {
     /// Whether ring buffer is available
     ringbuf_available: Arc<RwLock<bool>>,
     /// Load errors
+    #[allow(dead_code)] // Used for error collection during program loading
     errors: Arc<RwLock<Vec<String>>>,
 }
 
@@ -250,6 +250,7 @@ impl EbpfLoader {
     }
 
     /// Parse kernel version from /proc/version
+    #[allow(dead_code)] // Used on Linux only
     fn parse_kernel_version(version_str: &str) -> Option<(u32, u32, u32)> {
         // Format: "Linux version X.Y.Z-..."
         let parts: Vec<&str> = version_str.split_whitespace().collect();

@@ -73,7 +73,7 @@ impl SystemInfo {
 
         // Get total memory using sysctl
         let output = Command::new("sysctl")
-            .args(&["-n", "hw.memsize"])
+            .args(["-n", "hw.memsize"])
             .output()?;
         let mem_bytes = String::from_utf8(output.stdout)?.trim().parse::<u64>()?;
         let total_ram_kb = mem_bytes / 1024;

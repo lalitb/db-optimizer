@@ -27,10 +27,7 @@ impl HypotheticalAnalyzer {
             .fetch_optional(&self.pool)
             .await;
 
-        match result {
-            Ok(Some(_)) => true,
-            _ => false,
-        }
+        matches!(result, Ok(Some(_)))
     }
 
     /// Evaluate a hypothetical index

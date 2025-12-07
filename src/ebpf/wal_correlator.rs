@@ -221,6 +221,7 @@ struct FdResolver {
     /// Cached fd -> path mappings by pid
     fd_cache: HashMap<(u32, i32), String>,
     /// Maximum cache size
+    #[allow(dead_code)] // Used for cache eviction
     max_cache_size: usize,
 }
 

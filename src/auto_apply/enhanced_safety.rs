@@ -239,7 +239,7 @@ impl EnhancedSafetyFilter {
             }
         }
 
-        confidence.max(0.0).min(1.0)
+        confidence.clamp(0.0, 1.0)
     }
 
     /// Assess risk level
@@ -300,6 +300,7 @@ impl std::fmt::Display for RiskLevel {
 }
 
 /// Format weekday for comparison
+#[allow(dead_code)] // Reserved for maintenance window display
 fn format_weekday(weekday: Weekday) -> String {
     match weekday {
         Weekday::Mon => "monday".to_string(),

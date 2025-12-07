@@ -307,6 +307,7 @@ impl ColumnStatsCollector {
         Ok(patterns)
     }
 
+    #[allow(clippy::only_used_in_recursion)]
     fn parse_postgres_type(&self, type_str: &str) -> PostgresType {
         match type_str.to_lowercase().as_str() {
             "integer" | "int" | "int4" => PostgresType::Integer,

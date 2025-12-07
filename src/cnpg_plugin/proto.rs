@@ -268,6 +268,7 @@ impl<T: OperatorService> OperatorServer<T> {
 
 /// WAL service server wrapper
 pub struct WalServer<T> {
+    #[allow(dead_code)] // Required by server pattern
     inner: T,
 }
 
@@ -279,6 +280,7 @@ impl<T: WalService> WalServer<T> {
 
 /// Backup service server wrapper
 pub struct BackupServer<T> {
+    #[allow(dead_code)] // Required by server pattern
     inner: T,
 }
 
@@ -290,6 +292,7 @@ impl<T: BackupService> BackupServer<T> {
 
 /// Reconciler service server wrapper
 pub struct ReconcilerServer<T> {
+    #[allow(dead_code)] // Required by server pattern
     inner: T,
 }
 

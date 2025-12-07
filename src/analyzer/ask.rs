@@ -37,15 +37,7 @@ impl AskHandler {
             .collector
             .collect_database_metrics()
             .await
-            .unwrap_or_else(|_| crate::models::DatabaseMetrics {
-                transactions_per_sec: 0.0,
-                rows_fetched_per_sec: 0.0,
-                rows_returned_per_sec: 0.0,
-                buffer_cache_hit_ratio: 0.0,
-                deadlocks: 0,
-                temp_files: 0,
-                temp_bytes: 0,
-            });
+            .unwrap_or_default();
 
         // 2. Build Prompt
         let mut context = String::new();

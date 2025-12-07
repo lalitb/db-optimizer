@@ -139,8 +139,10 @@ impl Default for LatencyThresholds {
 struct PendingUpdate {
     map_name: String,
     key: Vec<u8>,
+    #[allow(dead_code)] // Part of update data structure
     value: Option<Vec<u8>>,
     operation: MapOperation,
+    #[allow(dead_code)] // For debugging and metrics
     queued_at: Instant,
 }
 

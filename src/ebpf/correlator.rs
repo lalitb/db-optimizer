@@ -66,7 +66,7 @@ impl DefaultMetricsCorrelator {
         if metrics.cpu_time_us > self.config.cpu_bound_threshold_us {
             let severity =
                 (metrics.cpu_time_us as f64 / self.config.cpu_bound_threshold_us as f64).min(2.0);
-            let confidence = (severity - 1.0).max(0.0).min(1.0);
+            let confidence = (severity - 1.0).clamp(0.0, 1.0);
             causes.push((RootCause::CpuBound, confidence));
         }
 
@@ -75,7 +75,7 @@ impl DefaultMetricsCorrelator {
             let severity = (metrics.io_wait_time_us as f64
                 / self.config.io_bound_threshold_us as f64)
                 .min(2.0);
-            let confidence = (severity - 1.0).max(0.0).min(1.0);
+            let confidence = (severity - 1.0).clamp(0.0, 1.0);
             causes.push((RootCause::IoSaturation, confidence));
         }
 
@@ -84,7 +84,7 @@ impl DefaultMetricsCorrelator {
             let severity = (metrics.page_cache_misses as f64
                 / self.config.page_cache_miss_threshold as f64)
                 .min(2.0);
-            let confidence = (severity - 1.0).max(0.0).min(1.0);
+            let confidence = (severity - 1.0).clamp(0.0, 1.0);
             causes.push((RootCause::MemoryPressure, confidence));
         }
 
@@ -93,7 +93,7 @@ impl DefaultMetricsCorrelator {
             if lock_wait > self.config.lock_wait_threshold_us {
                 let severity =
                     (lock_wait as f64 / self.config.lock_wait_threshold_us as f64).min(2.0);
-                let confidence = (severity - 1.0).max(0.0).min(1.0);
+                let confidence = (severity - 1.0).clamp(0.0, 1.0);
                 causes.push((RootCause::LockContention, confidence));
             }
         }

@@ -115,7 +115,7 @@ impl RewriterCli {
             for rule in &result.applied_rules {
                 output.push_str(&format!("  • {}\n", rule.green()));
             }
-            output.push_str("\n");
+            output.push('\n');
         } else {
             output.push_str(&format!("{}\n\n", "No optimizations applied".yellow()));
         }
@@ -145,7 +145,7 @@ impl RewriterCli {
             for (i, explanation) in result.reasoning.iter().enumerate() {
                 output.push_str(&format!("{}. {}\n", i + 1, explanation));
             }
-            output.push_str("\n");
+            output.push('\n');
         }
 
         Ok(output)
@@ -189,7 +189,7 @@ impl RewriterCli {
             for rule in &result.applied_rules {
                 output.push_str(&format!("- {}\n", rule));
             }
-            output.push_str("\n");
+            output.push('\n');
         }
 
         // Estimated improvement
@@ -220,7 +220,7 @@ impl RewriterCli {
             for (i, explanation) in result.reasoning.iter().enumerate() {
                 output.push_str(&format!("{}. {}\n", i + 1, explanation));
             }
-            output.push_str("\n");
+            output.push('\n');
         }
 
         Ok(output)

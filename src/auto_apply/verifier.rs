@@ -5,6 +5,7 @@ use sqlx::PgPool;
 use tokio::time::{sleep, Duration};
 
 pub struct Verifier {
+    #[allow(dead_code)] // Reserved for direct pool queries
     pool: PgPool,
     baseline_collector: BaselineCollector,
     config: AutoApplyConfig,
@@ -67,7 +68,7 @@ impl Verifier {
         let improvement_pct = (improvement / baseline.mean_exec_time_ms) * 100.0;
 
         // Cap at reasonable bounds
-        improvement_pct.max(-100.0).min(100.0)
+        improvement_pct.clamp(-100.0, 100.0)
     }
 }
 

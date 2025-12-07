@@ -496,7 +496,7 @@ impl ConnectionAnalyzer {
             .filter(|c| {
                 c.state.is_problematic()
                     && c.state_duration_secs()
-                        .map_or(false, |d| d > self.idle_in_transaction_threshold_secs)
+                        .is_some_and(|d| d > self.idle_in_transaction_threshold_secs)
             })
             .collect();
 
@@ -551,8 +551,7 @@ impl ConnectionAnalyzer {
             estimated_time_savings_ms: None,
             estimated_cost_savings_usd_monthly: None,
 
-            migration_sql: format!(
-                "-- Option 1: Set statement_timeout to auto-abort long transactions\n\
+            migration_sql: "-- Option 1: Set statement_timeout to auto-abort long transactions\n\
                 ALTER SYSTEM SET idle_in_transaction_session_timeout = '30s';\n\
                 -- Restart required\n\n\
                 -- Option 2: Kill specific idle transactions\n\
@@ -565,17 +564,14 @@ impl ConnectionAnalyzer {
                        now() - state_change as idle_duration\n\
                 FROM pg_stat_activity\n\
                 WHERE state LIKE 'idle in transaction%'\n\
-                ORDER BY state_change;"
-            ),
+                ORDER BY state_change;".to_string(),
             rollback_sql: Some(
                 "ALTER SYSTEM SET idle_in_transaction_session_timeout = '0';\n-- Then restart PostgreSQL".to_string()
             ),
-            safety_notes: format!(
-                "Idle transactions block VACUUM and can cause severe table bloat. \
+            safety_notes: "Idle transactions block VACUUM and can cause severe table bloat. \
                 Investigate application code to ensure transactions are committed/rolled back promptly. \
                 Consider setting idle_in_transaction_session_timeout to automatically terminate \
-                idle transactions after a timeout (e.g., 30 seconds)."
-            ),
+                idle transactions after a timeout (e.g., 30 seconds).".to_string(),
 
             affected_table: None,
             affected_query: Some(format!("Example: {}", long_idle.first().map(|c| &c.query).unwrap_or(&String::from("N/A")))),
@@ -597,7 +593,7 @@ impl ConnectionAnalyzer {
             .filter(|c| {
                 c.is_locked()
                     && c.query_duration_secs()
-                        .map_or(false, |d| d > self.lock_wait_threshold_secs)
+                        .is_some_and(|d| d > self.lock_wait_threshold_secs)
             })
             .collect();
 
@@ -652,8 +648,7 @@ impl ConnectionAnalyzer {
             estimated_time_savings_ms: stats.oldest_locked_query_secs.map(|s| s as f64 * 1000.0),
             estimated_cost_savings_usd_monthly: None,
 
-            migration_sql: format!(
-                "-- View blocking queries and what they're blocking\n\
+            migration_sql: "-- View blocking queries and what they're blocking\n\
                 SELECT\n\
                     blocked_activity.pid AS blocked_pid,\n\
                     blocked_activity.query AS blocked_query,\n\
@@ -669,18 +664,15 @@ impl ConnectionAnalyzer {
                 WHERE NOT blocked_locks.granted\n\
                 ORDER BY wait_duration DESC;\n\n\
                 -- To manually kill a blocking query (use with caution):\n\
-                -- SELECT pg_terminate_backend(<blocking_pid>);"
-            ),
+                -- SELECT pg_terminate_backend(<blocking_pid>);".to_string(),
             rollback_sql: None,
-            safety_notes: format!(
-                "Lock contention indicates queries waiting for data access. Investigate blocking queries using \
+            safety_notes: "Lock contention indicates queries waiting for data access. Investigate blocking queries using \
                 pg_locks and pg_stat_activity. Consider:\n\
                 1. Adding indexes to speed up locking queries\n\
                 2. Reducing transaction scope\n\
                 3. Using FOR UPDATE SKIP LOCKED for queue-like patterns\n\
                 4. Partitioning large tables\n\
-                Never kill blocking queries in production without understanding the impact."
-            ),
+                Never kill blocking queries in production without understanding the impact.".to_string(),
 
             affected_table: None,
             affected_query: Some(format!("Example: {}", long_locked.first().map(|c| &c.query).unwrap_or(&String::from("N/A")))),
@@ -1119,6 +1111,6 @@ impl HealthCalculator {
         }
 
         // Clamp score between 0 and 100
-        score.max(0.0).min(100.0) as u8
+        score.clamp(0.0, 100.0) as u8
     }
 }

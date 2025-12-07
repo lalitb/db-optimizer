@@ -61,7 +61,7 @@ impl AzureMetadataCollector {
     /// Check if running in Azure
     pub async fn is_azure(&self) -> bool {
         self.client
-            .get(&format!("{}?api-version=2021-02-01", self.imds_endpoint))
+            .get(format!("{}?api-version=2021-02-01", self.imds_endpoint))
             .header("Metadata", "true")
             .send()
             .await
@@ -72,7 +72,7 @@ impl AzureMetadataCollector {
     pub async fn collect(&self) -> Result<AzureMetadata, Box<dyn std::error::Error>> {
         let response = self
             .client
-            .get(&format!("{}?api-version=2021-02-01", self.imds_endpoint))
+            .get(format!("{}?api-version=2021-02-01", self.imds_endpoint))
             .header("Metadata", "true")
             .send()
             .await?;

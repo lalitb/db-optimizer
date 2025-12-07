@@ -191,5 +191,6 @@ struct QueryStatsSnapshot {
     queryid: Option<i64>,
     calls: i64,
     mean_exec_time: f64,
+    #[allow(dead_code)] // Included in Debug output
     total_exec_time: f64,
 }

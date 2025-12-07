@@ -762,7 +762,7 @@ fn default_port() -> u16 {
 }
 
 /// Notification configuration
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct NotificationConfig {
     /// Slack webhook URL
     pub slack_webhook: Option<String>,
@@ -770,15 +770,6 @@ pub struct NotificationConfig {
     /// Email configuration (future)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub email: Option<EmailConfig>,
-}
-
-impl Default for NotificationConfig {
-    fn default() -> Self {
-        Self {
-            slack_webhook: None,
-            email: None,
-        }
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

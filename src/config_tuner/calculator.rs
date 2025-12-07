@@ -87,7 +87,7 @@ impl ConfigCalculator {
 
         // Windows: reduce by 1MB to avoid errors
         if system.os_type == OsType::Windows && final_value >= limit_kb {
-            return final_value - (1 * 1024 * 1024); // Subtract 1MB
+            return final_value - (1024 * 1024); // Subtract 1MB
         }
 
         final_value

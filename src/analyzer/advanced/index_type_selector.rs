@@ -49,6 +49,7 @@ pub struct IndexTypeSelector {
     // Thresholds for decision making
     high_cardinality_threshold: f64,
     low_cardinality_threshold: f64,
+    #[allow(dead_code)] // Reserved for future index correlation analysis
     sequential_correlation_threshold: f64,
     large_table_threshold: i64,
 }
@@ -365,14 +366,14 @@ impl IndexTypeSelector {
         if let Some(opclass) = &decision.opclass {
             ddl.push_str(&format!(" {}", opclass));
         }
-        ddl.push_str(")");
+        ddl.push(')');
 
         // WHERE clause for partial index
         if let Some(where_clause) = &decision.where_clause {
             ddl.push_str(&format!("\n  WHERE {}", where_clause));
         }
 
-        ddl.push_str(";");
+        ddl.push(';');
 
         ddl
     }

@@ -10,6 +10,7 @@ pub struct WorkloadDetector {
     oltp_max_avg_duration_ms: f64,
     oltp_min_connections: i32,
     dw_min_avg_duration_ms: f64,
+    #[allow(dead_code)] // Reserved for DW detection enhancement
     dw_max_write_ratio: f64,
     web_typical_connections_min: i32,
     web_typical_connections_max: i32,

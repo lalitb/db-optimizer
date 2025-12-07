@@ -56,6 +56,7 @@ impl MockProfile {
     }
 
     /// Get typical query patterns for this profile
+    #[allow(dead_code)] // Reserved for mock query generation
     fn query_patterns(&self) -> Vec<(&'static str, f64)> {
         match self {
             Self::Idle => vec![
@@ -128,6 +129,7 @@ impl MockProfile {
 pub struct MockEventGenerator {
     profile: MockProfile,
     rng: StdRng,
+    #[allow(dead_code)] // Reserved for dynamic PID generation
     next_pid: u32,
     pids: Vec<u32>,
     start_time: Instant,
@@ -280,7 +282,7 @@ impl MockEventGenerator {
     fn generate_size(&mut self, mean: u64) -> u64 {
         // Exponential distribution for sizes
         let u: f64 = self.rng.gen();
-        let value = -1.0 * (mean as f64) * (1.0 - u).ln();
+        let value = -(mean as f64) * (1.0 - u).ln();
         value.max(1.0) as u64
     }
 
@@ -422,7 +424,7 @@ impl ReplayProvider {
     pub fn from_bytes(data: &[u8]) -> Result<Self, String> {
         // Each RawEvent is 64 bytes
         let event_size = std::mem::size_of::<RawEvent>();
-        if data.len() % event_size != 0 {
+        if !data.len().is_multiple_of(event_size) {
             return Err("Invalid data length".to_string());
         }
 
@@ -463,7 +465,7 @@ impl ReplayProvider {
             return None;
         }
 
-        let event = self.events[self.index].clone();
+        let event = self.events[self.index];
         self.index += 1;
         Some(event)
     }

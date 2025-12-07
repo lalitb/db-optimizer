@@ -170,7 +170,7 @@ impl SafetyFilter {
                 let table_size_mb = self.estimate_table_size(table_name);
 
                 // Rough heuristic: 1 second per 100MB
-                ((table_size_mb / 100.0) as u64).max(5).min(600) // 5s to 10min
+                ((table_size_mb / 100.0) as u64).clamp(5, 600) // 5s to 10min
             }
 
             ApplyStrategy::DropIndex { .. } => {
@@ -250,7 +250,6 @@ impl SafetyFilter {
                 };
 
             name_part
-                .trim()
                 .split_whitespace()
                 .next()
                 .unwrap_or("idx_placeholder")

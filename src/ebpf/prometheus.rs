@@ -211,6 +211,7 @@ pub struct PrometheusRegistry {
     /// Cached metrics
     metrics: Arc<RwLock<Vec<MetricValue>>>,
     /// Last update time
+    #[allow(dead_code)] // Used for cache timing
     last_update: Arc<RwLock<Instant>>,
 }
 

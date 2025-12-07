@@ -531,8 +531,10 @@ async fn run_analyze_mode(cli: AnalyzeOptions) -> Result<()> {
         thresholds: ThresholdConfig::default(),
     };
 
-    let mut pricing_config = PricingConfig::default();
-    pricing_config.cost_per_vcpu_hour = cli.cost_per_hour;
+    let pricing_config = PricingConfig {
+        cost_per_vcpu_hour: cli.cost_per_hour,
+        ..Default::default()
+    };
 
     let engine = RecommendationEngine::new()
         .with_analysis_config(analysis_config)
@@ -790,7 +792,7 @@ async fn run_agent_mode(opts: AgentOptions) -> Result<()> {
     println!("   Monitoring interval: {} minutes", opts.interval_minutes);
     println!(
         "   Database: {}",
-        opts.database_url.split('@').last().unwrap_or("***")
+        opts.database_url.split('@').next_back().unwrap_or("***")
     );
     println!(
         "   Auto-apply: {}",
@@ -961,8 +963,10 @@ async fn run_analysis_cycle(
         thresholds: ThresholdConfig::default(),
     };
 
-    let mut pricing_config = PricingConfig::default();
-    pricing_config.cost_per_vcpu_hour = opts.cost_per_hour;
+    let pricing_config = PricingConfig {
+        cost_per_vcpu_hour: opts.cost_per_hour,
+        ..Default::default()
+    };
 
     let engine = RecommendationEngine::new()
         .with_analysis_config(analysis_config)
@@ -1444,7 +1448,7 @@ async fn run_config_validate_mode(opts: ConfigValidateOptions) -> Result<()> {
                         ));
                     }
                 }
-                output.push_str("\n");
+                output.push('\n');
             }
 
             // High Issues
@@ -1482,7 +1486,7 @@ async fn run_config_validate_mode(opts: ConfigValidateOptions) -> Result<()> {
                         ));
                     }
                 }
-                output.push_str("\n");
+                output.push('\n');
             }
 
             // Medium Issues
@@ -1520,7 +1524,7 @@ async fn run_config_validate_mode(opts: ConfigValidateOptions) -> Result<()> {
                         ));
                     }
                 }
-                output.push_str("\n");
+                output.push('\n');
             }
 
             // Low Issues
@@ -1550,7 +1554,7 @@ async fn run_config_validate_mode(opts: ConfigValidateOptions) -> Result<()> {
                         output.push_str(&format!("      → {}\n", issue.recommendation));
                     }
                 }
-                output.push_str("\n");
+                output.push('\n');
             }
 
             // Summary
@@ -1603,7 +1607,7 @@ async fn run_config_validate_mode(opts: ConfigValidateOptions) -> Result<()> {
                             output.push_str(&format!("  - Recommended: `{}`\n", recommended));
                         }
                     }
-                    output.push_str("\n");
+                    output.push('\n');
                 }
             }
 

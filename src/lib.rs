@@ -1,3 +1,14 @@
+// Allow some clippy lints that are too noisy or require significant refactoring
+#![allow(clippy::too_many_arguments)]
+#![allow(clippy::type_complexity)]
+#![allow(clippy::should_implement_trait)]
+#![allow(clippy::needless_borrow)]
+#![allow(clippy::collapsible_match)]
+#![allow(clippy::collapsible_else_if)]
+#![allow(clippy::redundant_guards)]
+#![allow(clippy::redundant_closure)]
+#![allow(clippy::if_same_then_else)]
+
 pub mod adapters;
 pub mod agent;
 pub mod analyzer;

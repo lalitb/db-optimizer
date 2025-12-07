@@ -496,7 +496,7 @@ impl CgroupCollector {
 
         // Read cpu.max (quota and period)
         if let Ok(max) = fs::read_to_string(base_path.join("cpu.max")) {
-            let parts: Vec<&str> = max.trim().split_whitespace().collect();
+            let parts: Vec<&str> = max.split_whitespace().collect();
             if parts.len() >= 2 {
                 cpu.quota_us = if parts[0] == "max" {
                     0 // Unlimited
@@ -655,6 +655,7 @@ impl ResourceLimits {
     }
 
     /// Get effective memory for PostgreSQL configuration
+    #[allow(clippy::unnecessary_lazy_evaluations)]
     pub fn effective_memory_bytes(&self) -> u64 {
         self.memory_bytes.unwrap_or_else(|| {
             // Fallback to system memory

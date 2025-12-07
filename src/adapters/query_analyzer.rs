@@ -66,7 +66,7 @@ impl Analyzer for QueryAnalyzerAdapter {
         tables: &[TableInfo],
     ) -> Result<Vec<Recommendation>> {
         // Analyze a single query by passing it as a slice
-        self.analyze_queries(&[query.clone()], indexes, tables)
+        self.analyze_queries(std::slice::from_ref(query), indexes, tables)
             .await
     }
 }

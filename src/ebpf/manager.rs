@@ -8,7 +8,9 @@
 
 use super::aggregator::AggregatedMetrics;
 use super::daemon::DaemonClient;
-use super::loader::{EbpfEventStream, EbpfProgram, EbpfTarget, EventStreamStats};
+#[cfg(test)]
+use super::loader::EventStreamStats;
+use super::loader::{EbpfEventStream, EbpfProgram, EbpfTarget};
 use super::lock_tracer::{LockContentionMetrics, LockContentionSummary, LockEvent, LockTracer};
 use super::metrics::{EbpfMetrics, SharedMetrics};
 use super::protocol::MetricsData;
@@ -52,6 +54,7 @@ pub struct EbpfManager {
     stats: Arc<RwLock<ManagerStats>>,
     metrics: SharedMetrics,
     /// Channel for receiving aggregated metrics (from daemon or direct collection)
+    #[allow(dead_code)] // Used for async metrics processing
     metrics_rx: Option<mpsc::Receiver<AggregatedMetrics>>,
     /// Daemon client (when in Client mode)
     daemon_client: Option<DaemonClient>,

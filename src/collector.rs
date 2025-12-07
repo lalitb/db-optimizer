@@ -280,7 +280,7 @@ impl DatabaseCollector {
                 conn.state.is_problematic()
                     && conn
                         .state_duration_secs()
-                        .map_or(false, |d| d > threshold_secs)
+                        .is_some_and(|d| d > threshold_secs)
             })
             .collect();
 

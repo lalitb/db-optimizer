@@ -53,7 +53,7 @@ impl QueryNormalizer {
     /// This replaces all literal values with placeholders, so:
     /// - `SELECT * FROM users WHERE id = 123` and
     /// - `SELECT * FROM users WHERE id = 456`
-    /// produce the same hash.
+    ///   produce the same hash.
     pub async fn normalize_and_hash(&self, query: &str) -> u64 {
         // Check cache first
         {

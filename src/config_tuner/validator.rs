@@ -1,6 +1,10 @@
 // Configuration validator - implements PostgreSQLTuner validation rules
+#![allow(clippy::needless_borrow)]
+#![allow(clippy::needless_borrows_for_generic_args)]
 
-use super::models::{SystemInfo, ValidationIssue, ValidationReport, ValidationSeverity};
+use super::models::{SystemInfo, ValidationIssue, ValidationReport};
+#[cfg(test)]
+use super::models::ValidationSeverity;
 use anyhow::Result;
 use sqlx::{PgPool, Row};
 

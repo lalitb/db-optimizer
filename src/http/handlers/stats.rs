@@ -54,46 +54,46 @@ pub async fn metrics(State(state): State<AppState>) -> ApiResult<String> {
 
     // Uptime metric
     let uptime = START_TIME.elapsed().map(|d| d.as_secs()).unwrap_or(0);
-    lines.push(format!(
-        "# HELP db_optimizer_uptime_seconds Uptime in seconds"
-    ));
-    lines.push(format!("# TYPE db_optimizer_uptime_seconds counter"));
+    lines.push(
+        "# HELP db_optimizer_uptime_seconds Uptime in seconds".to_string()
+    );
+    lines.push("# TYPE db_optimizer_uptime_seconds counter".to_string());
     lines.push(format!("db_optimizer_uptime_seconds {}", uptime));
 
     // eBPF status
     let ebpf_enabled = if state.ebpf_manager.is_some() { 1 } else { 0 };
-    lines.push(format!(
-        "# HELP db_optimizer_ebpf_enabled eBPF status (1=enabled, 0=disabled)"
-    ));
-    lines.push(format!("# TYPE db_optimizer_ebpf_enabled gauge"));
+    lines.push(
+        "# HELP db_optimizer_ebpf_enabled eBPF status (1=enabled, 0=disabled)".to_string()
+    );
+    lines.push("# TYPE db_optimizer_ebpf_enabled gauge".to_string());
     lines.push(format!("db_optimizer_ebpf_enabled {}", ebpf_enabled));
 
     // Lock contention metrics if available
     if let Some(ref manager) = state.ebpf_manager {
         let summary = manager.get_summary();
 
-        lines.push(format!(
-            "# HELP db_optimizer_tables_tracked Total tables tracked"
-        ));
-        lines.push(format!("# TYPE db_optimizer_tables_tracked gauge"));
+        lines.push(
+            "# HELP db_optimizer_tables_tracked Total tables tracked".to_string()
+        );
+        lines.push("# TYPE db_optimizer_tables_tracked gauge".to_string());
         lines.push(format!(
             "db_optimizer_tables_tracked {}",
             summary.total_tables_tracked
         ));
 
-        lines.push(format!(
-            "# HELP db_optimizer_high_contention_tables Tables with high contention"
-        ));
-        lines.push(format!("# TYPE db_optimizer_high_contention_tables gauge"));
+        lines.push(
+            "# HELP db_optimizer_high_contention_tables Tables with high contention".to_string()
+        );
+        lines.push("# TYPE db_optimizer_high_contention_tables gauge".to_string());
         lines.push(format!(
             "db_optimizer_high_contention_tables {}",
             summary.high_contention_tables
         ));
 
-        lines.push(format!(
-            "# HELP db_optimizer_total_lock_events Total lock events processed"
-        ));
-        lines.push(format!("# TYPE db_optimizer_total_lock_events counter"));
+        lines.push(
+            "# HELP db_optimizer_total_lock_events Total lock events processed".to_string()
+        );
+        lines.push("# TYPE db_optimizer_total_lock_events counter".to_string());
         lines.push(format!(
             "db_optimizer_total_lock_events {}",
             summary.total_lock_events

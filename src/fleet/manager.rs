@@ -16,6 +16,12 @@ pub struct FleetManager {
     instances: Arc<RwLock<HashMap<String, DatabaseInstance>>>,
 }
 
+impl Default for FleetManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl FleetManager {
     pub fn new() -> Self {
         Self {

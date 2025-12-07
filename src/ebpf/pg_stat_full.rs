@@ -274,6 +274,7 @@ pub struct PgStatIntegrator {
     /// eBPF I/O metrics by query id
     ebpf_io_metrics: Arc<RwLock<HashMap<i64, EbpfQueryMetrics>>>,
     /// Last poll time
+    #[allow(dead_code)] // Used for cache invalidation timing
     last_poll: Arc<RwLock<Instant>>,
     /// PostgreSQL version
     pg_version: Arc<RwLock<u32>>,

@@ -78,7 +78,7 @@ impl OutputFormatter {
 
             for (i, rec) in report.recommendations.iter().take(10).enumerate() {
                 output.push_str(&Self::format_recommendation(rec, i + 1));
-                output.push_str("\n");
+                output.push('\n');
             }
 
             if report.recommendations.len() > 10 {

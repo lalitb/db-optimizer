@@ -123,7 +123,7 @@ impl EventAggregator {
             return Err("Failed to get monotonic time".into());
         }
 
-        let kernel_ns = ts.tv_sec as i64 * 1_000_000_000 + ts.tv_nsec as i64;
+        let kernel_ns = ts.tv_sec * 1_000_000_000 + ts.tv_nsec;
         let system_ns = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos() as i64;
 
         Ok(system_ns - kernel_ns)

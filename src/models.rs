@@ -41,7 +41,7 @@ pub struct TableInfo {
 }
 
 /// General database performance metrics
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct DatabaseMetrics {
     pub transactions_per_sec: f64,
     pub rows_fetched_per_sec: f64,
