@@ -1,0 +1,75 @@
+[Unit]
+Description=DB Optimizer eBPF Daemon - Privileged kernel tracing service
+Documentation=https://github.com/your-org/db-optimizer
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=notify
+ExecStart=/usr/local/bin/db-optimizer-ebpf-daemon --socket /run/db-optimizer/ebpf.sock --config /etc/db-optimizer/config.yml
+ExecReload=/bin/kill -HUP $MAINPID
+
+# Privilege separation - run as dedicated user with minimal capabilities
+User=db-optimizer-ebpf
+Group=db-optimizer-ebpf
+
+# Required capabilities for eBPF operation (no root required)
+# CAP_BPF: Load and attach eBPF programs
+# CAP_PERFMON: Access perf events (required for tracepoints, kprobes)
+# CAP_SYS_ADMIN: Required for some BPF operations on older kernels (5.7 and earlier)
+# CAP_SYS_PTRACE: Required for uprobes (tracing PostgreSQL)
+# CAP_NET_ADMIN: Required for some network-related eBPF (if tracing network I/O)
+CapabilityBoundingSet=CAP_BPF CAP_PERFMON CAP_SYS_ADMIN CAP_SYS_PTRACE CAP_NET_ADMIN
+AmbientCapabilities=CAP_BPF CAP_PERFMON CAP_SYS_ADMIN CAP_SYS_PTRACE
+
+# Security hardening
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+PrivateTmp=yes
+PrivateDevices=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=no  # eBPF JIT requires this to be off
+
+# Resource limits
+LimitMEMLOCK=infinity  # Required for eBPF maps
+LimitNOFILE=65536
+TasksMax=64
+
+# Runtime directory for Unix socket
+RuntimeDirectory=db-optimizer
+RuntimeDirectoryMode=0755
+
+# Socket permissions - allow unprivileged clients to connect
+ExecStartPost=/bin/chmod 0666 /run/db-optimizer/ebpf.sock
+
+# State directory for persistent data (e.g., baseline metrics)
+StateDirectory=db-optimizer
+StateDirectoryMode=0750
+
+# Logs
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=db-optimizer-ebpf
+
+# Restart behavior
+Restart=on-failure
+RestartSec=5s
+WatchdogSec=60s
+
+# Stop behavior
+TimeoutStopSec=30s
+KillMode=mixed
+KillSignal=SIGTERM
+
+[Install]
+WantedBy=multi-user.target

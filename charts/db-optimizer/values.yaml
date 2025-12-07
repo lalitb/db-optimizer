@@ -1,0 +1,277 @@
+# Default values for db-optimizer
+# This is a YAML-formatted file.
+
+# =============================================================================
+# Image Configuration
+# =============================================================================
+image:
+  repository: ghcr.io/lalitb/db-optimizer
+  pullPolicy: IfNotPresent
+  # Overrides the image tag whose default is the chart appVersion
+  tag: ""
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+# =============================================================================
+# Database Configuration
+# =============================================================================
+database:
+  # Direct connection string (takes precedence over individual fields)
+  # Use existingSecret for production
+  connectionString: ""
+  
+  # Individual connection parameters
+  host: "localhost"
+  port: 5432
+  name: "postgres"
+  user: "postgres"
+  password: ""
+  sslMode: "prefer"
+  
+  # Use existing secret for database credentials
+  existingSecret: ""
+  existingSecretKey: "database-url"
+
+# =============================================================================
+# Application Configuration
+# =============================================================================
+config:
+  # Analysis interval in seconds
+  analysisInterval: 300
+  
+  # Enable auto-apply for recommendations
+  autoApply:
+    enabled: false
+    dryRun: true
+    maxRiskLevel: "Low"  # Low, Medium, High
+    minSavingsThreshold: 50.0
+  
+  # eBPF configuration (Linux only)
+  ebpf:
+    enabled: true
+    socketPath: "/var/run/db-optimizer/ebpf.sock"
+  
+  # Prometheus metrics
+  prometheus:
+    enabled: true
+    port: 9090
+    path: "/metrics"
+  
+  # HTTP API
+  httpApi:
+    enabled: true
+    port: 8080
+  
+  # Logging
+  log:
+    level: "info"  # trace, debug, info, warn, error
+    format: "json"  # json, pretty
+
+# =============================================================================
+# CloudNativePG Integration
+# =============================================================================
+cnpg:
+  enabled: false
+  # Name of the CNPG Cluster to monitor
+  clusterName: ""
+  # Namespace of the CNPG Cluster
+  clusterNamespace: ""
+  # Plugin configuration
+  plugin:
+    image: ""
+    port: 9090
+
+# CloudNativePG Plugin (sidecar mode)
+cnpgPlugin:
+  enabled: false
+  port: 9547
+
+# =============================================================================
+# Deployment Configuration
+# =============================================================================
+replicaCount: 1
+
+serviceAccount:
+  # Specifies whether a service account should be created
+  create: true
+  # Annotations to add to the service account
+  annotations: {}
+  # The name of the service account to use
+  name: ""
+
+podAnnotations: {}
+
+podLabels: {}
+
+podSecurityContext:
+  fsGroup: 1000
+
+securityContext:
+  capabilities:
+    drop:
+      - ALL
+    # Required for eBPF on Linux
+    add: []
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  runAsUser: 1000
+  allowPrivilegeEscalation: false
+
+# For eBPF functionality, you may need privileged mode
+# WARNING: Only enable this if you understand the security implications
+privileged:
+  enabled: false
+  # If enabled, these settings override securityContext
+  capabilities:
+    - SYS_ADMIN
+    - SYS_PTRACE
+    - NET_ADMIN
+    - BPF
+
+# =============================================================================
+# Service Configuration
+# =============================================================================
+service:
+  type: ClusterIP
+  port: 8080
+  metricsPort: 9090
+  annotations: {}
+
+# =============================================================================
+# Ingress Configuration
+# =============================================================================
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+    # kubernetes.io/ingress.class: nginx
+    # kubernetes.io/tls-acme: "true"
+  hosts:
+    - host: db-optimizer.local
+      paths:
+        - path: /
+          pathType: ImplementationSpecific
+  tls: []
+  #  - secretName: db-optimizer-tls
+  #    hosts:
+  #      - db-optimizer.local
+
+# =============================================================================
+# Resources
+# =============================================================================
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+# =============================================================================
+# Autoscaling
+# =============================================================================
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 3
+  targetCPUUtilizationPercentage: 80
+  targetMemoryUtilizationPercentage: 80
+  # Advanced scaling behavior
+  behavior: {}
+  #   scaleDown:
+  #     stabilizationWindowSeconds: 300
+  #     policies:
+  #       - type: Percent
+  #         value: 10
+  #         periodSeconds: 60
+  #   scaleUp:
+  #     stabilizationWindowSeconds: 0
+  #     policies:
+  #       - type: Percent
+  #         value: 100
+  #         periodSeconds: 15
+
+# =============================================================================
+# Pod Disruption Budget
+# =============================================================================
+podDisruptionBudget:
+  enabled: false
+  # Minimum number of pods that must be available
+  minAvailable: 1
+  # Maximum number of pods that can be unavailable
+  # maxUnavailable: 1
+
+# =============================================================================
+# Node Selection
+# =============================================================================
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}
+
+# =============================================================================
+# Prometheus Monitoring
+# =============================================================================
+serviceMonitor:
+  # Create ServiceMonitor for Prometheus Operator
+  enabled: false
+  # Namespace for the ServiceMonitor (defaults to release namespace)
+  namespace: ""
+  # Labels for the ServiceMonitor
+  labels: {}
+  # Interval at which metrics should be scraped
+  interval: 30s
+  # Timeout for scraping
+  scrapeTimeout: 10s
+  # Additional labels to add to all metrics
+  relabelings: []
+  # Metric relabelings
+  metricRelabelings: []
+
+# =============================================================================
+# Prometheus Rules
+# =============================================================================
+prometheusRule:
+  enabled: false
+  namespace: ""
+  labels: {}
+  # Define alerting rules
+  rules: []
+  # Example rules:
+  # - alert: DatabaseHealthLow
+  #   expr: db_optimizer_health_score < 50
+  #   for: 5m
+  #   labels:
+  #     severity: warning
+  #   annotations:
+  #     summary: "Database health score is low"
+  #     description: "Database {{ $labels.database }} health score is {{ $value }}"
+
+# =============================================================================
+# eBPF Configuration
+# =============================================================================
+ebpf:
+  # Enable eBPF observability features
+  enabled: false
+
+# =============================================================================
+# Extra Configuration
+# =============================================================================
+# Additional environment variables
+extraEnv: []
+# - name: EXTRA_VAR
+#   value: "value"
+
+# Additional volumes
+extraVolumes: []
+# - name: config
+#   configMap:
+#     name: my-config
+
+# Additional volume mounts
+extraVolumeMounts: []
+# - name: config
+#   mountPath: /etc/config

@@ -35,9 +35,22 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 # Date/time
 chrono = { version = "0.4", features = ["serde"] }
 
-# eBPF support (optional - only needed if building with eBPF features)
-# libbpf-rs = { version = "0.22", optional = true }
-# libbpf-sys = { version = "1.2", optional = true }
+# eBPF support (using aya - pure Rust eBPF library)
+aya = { version = "0.12", optional = true }
+aya-log = { version = "0.2", optional = true }
+
+# Binary serialization for IPC protocol
+bincode = "1.3"
+
+# Byte manipulation for safe event parsing
+bytemuck = { version = "1.14", features = ["derive"] }
+zerocopy = { version = "0.7", features = ["derive"] }
+
+# Prometheus metrics for self-observability
+prometheus = "0.13"
+
+# libc for clock operations
+libc = "0.2"
 
 # String utilities
 regex = "1"
@@ -67,3 +80,7 @@ prost = "0.12"
 [dev-dependencies]
 tokio-test = "0.4"
 tempfile = "3.8"
+
+[features]
+default = []
+ebpf = ["aya", "aya-log"]

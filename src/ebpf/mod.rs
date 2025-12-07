@@ -1,6 +1,13 @@
 // src/ebpf/mod.rs - Main eBPF module
+//
+// Architecture (Enhanced eBPF Implementation Plan v2):
+// - Kernel: Minimal footprint - emit raw events only (no aggregation)
+// - Userspace: EventAggregator handles all aggregation logic
+// - IPC: Binary protocol over Unix socket for privilege separation
+// - Correlation: pg_stat_activity polling for PID-to-query mapping
+// - Sampling: Adaptive rates based on system load
 
-// Only include modules that actually exist
+// Core modules (always available)
 pub mod correlator;
 pub mod loader;
 pub mod lock_tracer;
@@ -8,21 +15,66 @@ pub mod manager;
 pub mod metrics_collector;
 pub mod postgres_tracer;
 
+// New v2 implementation modules
+pub mod aggregator;
+pub mod daemon;
+pub mod events;
+pub mod metrics;
+pub mod mock;
+pub mod pg_stat_correlator;
+pub mod protocol;
+pub mod sampling;
+
+// Additional feature modules
+pub mod query_normalizer;
+pub mod session_tracker;
+pub mod wal_correlator;
+pub mod vacuum_detector;
+pub mod cgroup_metrics;
+pub mod degradation;
+pub mod live_maps;
+pub mod pg_stat_full;
+pub mod program_loader;
+pub mod prometheus;
+
 use std::error::Error as StdError;
 use std::fmt;
 
+// Core re-exports
 pub use correlator::DefaultMetricsCorrelator;
 pub use loader::{EbpfProgram, EbpfEventStream, EbpfTarget, EventStreamStats};
 pub use lock_tracer::{
     LockContentionMetrics, LockContentionSummary, LockEvent, LockEventType,
     LockMode, LockTracer,
 };
-pub use manager::{EbpfManager, ManagerStats};
+pub use manager::{EbpfManager, EbpfMode, ManagerStats};
 pub use metrics_collector::{EbpfMetricsCollector, MockSystemMetricsCollector, EbpfCollectorConfig};
 pub use postgres_tracer::{
     PostgresTracer, PostgresQueryEvent, QueryStatus, QueryIoStats,
     LockContentionEvent, BlockingStats, QueryBreakdown, Recommendation,
 };
+
+// New v2 re-exports
+pub use aggregator::{EventAggregator, AggregatedMetrics};
+pub use daemon::{EbpfDaemon, DaemonConfig, DaemonClient};
+pub use events::{RawEvent, EventType, ParseError};
+pub use metrics::{EbpfMetrics, SharedMetrics, Counter, Gauge, Histogram, Timer, new_shared_metrics};
+pub use mock::{MockEventGenerator, MockProfile, MockDaemonServer, ReplayProvider, MockScenarioBuilder};
+pub use pg_stat_correlator::PgStatCorrelator;
+pub use protocol::{Message, MessagePayload, ProtocolCodec, MetricsData, DaemonStatus};
+pub use sampling::SamplingController;
+
+// Additional feature re-exports
+pub use query_normalizer::{QueryNormalizer, NormalizerStats};
+pub use session_tracker::{SessionTracker, SessionState, PreparedStatement, Portal, TrackerStats, CloseType, QueryContext};
+pub use wal_correlator::{WalIoCorrelator, IoType, ClassifiedIoEvent, WalWriteInfo, CheckpointInfo, IoStats, IoSummary};
+pub use vacuum_detector::{VacuumDetector, VacuumType, VacuumPhase, ActiveVacuum, CompletedVacuum, AutovacuumWorker, VacuumStats, VacuumAnalysis};
+pub use cgroup_metrics::{CgroupCollector, ContainerRuntime, CgroupVersion, CpuMetrics, MemoryMetrics, IoMetrics, ContainerMetrics, ResourceLimits};
+pub use degradation::{DegradationManager, CapabilityLevel, DegradationReason, DegradationEvent, RecoveryEvent, DegradationStatus};
+pub use live_maps::{LiveMapManager, LiveMapConfig, SamplingConfig, PidFilterConfig, LatencyThresholds, MapUpdateResult, MapUpdateStats};
+pub use pg_stat_full::{PgStatIntegrator, PgStatStatement, PgStatActivity, PgStatTable, PgStatIndex, PgStatBgWriter, CorrelatedQueryMetrics, CorrelationSummary};
+pub use program_loader::{EbpfLoader, LoaderConfig, LoadResult, ProgramType, MapType, ProgramDef, MapDef, LoadedProgram, LoadedMap};
+pub use prometheus::{PrometheusRegistry, MetricType, MetricValue};
 
 /// System metrics collected from kernel events
 #[derive(Debug, Clone, Default)]

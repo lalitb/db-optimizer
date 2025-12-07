@@ -9,9 +9,9 @@
     <title>Vaanyze | Kernel-Level PostgreSQL Performance Analysis with eBPF</title>
     <meta name="title" content="Vaanyze | Kernel-Level PostgreSQL Performance Analysis with eBPF">
     <meta name="description"
-        content="Production-grade eBPF instrumentation for PostgreSQL. Syscall-level query attribution with I/O latency, CPU time, lock contention metrics. Real-time connection monitoring for idle transactions and pool exhaustion. Autonomous optimization with CREATE INDEX CONCURRENTLY and automatic rollback. Linux 4.15+, PostgreSQL 12-17.">
+        content="Production-grade eBPF instrumentation for PostgreSQL. Syscall-level query attribution with I/O latency, CPU time, lock contention metrics. Container-aware cgroup metrics for Docker/Kubernetes. WAL correlation, vacuum detection, graceful degradation. Autonomous optimization with CREATE INDEX CONCURRENTLY and automatic rollback. Linux 5.8+, PostgreSQL 12-17.">
     <meta name="keywords"
-        content="eBPF PostgreSQL, kernel instrumentation, database performance analysis, syscall tracing, query optimization, pg_stat_statements, BRIN GIN HASH indexes, CREATE INDEX CONCURRENTLY, database monitoring, performance tuning">
+        content="eBPF PostgreSQL, kernel instrumentation, database performance analysis, syscall tracing, query optimization, pg_stat_statements, BRIN GIN HASH indexes, CREATE INDEX CONCURRENTLY, database monitoring, performance tuning, container metrics, cgroup, Docker PostgreSQL, Kubernetes PostgreSQL, WAL correlation, vacuum detection, graceful degradation">
 
     <!-- Open Graph / Facebook -->
     <meta property="og:type" content="website">
@@ -655,6 +655,48 @@
                     </p>
                     <div class="mt-4 text-xs text-gray-600">
                         <strong>Detection:</strong> Idle transactions, lock waits, pool usage, blocking queries
+                    </div>
+                </div>
+
+                <!-- Feature 9: Container Support -->
+                <div class="bg-white p-8 rounded-2xl shadow-lg card-hover border-l-4 border-green-500">
+                    <div class="text-xs font-mono text-green-600 mb-3">CONTAINER-AWARE METRICS</div>
+                    <h3 class="text-xl font-bold mb-3">Docker & Kubernetes Attribution</h3>
+                    <p class="text-gray-700 text-sm leading-relaxed">
+                        Automatic container detection with cgroup v1/v2 support. Attributes CPU, memory, and I/O
+                        metrics to specific containers. Detects Kubernetes pod metadata via downward API.
+                        Tracks resource limits, throttling, and OOM events per container.
+                    </p>
+                    <div class="mt-4 text-xs text-gray-600">
+                        <strong>Runtimes:</strong> Docker, containerd, CRI-O, Kubernetes pods
+                    </div>
+                </div>
+
+                <!-- Feature 10: Graceful Degradation -->
+                <div class="bg-white p-8 rounded-2xl shadow-lg card-hover border-l-4 border-green-500">
+                    <div class="text-xs font-mono text-green-600 mb-3">GRACEFUL DEGRADATION</div>
+                    <h3 class="text-xl font-bold mb-3">Automatic Fallback & Recovery</h3>
+                    <p class="text-gray-700 text-sm leading-relaxed">
+                        Detects eBPF capability level at runtime. Automatically falls back to pg_stat-only mode
+                        when kernel features unavailable. Reports degradation reasons with remediation steps.
+                        Auto-recovers when capabilities become available.
+                    </p>
+                    <div class="mt-4 text-xs text-gray-600">
+                        <strong>Levels:</strong> Full eBPF → Limited → pg_stat only → Disabled
+                    </div>
+                </div>
+
+                <!-- Feature 11: WAL Correlation -->
+                <div class="bg-white p-8 rounded-2xl shadow-lg card-hover border-l-4 border-green-500">
+                    <div class="text-xs font-mono text-green-600 mb-3">WAL & VACUUM CORRELATION</div>
+                    <h3 class="text-xl font-bold mb-3">Maintenance Impact Analysis</h3>
+                    <p class="text-gray-700 text-sm leading-relaxed">
+                        Correlates eBPF I/O events with WAL writes, checkpoints, and vacuum operations.
+                        Identifies autovacuum processes and measures their I/O impact on query latency.
+                        Tracks checkpoint frequency and duration for tuning recommendations.
+                    </p>
+                    <div class="mt-4 text-xs text-gray-600">
+                        <strong>Tracking:</strong> WAL writes, checkpoints, autovacuum, ANALYZE operations
                     </div>
                 </div>
             </div>
