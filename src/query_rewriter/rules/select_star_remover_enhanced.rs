@@ -173,7 +173,7 @@ mod tests {
 
     #[test]
     fn test_detects_select_star() {
-        let rule = SelectStarRemoverEnhanced::new();
+        let _rule = SelectStarRemoverEnhanced::new();
         let stmt = parse("SELECT * FROM users");
 
         // Applies if we have a pool
