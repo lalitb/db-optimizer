@@ -30,9 +30,8 @@ db-optimizer.yaml
 *.db
 *.db-journal
 
-# Output files
-*.json
-*.md
+# Output files (generated reports, not documentation)
+/output/
 report.*
 
 # Test data
