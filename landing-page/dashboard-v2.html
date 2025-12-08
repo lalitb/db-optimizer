@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vaanyze Fleet Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .metric-value { transition: color 0.3s ease; }
+        .slide-in { animation: slideIn 0.3s ease-out; }
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        .fade-in { animation: fadeIn 0.2s ease-out; }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-900">
+
+    <!-- Navigation -->
+    <nav class="bg-white border-b border-gray-200 fixed w-full z-30 top-0">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16">
+                <div class="flex">
+                    <div class="flex-shrink-0 flex items-center">
+                        <span class="text-xl font-bold text-purple-600">Vaanyze Fleet</span>
+                    </div>
+                    <div class="hidden sm:ml-6 sm:flex sm:space-x-8">
+                        <a href="#" onclick="showFleetView()" class="border-purple-500 text-gray-900 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium" id="nav-dashboard">
+                            Dashboard
+                        </a>
+                        <a href="#" class="border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
+                            Settings
+                        </a>
+                    </div>
+                </div>
+                <div class="flex items-center gap-4">
+                    <div class="flex items-center gap-2">
+                        <div class="h-2 w-2 rounded-full bg-green-500 animate-pulse"></div>
+                        <span class="text-sm text-gray-500">Live Updates</span>
+                    </div>
+                    <button onclick="showAddInstanceModal()" class="bg-purple-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-purple-700">
+                        + Add Database
+                    </button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="pt-20 pb-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
+        
+        <!-- Fleet View (default) -->
+        <div id="fleet-view">
+            <!-- Fleet Summary -->
+            <div class="mb-8 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-6">
+                <div class="bg-white overflow-hidden shadow rounded-lg">
+                    <div class="px-4 py-5 sm:p-6">
+                        <dt class="text-sm font-medium text-gray-500 truncate">Total Instances</dt>
+                        <dd class="mt-1 text-3xl font-semibold text-gray-900" id="summary-total">-</dd>
+                    </div>
+                </div>
+                <div class="bg-white overflow-hidden shadow rounded-lg">
+                    <div class="px-4 py-5 sm:p-6">
+                        <dt class="text-sm font-medium text-gray-500 truncate">Healthy</dt>
+                        <dd class="mt-1 text-3xl font-semibold text-green-600" id="summary-healthy">-</dd>
+                    </div>
+                </div>
+                <div class="bg-white overflow-hidden shadow rounded-lg">
+                    <div class="px-4 py-5 sm:p-6">
+                        <dt class="text-sm font-medium text-gray-500 truncate">Critical Issues</dt>
+                        <dd class="mt-1 text-3xl font-semibold text-red-600" id="summary-critical">-</dd>
+                    </div>
+                </div>
+                <div class="bg-white overflow-hidden shadow rounded-lg">
+                    <div class="px-4 py-5 sm:p-6">
+                        <dt class="text-sm font-medium text-gray-500 truncate">Avg Health Score</dt>
+                        <dd class="mt-1 text-3xl font-semibold text-purple-600" id="summary-score">-</dd>
+                    </div>
+                </div>
+                <div class="bg-white overflow-hidden shadow rounded-lg border-l-4 border-green-500">
+                    <div class="px-4 py-5 sm:p-6">
+                        <dt class="text-sm font-medium text-gray-500 truncate">💰 Potential Savings</dt>
+                        <dd class="mt-1 text-3xl font-semibold text-green-600" id="summary-savings">-</dd>
+                    </div>
+                </div>
+                <div class="bg-white overflow-hidden shadow rounded-lg border-l-4 border-purple-500">
+                    <div class="px-4 py-5 sm:p-6">
+                        <dt class="text-sm font-medium text-gray-500 truncate">🤖 AI Insights</dt>
+                        <dd class="mt-1 text-3xl font-semibold text-purple-600" id="summary-insights">-</dd>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Instance Grid -->
+            <h2 class="text-lg font-semibold text-gray-900 mb-4">Database Instances</h2>
+            <div class="grid grid-cols-1 gap-6 lg:grid-cols-2 xl:grid-cols-3" id="instance-grid">
+                <!-- Instances will be injected here -->
+            </div>
+        </div>
+
+        <!-- Instance Detail View (hidden by default) -->
+        <div id="detail-view" class="hidden">
+            <div class="mb-6">
+                <button onclick="showFleetView()" class="flex items-center text-purple-600 hover:text-purple-800 font-medium">
+                    <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/>
+                    </svg>
+                    Back to Fleet
+                </button>
+            </div>
+
+            <!-- Instance Header -->
+            <div class="bg-white rounded-lg shadow mb-6 p-6">
+                <div class="flex justify-between items-start">
+                    <div>
+                        <h1 class="text-2xl font-bold text-gray-900" id="detail-name">-</h1>
+                        <p class="text-gray-500" id="detail-host">-</p>
+                        <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium mt-2" id="detail-status">-</span>
+                    </div>
+                    <div class="flex gap-3">
+                        <button onclick="triggerHealthCheck()" class="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 font-medium text-sm">
+                            🔄 Refresh
+                        </button>
+                        <button onclick="triggerAiAnalysis()" class="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 font-medium text-sm" id="ai-analyze-btn">
+                            🤖 AI Analyze
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Quick Stats -->
+                <div class="grid grid-cols-2 md:grid-cols-5 gap-4 mt-6 pt-6 border-t">
+                    <div class="text-center">
+                        <div class="text-3xl font-bold text-purple-600" id="detail-score">-</div>
+                        <div class="text-sm text-gray-500">Health Score</div>
+                    </div>
+                    <div class="text-center">
+                        <div class="text-3xl font-bold text-gray-900" id="detail-size">-</div>
+                        <div class="text-sm text-gray-500">Database Size</div>
+                    </div>
+                    <div class="text-center">
+                        <div class="text-3xl font-bold text-blue-600" id="detail-connections">-</div>
+                        <div class="text-sm text-gray-500">Connections</div>
+                    </div>
+                    <div class="text-center">
+                        <div class="text-3xl font-bold text-orange-600" id="detail-recommendations">-</div>
+                        <div class="text-sm text-gray-500">Recommendations</div>
+                    </div>
+                    <div class="text-center">
+                        <div class="text-3xl font-bold text-green-600" id="detail-savings">-</div>
+                        <div class="text-sm text-gray-500">Potential Savings</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tabs -->
+            <div class="border-b border-gray-200 mb-6">
+                <nav class="-mb-px flex space-x-8">
+                    <button onclick="showTab('metrics')" class="tab-btn border-purple-500 text-purple-600 py-4 px-1 border-b-2 font-medium text-sm" data-tab="metrics">
+                        📊 Metrics
+                    </button>
+                    <button onclick="showTab('ai-insights')" class="tab-btn border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 py-4 px-1 border-b-2 font-medium text-sm" data-tab="ai-insights">
+                        🤖 AI Insights
+                    </button>
+                    <button onclick="showTab('recommendations')" class="tab-btn border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 py-4 px-1 border-b-2 font-medium text-sm" data-tab="recommendations">
+                        💡 Recommendations
+                    </button>
+                    <button onclick="showTab('queries')" class="tab-btn border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 py-4 px-1 border-b-2 font-medium text-sm" data-tab="queries">
+                        🔍 Slow Queries
+                    </button>
+                </nav>
+            </div>
+
+            <!-- Tab Content -->
+            <div id="tab-metrics" class="tab-content">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div class="bg-white rounded-lg shadow p-6">
+                        <h3 class="text-lg font-semibold mb-4">Connection Metrics</h3>
+                        <div class="space-y-4">
+                            <div class="flex justify-between items-center">
+                                <span class="text-gray-600">Active Connections</span>
+                                <span class="font-semibold" id="metric-active-conn">-</span>
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span class="text-gray-600">Max Connections</span>
+                                <span class="font-semibold" id="metric-max-conn">-</span>
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span class="text-gray-600">Connection Usage</span>
+                                <div class="flex items-center gap-2">
+                                    <div class="w-32 bg-gray-200 rounded-full h-2">
+                                        <div class="bg-purple-600 h-2 rounded-full" id="metric-conn-bar" style="width: 0%"></div>
+                                    </div>
+                                    <span class="font-semibold" id="metric-conn-pct">-</span>
+                                </div>
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span class="text-gray-600">Idle in Transaction</span>
+                                <span class="font-semibold text-yellow-600" id="metric-idle-tx">-</span>
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span class="text-gray-600">Lock Contention</span>
+                                <span class="font-semibold text-red-600" id="metric-locks">-</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="bg-white rounded-lg shadow p-6">
+                        <h3 class="text-lg font-semibold mb-4">Storage & Objects</h3>
+                        <div class="space-y-4">
+                            <div class="flex justify-between items-center">
+                                <span class="text-gray-600">Total Size</span>
+                                <span class="font-semibold" id="metric-size">-</span>
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span class="text-gray-600">Tables</span>
+                                <span class="font-semibold" id="metric-tables">-</span>
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span class="text-gray-600">Indexes</span>
+                                <span class="font-semibold" id="metric-indexes">-</span>
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span class="text-gray-600">PostgreSQL Version</span>
+                                <span class="font-semibold" id="metric-version">-</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="tab-ai-insights" class="tab-content hidden">
+                <div class="bg-white rounded-lg shadow p-6">
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="text-lg font-semibold">AI-Powered Insights</h3>
+                        <button onclick="triggerAiAnalysis()" class="px-3 py-1 bg-purple-100 text-purple-700 rounded-lg text-sm font-medium hover:bg-purple-200">
+                            Generate New Insights
+                        </button>
+                    </div>
+                    <div id="ai-insights-list" class="space-y-4">
+                        <div class="text-gray-500 text-center py-8">
+                            <div class="text-4xl mb-2">🤖</div>
+                            <p>No AI insights yet. Click "AI Analyze" to generate insights.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="tab-recommendations" class="tab-content hidden">
+                <div class="bg-white rounded-lg shadow p-6">
+                    <h3 class="text-lg font-semibold mb-4">Optimization Recommendations</h3>
+                    <div id="recommendations-list" class="space-y-4">
+                        <div class="text-gray-500 text-center py-8">
+                            <div class="text-4xl mb-2">💡</div>
+                            <p>Run a health check to generate recommendations.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="tab-queries" class="tab-content hidden">
+                <div class="bg-white rounded-lg shadow p-6">
+                    <h3 class="text-lg font-semibold mb-4">Slow Queries</h3>
+                    <div id="queries-list" class="space-y-4">
+                        <div class="text-gray-500 text-center py-8">
+                            <div class="text-4xl mb-2">🔍</div>
+                            <p>Query analysis coming soon.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Add Instance Modal -->
+    <div id="add-instance-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden z-50 flex items-center justify-center">
+        <div class="bg-white rounded-lg shadow-xl max-w-md w-full mx-4 p-6">
+            <h2 class="text-xl font-bold mb-4">Add Database Instance</h2>
+            <form id="add-instance-form" onsubmit="addInstance(event)">
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Name</label>
+                        <input type="text" name="name" required class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-purple-500 focus:border-purple-500" placeholder="production-db">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Connection String</label>
+                        <input type="text" name="connection_string" required class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-purple-500 focus:border-purple-500" placeholder="postgresql://user:pass@host:5432/db">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Environment</label>
+                        <select name="environment" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-purple-500 focus:border-purple-500">
+                            <option value="production">Production</option>
+                            <option value="staging">Staging</option>
+                            <option value="development">Development</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="flex justify-end gap-3 mt-6">
+                    <button type="button" onclick="hideAddInstanceModal()" class="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg">Cancel</button>
+                    <button type="submit" class="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700">Add Instance</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = '/api/v1';
+        let currentInstanceId = null;
+        let instancesData = {};
+
+        // ===== Fleet View Functions =====
+        async function fetchFleetData() {
+            try {
+                const summaryRes = await fetch(`${API_BASE}/fleet/summary`);
+                const summary = await summaryRes.json();
+                updateSummary(summary);
+
+                const instancesRes = await fetch(`${API_BASE}/fleet`);
+                const instances = await instancesRes.json();
+                instances.forEach(i => instancesData[i.id] = i);
+                updateInstances(instances);
+            } catch (error) {
+                console.error('Error fetching fleet data:', error);
+            }
+        }
+
+        function updateSummary(summary) {
+            document.getElementById('summary-total').textContent = summary.total_databases;
+            document.getElementById('summary-healthy').textContent = summary.healthy_count;
+            document.getElementById('summary-critical').textContent = summary.critical_count;
+            document.getElementById('summary-score').textContent = summary.average_health_score ? Math.round(summary.average_health_score) : '-';
+            document.getElementById('summary-savings').textContent = summary.total_potential_savings_usd 
+                ? '$' + Math.round(summary.total_potential_savings_usd).toLocaleString() + '/mo'
+                : '-';
+            document.getElementById('summary-insights').textContent = summary.total_ai_insights || '0';
+        }
+
+        function updateInstances(instances) {
+            const grid = document.getElementById('instance-grid');
+            grid.innerHTML = '';
+            instances.forEach(instance => {
+                grid.appendChild(createInstanceCard(instance));
+            });
+        }
+
+        function getStatusColor(status) {
+            switch(status) {
+                case 'Healthy': return 'bg-green-100 text-green-800';
+                case 'Warning': return 'bg-yellow-100 text-yellow-800';
+                case 'Critical': return 'bg-red-100 text-red-800';
+                default: return 'bg-gray-100 text-gray-800';
+            }
+        }
+
+        function createInstanceCard(instance) {
+            const div = document.createElement('div');
+            div.className = 'bg-white overflow-hidden shadow rounded-lg border border-gray-200 hover:shadow-lg transition-all duration-300 cursor-pointer';
+            div.onclick = () => showInstanceDetail(instance.id);
+            
+            const savings = instance.metrics?.potential_savings_usd;
+            const recs = instance.metrics?.recommendations_count || 0;
+            const critRecs = instance.metrics?.critical_recommendations_count || 0;
+            const aiInsights = instance.metrics?.ai_insights?.length || 0;
+            
+            div.innerHTML = `
+                <div class="px-4 py-5 sm:px-6 border-b border-gray-100 flex justify-between items-center">
+                    <div>
+                        <h3 class="text-lg leading-6 font-medium text-gray-900">${instance.name}</h3>
+                        <p class="mt-1 max-w-2xl text-sm text-gray-500">${instance.connection_string.split('@')[1]?.split('/')[0] || 'localhost'}</p>
+                    </div>
+                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusColor(instance.status)}">
+                        ${instance.status}
+                    </span>
+                </div>
+                <div class="px-4 py-5 sm:p-6">
+                    <div class="grid grid-cols-3 gap-4 mb-4">
+                        <div class="text-center">
+                            <div class="text-2xl font-bold text-purple-600">${instance.health_score || '-'}</div>
+                            <div class="text-xs text-gray-500">Health</div>
+                        </div>
+                        <div class="text-center">
+                            <div class="text-2xl font-bold ${critRecs > 0 ? 'text-red-600' : 'text-orange-600'}">${recs}</div>
+                            <div class="text-xs text-gray-500">Recommendations</div>
+                        </div>
+                        <div class="text-center">
+                            <div class="text-2xl font-bold text-green-600">${savings ? '$' + Math.round(savings) : '-'}</div>
+                            <div class="text-xs text-gray-500">Savings/mo</div>
+                        </div>
+                    </div>
+                    
+                    <div class="bg-gray-50 rounded-md p-3 space-y-2 text-sm">
+                        <div class="flex justify-between">
+                            <span class="text-gray-500">Connections</span>
+                            <span class="font-medium">${instance.metrics?.active_connections || 0} / ${instance.metrics?.max_connections || 0}</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-gray-500">Idle Tx</span>
+                            <span class="font-medium ${instance.metrics?.idle_in_transaction_count > 0 ? 'text-yellow-600' : ''}">${instance.metrics?.idle_in_transaction_count || 0}</span>
+                        </div>
+                        ${aiInsights > 0 ? `
+                        <div class="flex justify-between">
+                            <span class="text-gray-500">🤖 AI Insights</span>
+                            <span class="font-medium text-purple-600">${aiInsights}</span>
+                        </div>
+                        ` : ''}
+                    </div>
+                </div>
+                <div class="px-4 py-3 bg-gray-50 text-right border-t border-gray-100">
+                    <span class="text-sm text-purple-600 font-medium">View Details →</span>
+                </div>
+            `;
+            return div;
+        }
+
+        // ===== Detail View Functions =====
+        function showFleetView() {
+            document.getElementById('fleet-view').classList.remove('hidden');
+            document.getElementById('detail-view').classList.add('hidden');
+            currentInstanceId = null;
+        }
+
+        async function showInstanceDetail(id) {
+            currentInstanceId = id;
+            document.getElementById('fleet-view').classList.add('hidden');
+            document.getElementById('detail-view').classList.remove('hidden');
+            document.getElementById('detail-view').classList.add('slide-in');
+            
+            const instance = instancesData[id];
+            if (instance) {
+                updateDetailView(instance);
+            }
+            
+            // Fetch full details
+            try {
+                const res = await fetch(`${API_BASE}/fleet/${id}/details`);
+                const details = await res.json();
+                updateDetailView(details.instance);
+                updateAiInsights(details.ai_insights);
+            } catch (e) {
+                console.error('Failed to fetch details:', e);
+            }
+        }
+
+        function updateDetailView(instance) {
+            document.getElementById('detail-name').textContent = instance.name;
+            document.getElementById('detail-host').textContent = instance.connection_string.split('@')[1]?.split('/')[0] || 'localhost';
+            
+            const statusEl = document.getElementById('detail-status');
+            statusEl.textContent = instance.status;
+            statusEl.className = `inline-flex items-center px-3 py-1 rounded-full text-sm font-medium mt-2 ${getStatusColor(instance.status)}`;
+            
+            document.getElementById('detail-score').textContent = instance.health_score || '-';
+            document.getElementById('detail-size').textContent = instance.metrics?.total_size_mb 
+                ? (instance.metrics.total_size_mb > 1024 
+                    ? (instance.metrics.total_size_mb / 1024).toFixed(1) + ' GB' 
+                    : Math.round(instance.metrics.total_size_mb) + ' MB')
+                : '-';
+            document.getElementById('detail-connections').textContent = instance.metrics?.active_connections || '-';
+            document.getElementById('detail-recommendations').textContent = instance.metrics?.recommendations_count || '0';
+            document.getElementById('detail-savings').textContent = instance.metrics?.potential_savings_usd 
+                ? '$' + Math.round(instance.metrics.potential_savings_usd) + '/mo'
+                : '-';
+
+            // Metrics tab
+            document.getElementById('metric-active-conn').textContent = instance.metrics?.active_connections || '-';
+            document.getElementById('metric-max-conn').textContent = instance.metrics?.max_connections || '-';
+            document.getElementById('metric-conn-pct').textContent = instance.metrics?.connection_usage_pct 
+                ? instance.metrics.connection_usage_pct.toFixed(1) + '%' : '-';
+            document.getElementById('metric-conn-bar').style.width = (instance.metrics?.connection_usage_pct || 0) + '%';
+            document.getElementById('metric-idle-tx').textContent = instance.metrics?.idle_in_transaction_count || '0';
+            document.getElementById('metric-locks').textContent = instance.metrics?.locked_connections_count || '0';
+            document.getElementById('metric-size').textContent = instance.metrics?.total_size_mb 
+                ? Math.round(instance.metrics.total_size_mb) + ' MB' : '-';
+            document.getElementById('metric-tables').textContent = instance.metrics?.table_count || '-';
+            document.getElementById('metric-indexes').textContent = instance.metrics?.index_count || '-';
+            document.getElementById('metric-version').textContent = instance.version || '-';
+        }
+
+        function updateAiInsights(insights) {
+            const container = document.getElementById('ai-insights-list');
+            if (!insights || insights.length === 0) {
+                container.innerHTML = `
+                    <div class="text-gray-500 text-center py-8">
+                        <div class="text-4xl mb-2">🤖</div>
+                        <p>No AI insights yet. Click "AI Analyze" to generate insights.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = insights.map(insight => `
+                <div class="border rounded-lg p-4 ${insight.severity === 'Critical' ? 'border-red-200 bg-red-50' : insight.severity === 'Warning' ? 'border-yellow-200 bg-yellow-50' : 'border-gray-200'}">
+                    <div class="flex items-start gap-3">
+                        <div class="text-2xl">${insight.category === 'Performance' ? '⚡' : insight.category === 'Cost' ? '💰' : insight.category === 'Security' ? '🔒' : '📊'}</div>
+                        <div class="flex-1">
+                            <h4 class="font-semibold text-gray-900">${insight.title}</h4>
+                            <p class="text-gray-600 text-sm mt-1 whitespace-pre-wrap">${insight.description}</p>
+                            ${insight.recommendation ? `
+                            <div class="mt-3 p-3 bg-white rounded border border-gray-200">
+                                <div class="text-xs font-medium text-gray-500 mb-1">RECOMMENDATION</div>
+                                <p class="text-sm">${insight.recommendation}</p>
+                            </div>
+                            ` : ''}
+                        </div>
+                        <span class="px-2 py-1 text-xs rounded-full ${insight.severity === 'Critical' ? 'bg-red-100 text-red-800' : insight.severity === 'Warning' ? 'bg-yellow-100 text-yellow-800' : 'bg-blue-100 text-blue-800'}">${insight.severity}</span>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function showTab(tabName) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+            document.querySelectorAll('.tab-btn').forEach(el => {
+                el.classList.remove('border-purple-500', 'text-purple-600');
+                el.classList.add('border-transparent', 'text-gray-500');
+            });
+            
+            document.getElementById(`tab-${tabName}`).classList.remove('hidden');
+            const activeBtn = document.querySelector(`[data-tab="${tabName}"]`);
+            activeBtn.classList.add('border-purple-500', 'text-purple-600');
+            activeBtn.classList.remove('border-transparent', 'text-gray-500');
+        }
+
+        async function triggerHealthCheck() {
+            if (!currentInstanceId) return;
+            try {
+                const res = await fetch(`${API_BASE}/fleet/${currentInstanceId}/check`, { method: 'POST' });
+                const instance = await res.json();
+                instancesData[currentInstanceId] = instance;
+                updateDetailView(instance);
+                alert('Health check completed!');
+            } catch (e) {
+                console.error('Health check failed:', e);
+                alert('Health check failed: ' + e.message);
+            }
+        }
+
+        async function triggerAiAnalysis() {
+            if (!currentInstanceId) return;
+            const btn = document.getElementById('ai-analyze-btn');
+            try {
+                btn.disabled = true;
+                btn.textContent = '⏳ Analyzing...';
+                
+                const res = await fetch(`${API_BASE}/fleet/${currentInstanceId}/ai-analyze`, { method: 'POST' });
+                const result = await res.json();
+                
+                if (result.data?.analysis) {
+                    updateAiInsights([{
+                        id: '1',
+                        category: 'Performance',
+                        severity: 'Info',
+                        title: 'AI Performance Analysis',
+                        description: result.data.analysis,
+                        recommendation: null
+                    }]);
+                    showTab('ai-insights');
+                }
+                
+                btn.disabled = false;
+                btn.textContent = '🤖 AI Analyze';
+            } catch (e) {
+                console.error('AI analysis failed:', e);
+                alert('AI analysis failed. Make sure AI is configured (OPENAI_API_KEY or similar).');
+                btn.disabled = false;
+                btn.textContent = '🤖 AI Analyze';
+            }
+        }
+
+        // ===== Modal Functions =====
+        function showAddInstanceModal() {
+            document.getElementById('add-instance-modal').classList.remove('hidden');
+        }
+
+        function hideAddInstanceModal() {
+            document.getElementById('add-instance-modal').classList.add('hidden');
+        }
+
+        async function addInstance(e) {
+            e.preventDefault();
+            const form = e.target;
+            const data = {
+                name: form.name.value,
+                connection_string: form.connection_string.value,
+                environment: form.environment.value
+            };
+
+            try {
+                const res = await fetch(`${API_BASE}/fleet`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                
+                if (res.ok) {
+                    hideAddInstanceModal();
+                    form.reset();
+                    fetchFleetData();
+                } else {
+                    const err = await res.json();
+                    alert('Failed to add instance: ' + (err.error || 'Unknown error'));
+                }
+            } catch (e) {
+                alert('Failed to add instance: ' + e.message);
+            }
+        }
+
+        // Initialize
+        fetchFleetData();
+        setInterval(fetchFleetData, 10000); // Refresh every 10 seconds
+    </script>
+</body>
+</html>

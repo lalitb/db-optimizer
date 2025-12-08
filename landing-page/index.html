@@ -6,10 +6,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
     <!-- Primary Meta Tags -->
-    <title>Vaanyze | Kernel-Level PostgreSQL Performance Analysis with eBPF</title>
-    <meta name="title" content="Vaanyze | Kernel-Level PostgreSQL Performance Analysis with eBPF">
+    <title>Vaanyze | AI-Powered PostgreSQL Fleet Manager with eBPF</title>
+    <meta name="title" content="Vaanyze | AI-Powered PostgreSQL Fleet Manager with eBPF">
     <meta name="description"
-        content="Production-grade eBPF instrumentation for PostgreSQL. Syscall-level query attribution with I/O latency, CPU time, lock contention metrics. Container-aware cgroup metrics for Docker/Kubernetes. WAL correlation, vacuum detection, graceful degradation. Autonomous optimization with CREATE INDEX CONCURRENTLY and automatic rollback. Linux 5.8+, PostgreSQL 12-17.">
+        content="AI-powered PostgreSQL fleet management with kernel-level eBPF profiling. Web dashboard with AI chat, query optimizer, config tuning, and real-time lock analysis. Multi-provider LLM support (OpenAI, Claude, Ollama). Monitor multiple databases, get instant AI recommendations, optimize queries in seconds. Production-grade with automatic rollback. Linux 5.8+, PostgreSQL 12-17.">
     <meta name="keywords"
         content="eBPF PostgreSQL, kernel instrumentation, database performance analysis, syscall tracing, query optimization, pg_stat_statements, BRIN GIN HASH indexes, CREATE INDEX CONCURRENTLY, database monitoring, performance tuning, container metrics, cgroup, Docker PostgreSQL, Kubernetes PostgreSQL, WAL correlation, vacuum detection, graceful degradation">
 
@@ -144,24 +144,24 @@
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
                 <div class="space-y-8">
                     <div
-                        class="inline-block px-4 py-2 bg-gray-100 border border-gray-300 rounded text-gray-700 text-sm font-mono">
-                        eBPF-based PostgreSQL Performance Analysis
+                        class="inline-block px-4 py-2 bg-gradient-to-r from-purple-100 to-indigo-100 border border-purple-300 rounded text-purple-800 text-sm font-semibold">
+                        🤖 NEW: AI-Powered Dashboard + Fleet Management
                     </div>
 
                     <div class="mb-4">
                         <h1 class="text-5xl sm:text-6xl font-bold leading-tight mb-2 text-gray-900">
-                            Kernel-Level PostgreSQL<br />
-                            <span class="gradient-text">Performance Intelligence</span>
+                            AI-Powered PostgreSQL<br />
+                            <span class="gradient-text">Fleet Manager</span>
                         </h1>
                         <p class="text-sm text-gray-500 font-mono">Vaanyze /van-ize/</p>
                     </div>
 
                     <p class="text-xl text-gray-700 leading-relaxed">
-                        Production-grade eBPF instrumentation for PostgreSQL. Captures query-level I/O latency,
-                        CPU time, lock contention, and network overhead at the kernel syscall layer.
-                        <strong>AI-powered recommendations</strong> with OpenAI, Claude, or local Ollama.
-                        <strong>Deploy as CLI, Agent, or Kubernetes plugin</strong> for CloudNativePG clusters.
-                        Autonomous optimization with statistical verification and automatic rollback.
+                        Monitor your entire PostgreSQL fleet with an <strong>AI-powered web dashboard</strong>.
+                        Ask questions in plain English, optimize queries in seconds, auto-tune configurations.
+                        <strong>eBPF kernel-level profiling</strong> for deep lock and I/O analysis.
+                        <strong>Multi-provider AI</strong>: OpenAI, Claude, or local Ollama.
+                        Deploy as CLI, web server, or Kubernetes operator. Autonomous optimization with automatic rollback.
                     </p>
 
                     <!-- Live Health Score Badge -->
@@ -185,13 +185,14 @@
                     </div>
 
                     <div class="flex flex-col sm:flex-row gap-4">
-                        <a href="#early-access"
-                            class="gradient-bg text-white px-8 py-4 rounded-lg font-semibold hover:shadow-2xl transition text-center">
-                            Request Access
+                        <a href="/dashboard-enhanced.html"
+                            class="gradient-bg text-white px-8 py-4 rounded-lg font-semibold hover:shadow-2xl transition text-center flex items-center justify-center gap-2">
+                            <span>🚀</span>
+                            <span>Launch Dashboard</span>
                         </a>
-                        <a href="#how-it-works"
+                        <a href="#early-access"
                             class="bg-gray-100 text-gray-800 px-8 py-4 rounded-lg font-semibold hover:bg-gray-200 transition text-center">
-                            Technical Details
+                            Request Beta Access
                         </a>
                     </div>
 
@@ -534,12 +535,55 @@
         <div class="max-w-7xl mx-auto">
             <div class="text-center mb-16">
                 <h2 class="text-4xl sm:text-5xl font-bold mb-6">
-                    Core Technical <span class="gradient-text">Capabilities</span>
+                    AI-Powered <span class="gradient-text">Features</span>
                 </h2>
                 <p class="text-xl text-gray-700 max-w-3xl mx-auto">
-                    Production-grade eBPF instrumentation with statistical analysis, autonomous optimization, and
-                    comprehensive observability integration.
+                    Modern web dashboard with AI assistant, kernel-level eBPF profiling, and autonomous optimization.
+                    Monitor your entire PostgreSQL fleet from one beautiful interface.
                 </p>
+            </div>
+
+            <!-- Featured: AI Dashboard -->
+            <div class="mb-12 bg-gradient-to-r from-purple-50 to-indigo-50 border-2 border-purple-300 p-8 rounded-2xl shadow-xl">
+                <div class="flex items-center gap-3 mb-4">
+                    <span class="text-4xl">🤖</span>
+                    <div>
+                        <div class="text-xs font-mono text-purple-600 mb-1">NEW: WEB DASHBOARD</div>
+                        <h3 class="text-2xl font-bold">AI-Powered Fleet Management</h3>
+                    </div>
+                </div>
+                <p class="text-gray-700 mb-6">
+                    Monitor all your PostgreSQL databases from one beautiful web interface. Ask AI questions in plain English,
+                    optimize queries visually, auto-tune configs, and track lock contention in real-time.
+                </p>
+                <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div class="bg-white p-4 rounded-lg">
+                        <div class="font-semibold text-purple-700 mb-2">💬 AI Chat</div>
+                        <div class="text-sm text-gray-600">Ask questions, get expert answers instantly</div>
+                    </div>
+                    <div class="bg-white p-4 rounded-lg">
+                        <div class="font-semibold text-purple-700 mb-2">🚀 Query Optimizer</div>
+                        <div class="text-sm text-gray-600">Paste SQL, get optimized version in seconds</div>
+                    </div>
+                    <div class="bg-white p-4 rounded-lg">
+                        <div class="font-semibold text-purple-700 mb-2">⚙️ Config Tuning</div>
+                        <div class="text-sm text-gray-600">Auto-generate optimal PostgreSQL configs</div>
+                    </div>
+                    <div class="bg-white p-4 rounded-lg">
+                        <div class="font-semibold text-purple-700 mb-2">🔒 Lock Analysis</div>
+                        <div class="text-sm text-gray-600">Real-time eBPF-powered visualization</div>
+                    </div>
+                </div>
+                <div class="mt-6 flex gap-4">
+                    <a href="/dashboard-enhanced.html"
+                       class="bg-purple-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-purple-700 transition">
+                        Launch Dashboard →
+                    </a>
+                    <a href="./docs/ENHANCED_DASHBOARD_GUIDE.md"
+                       class="bg-white text-purple-600 px-6 py-3 rounded-lg font-semibold border-2 border-purple-300 hover:bg-purple-50 transition">
+                        Documentation
+                    </a>
+                </div>
             </div>
 
             <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-8">

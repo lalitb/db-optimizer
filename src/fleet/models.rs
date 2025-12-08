@@ -37,8 +37,46 @@ pub struct InstanceMetrics {
     pub idle_in_transaction_count: i32,
     pub locked_connections_count: i32,
 
+    // Cost & Savings
+    pub estimated_monthly_cost_usd: Option<f64>,
+    pub potential_savings_usd: Option<f64>,
+    pub recommendations_count: usize,
+    pub critical_recommendations_count: usize,
+
+    // AI Insights
+    pub ai_insights: Option<Vec<AiInsight>>,
+
     // eBPF Metrics (if available)
     pub ebpf_lock_summary: Option<LockContentionSummary>,
+}
+
+/// AI-generated insight for a database
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AiInsight {
+    pub id: String,
+    pub category: InsightCategory,
+    pub severity: InsightSeverity,
+    pub title: String,
+    pub description: String,
+    pub recommendation: Option<String>,
+    pub estimated_impact: Option<String>,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum InsightCategory {
+    Performance,
+    Cost,
+    Security,
+    Maintenance,
+    Schema,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum InsightSeverity {
+    Info,
+    Warning,
+    Critical,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -78,6 +116,11 @@ pub struct FleetSummary {
     pub critical_count: usize,
     pub unreachable_count: usize,
     pub average_health_score: Option<f64>,
+    // Cost metrics
+    pub total_monthly_cost_usd: Option<f64>,
+    pub total_potential_savings_usd: Option<f64>,
+    pub total_recommendations: usize,
+    pub total_ai_insights: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

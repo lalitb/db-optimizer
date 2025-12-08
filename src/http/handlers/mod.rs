@@ -1,5 +1,6 @@
 // HTTP request handlers
 
+pub mod ai;
 pub mod config_tuning;
 pub mod fleet;
 pub mod locks;

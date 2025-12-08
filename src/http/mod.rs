@@ -40,6 +40,9 @@ pub fn create_router(state: AppState) -> Router {
         .route("/health", get(handlers::stats::health))
         .route("/stats/summary", get(handlers::stats::summary))
         .route("/stats/metrics", get(handlers::stats::metrics))
+        // AI Endpoints
+        .route("/ai/ask", post(handlers::ai::ask_ai))
+        .route("/ai/optimize", post(handlers::ai::optimize_query))
         // Lock Endpoints
         .route("/locks/contention", get(handlers::locks::contention))
         .route("/locks/summary", get(handlers::locks::summary))
@@ -60,6 +63,14 @@ pub fn create_router(state: AppState) -> Router {
             get(handlers::fleet::get_instance).delete(handlers::fleet::remove_instance),
         )
         .route("/fleet/:id/check", post(handlers::fleet::check_instance))
+        .route(
+            "/fleet/:id/details",
+            get(handlers::fleet::get_instance_details),
+        )
+        .route(
+            "/fleet/:id/ai-analyze",
+            post(handlers::fleet::ai_analyze_instance),
+        )
         // Recommendations
         .route("/recommendations", get(handlers::recommendations::list))
         .route(

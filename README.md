@@ -1,8 +1,19 @@
-# PostgreSQL Query Health Advisor
+# Vaanyze - AI-Powered PostgreSQL Fleet Manager
 
-A fast, intelligent CLI tool that analyzes your PostgreSQL database and provides actionable recommendations to improve query performance and reduce costs.
+A fast, intelligent platform that analyzes your PostgreSQL databases and provides actionable recommendations to improve query performance and reduce costs. Now with a **comprehensive web dashboard** and AI-powered features!
 
 ## 🌟 What's New
+
+### 🎯 NEW: AI-Powered Web Dashboard (Phase 5 Released!)
+- **Fleet Management**: Monitor all your databases in one beautiful interface
+- **AI Chat Assistant**: Ask questions in plain English, get expert answers instantly
+- **Query Optimizer UI**: Paste slow queries, get AI-optimized versions with explanations
+- **Config Tuning Wizard**: Auto-generate optimal PostgreSQL configurations
+- **Lock Analysis**: Real-time eBPF-powered lock contention tracking with charts
+- **Cost Tracking**: See potential monthly savings across your entire fleet
+- **Zero Build Step**: Pure HTML/CSS/JS - just open and use!
+
+👉 **[Quick Start Guide](./QUICK_START_ENHANCED_DASHBOARD.md)** | **[Full Documentation](./docs/ENHANCED_DASHBOARD_GUIDE.md)**
 
 ### Multi-Provider AI Integration 🧠
 - **Multiple LLM Providers**: OpenAI (GPT-4), Anthropic (Claude), Ollama (local models)
@@ -60,7 +71,42 @@ A fast, intelligent CLI tool that analyzes your PostgreSQL database and provides
 
 ## Quick Start
 
-### Installation
+### Option 1: Web Dashboard (Recommended)
+
+```bash
+# 1. Build the project
+cargo build --release
+
+# 2. Set AI provider (choose one)
+export OPENAI_API_KEY="sk-..."        # OpenAI (best quality)
+# OR
+export ANTHROPIC_API_KEY="sk-ant-..."  # Anthropic Claude
+# OR
+ollama pull llama3.2                   # Ollama (free, local)
+export DBO_AI_PROVIDER="ollama"
+
+export DBO_AI_ENABLED=true
+
+# 3. Start HTTP server
+./target/release/pg-query-advisor \
+  --http-server \
+  --http-port 8080 \
+  --database-url "postgresql://user:pass@localhost/yourdb"
+
+# 4. Open your browser
+# http://localhost:8080/dashboard-enhanced.html
+```
+
+**That's it!** You now have:
+- ✅ AI-powered fleet dashboard
+- ✅ Query optimizer with instant results
+- ✅ Config tuning wizard
+- ✅ Real-time lock analysis
+- ✅ AI chat assistant
+
+See **[Quick Start Guide](./QUICK_START_ENHANCED_DASHBOARD.md)** for detailed setup.
+
+### Option 2: CLI Tool
 
 ```bash
 # From source (requires Rust)
@@ -83,13 +129,13 @@ ANALYZE;  -- Update pg_stats
 
 Then restart your application to start collecting statistics.
 
-### Basic Usage
+### CLI Usage
 
 ```bash
 # Analyze database
 ./target/release/pg-query-advisor --database-url postgresql://user:pass@localhost/mydb
 
-# With advanced index intelligence (NEW!)
+# With advanced index intelligence
 pg-query-advisor -d $DATABASE_URL --advanced-indexes
 
 # Enable query rewriting suggestions
@@ -106,6 +152,43 @@ pg-query-advisor agent \
 
 # Export to JSON
 pg-query-advisor -d $DATABASE_URL --format json --output report.json
+
+# HTTP Server mode (for web dashboard)
+pg-query-advisor --http-server --http-port 8080 --database-url $DATABASE_URL
+```
+
+### Web Dashboard Usage
+
+Once the HTTP server is running, access these features:
+
+**Fleet Management:**
+```
+http://localhost:8080/dashboard-enhanced.html
+```
+
+**API Endpoints:**
+```bash
+# Register a database to monitor
+curl -X POST http://localhost:8080/api/v1/fleet \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Production DB",
+    "connection_string": "postgresql://...",
+    "environment": "production"
+  }'
+
+# Ask AI a question
+curl -X POST http://localhost:8080/api/v1/ai/ask \
+  -H "Content-Type: application/json" \
+  -d '{
+    "question": "Why is my database slow?",
+    "context": "5 databases, 3 critical issues"
+  }'
+
+# Optimize a query with AI
+curl -X POST http://localhost:8080/api/v1/ai/optimize \
+  -H "Content-Type: application/json" \
+  -d '{"query": "SELECT * FROM users WHERE..."}'
 ```
 
 ### AI-Powered Analysis
@@ -590,13 +673,24 @@ Performance improvements from using advanced index intelligence:
 - **Context-aware analysis** - AI considers schema, query patterns, and workload
 - **Local model support** - Run with Ollama for privacy-sensitive environments
 
-### 📅 Phase 5 Planned - Enterprise & SaaS
-- Web dashboard with drill-down views
-- Multi-database fleet management
+### ✅ Phase 5 Complete - Web Dashboard & Fleet Management
+- **AI-powered web dashboard** - Modern, responsive UI with real-time updates
+- **Fleet management** - Monitor multiple databases from one interface
+- **AI chat assistant** - Natural language Q&A about your databases
+- **Query optimizer UI** - Visual query optimization with AI explanations
+- **Config tuning wizard** - Auto-generate optimal PostgreSQL configs
+- **Lock analysis visualization** - Real-time charts and blocking query detection
+- **Cost tracking** - Aggregate potential savings across fleet
+- **HTTP API** - RESTful API for programmatic access
+- **Chart.js integration** - Interactive time-series visualizations
+
+### 📅 Phase 6 Planned - Enterprise Features
 - Team collaboration and RBAC
-- Historical trends and analytics
-- Grafana/Prometheus integration
+- Historical trends and analytics (7/30/90 days)
+- Grafana/Prometheus dashboards
+- Multi-tenant support
 - Cloud marketplace listings (AWS, Azure, GCP)
+- Custom AI training on your query patterns
 
 ## Contributing
 

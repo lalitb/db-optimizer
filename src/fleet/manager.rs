@@ -60,6 +60,10 @@ impl FleetManager {
         let mut unreachable = 0;
         let mut total_score = 0.0;
         let mut scored_count = 0;
+        let mut total_cost = 0.0;
+        let mut total_savings = 0.0;
+        let mut total_recs = 0;
+        let mut total_insights = 0;
 
         for instance in instances.values() {
             match instance.status {
@@ -74,6 +78,19 @@ impl FleetManager {
                 total_score += score as f64;
                 scored_count += 1;
             }
+
+            if let Some(ref metrics) = instance.metrics {
+                if let Some(cost) = metrics.estimated_monthly_cost_usd {
+                    total_cost += cost;
+                }
+                if let Some(savings) = metrics.potential_savings_usd {
+                    total_savings += savings;
+                }
+                total_recs += metrics.recommendations_count;
+                if let Some(ref insights) = metrics.ai_insights {
+                    total_insights += insights.len();
+                }
+            }
         }
 
         FleetSummary {
@@ -87,6 +104,18 @@ impl FleetManager {
             } else {
                 None
             },
+            total_monthly_cost_usd: if total_cost > 0.0 {
+                Some(total_cost)
+            } else {
+                None
+            },
+            total_potential_savings_usd: if total_savings > 0.0 {
+                Some(total_savings)
+            } else {
+                None
+            },
+            total_recommendations: total_recs,
+            total_ai_insights: total_insights,
         }
     }
 
@@ -207,6 +236,17 @@ impl FleetManager {
 
         let summary = RecommendationEngine::generate_summary(&recommendations);
 
+        // Calculate cost savings from recommendations
+        let potential_savings: f64 = recommendations
+            .iter()
+            .map(|r| r.estimated_cost_savings_usd_monthly.unwrap_or(0.0))
+            .sum();
+
+        let critical_count = recommendations
+            .iter()
+            .filter(|r| r.severity == crate::models::Severity::Critical)
+            .count();
+
         // Build metrics
         let metrics = InstanceMetrics {
             total_size_mb: total_db_size_mb,
@@ -232,6 +272,17 @@ impl FleetManager {
                 .as_ref()
                 .map(|s| s.locked_connections_count)
                 .unwrap_or(0),
+            // Cost & Savings
+            estimated_monthly_cost_usd: None, // TODO: Integrate with cloud cost APIs
+            potential_savings_usd: if potential_savings > 0.0 {
+                Some(potential_savings)
+            } else {
+                None
+            },
+            recommendations_count: recommendations.len(),
+            critical_recommendations_count: critical_count,
+            // AI Insights - populated separately via AI analysis
+            ai_insights: None,
             ebpf_lock_summary,
         };
 
