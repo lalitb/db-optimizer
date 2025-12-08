@@ -3,38 +3,81 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Vaanyze Fleet Dashboard</title>
+    <title>Vaanyze AI-Powered Fleet Dashboard</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
         body { font-family: 'Inter', sans-serif; }
         .metric-value { transition: color 0.3s ease; }
+        .tab-active {
+            border-bottom-color: #9333ea;
+            color: #111827;
+        }
+        .animate-slide-in {
+            animation: slideIn 0.3s ease-out;
+        }
+        @keyframes slideIn {
+            from { transform: translateY(20px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+        .code-block {
+            background: #1e293b;
+            color: #10b981;
+            font-family: 'Monaco', 'Courier New', monospace;
+            font-size: 13px;
+        }
+        .ai-gradient {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        .chat-message {
+            animation: fadeIn 0.3s ease-in;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
     </style>
 </head>
 <body class="bg-gray-50 text-gray-900">
 
     <!-- Navigation -->
-    <nav class="bg-white border-b border-gray-200 fixed w-full z-30 top-0">
+    <nav class="bg-white border-b border-gray-200 fixed w-full z-30 top-0 shadow-sm">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="flex justify-between h-16">
                 <div class="flex">
                     <div class="flex-shrink-0 flex items-center">
-                        <span class="text-xl font-bold text-purple-600">Vaanyze Fleet</span>
+                        <span class="text-2xl font-bold bg-gradient-to-r from-purple-600 to-indigo-600 bg-clip-text text-transparent">
+                            Vaanyze
+                        </span>
+                        <span class="ml-2 text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded-full font-semibold">
+                            AI-POWERED
+                        </span>
                     </div>
-                    <div class="hidden sm:ml-6 sm:flex sm:space-x-8">
-                        <a href="#" class="border-purple-500 text-gray-900 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
-                            Dashboard
+                    <div class="hidden sm:ml-8 sm:flex sm:space-x-6">
+                        <a href="#" onclick="showTab('fleet')" id="tab-fleet" class="tab-active border-transparent hover:border-gray-300 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium transition-colors">
+                            🏢 Fleet
                         </a>
-                        <a href="#" class="border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
-                            Settings
+                        <a href="#" onclick="showTab('optimizer')" id="tab-optimizer" class="border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium transition-colors">
+                            🚀 Query Optimizer
+                        </a>
+                        <a href="#" onclick="showTab('config')" id="tab-config" class="border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium transition-colors">
+                            ⚙️ Config Tuning
+                        </a>
+                        <a href="#" onclick="showTab('locks')" id="tab-locks" class="border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium transition-colors">
+                            🔒 Lock Analysis
                         </a>
                     </div>
                 </div>
-                <div class="flex items-center">
+                <div class="flex items-center gap-4">
                     <div class="flex items-center gap-2">
                         <div class="h-2 w-2 rounded-full bg-green-500 animate-pulse"></div>
                         <span class="text-sm text-gray-500">Live Updates</span>
                     </div>
+                    <button onclick="toggleAiChat()" class="ai-gradient text-white px-4 py-2 rounded-lg font-semibold hover:opacity-90 transition-opacity flex items-center gap-2">
+                        <span>🤖</span>
+                        <span>AI Assistant</span>
+                    </button>
                 </div>
             </div>
         </div>
@@ -42,59 +85,392 @@
 
     <!-- Main Content -->
     <main class="pt-20 pb-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
-        
-        <!-- Fleet Summary -->
-        <div class="mb-8 grid grid-cols-1 gap-5 sm:grid-cols-4">
-            <div class="bg-white overflow-hidden shadow rounded-lg">
-                <div class="px-4 py-5 sm:p-6">
-                    <dt class="text-sm font-medium text-gray-500 truncate">Total Instances</dt>
-                    <dd class="mt-1 text-3xl font-semibold text-gray-900" id="summary-total">-</dd>
+
+        <!-- FLEET TAB -->
+        <div id="content-fleet" class="tab-content">
+            <!-- Cost Savings Banner -->
+            <div class="mb-6 bg-gradient-to-r from-green-50 to-emerald-50 border-l-4 border-green-500 p-6 rounded-lg shadow-sm">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <h3 class="text-lg font-semibold text-gray-900">💰 Total Potential Savings</h3>
+                        <p class="text-3xl font-bold text-green-600 mt-1" id="total-savings">$0/month</p>
+                        <p class="text-sm text-gray-600 mt-1">Based on AI analysis of <span id="total-recommendations">0</span> recommendations</p>
+                    </div>
+                    <button onclick="showAllRecommendations()" class="bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 font-semibold">
+                        View All Recommendations
+                    </button>
                 </div>
             </div>
-            <div class="bg-white overflow-hidden shadow rounded-lg">
-                <div class="px-4 py-5 sm:p-6">
-                    <dt class="text-sm font-medium text-gray-500 truncate">Healthy</dt>
-                    <dd class="mt-1 text-3xl font-semibold text-green-600" id="summary-healthy">-</dd>
+
+            <!-- Fleet Summary -->
+            <div class="mb-8 grid grid-cols-1 gap-5 sm:grid-cols-4">
+                <div class="bg-white overflow-hidden shadow-md rounded-lg border border-gray-200 hover:shadow-lg transition-shadow">
+                    <div class="px-4 py-5 sm:p-6">
+                        <dt class="text-sm font-medium text-gray-500 truncate">Total Instances</dt>
+                        <dd class="mt-1 text-3xl font-semibold text-gray-900" id="summary-total">-</dd>
+                    </div>
+                </div>
+                <div class="bg-white overflow-hidden shadow-md rounded-lg border border-green-200 hover:shadow-lg transition-shadow">
+                    <div class="px-4 py-5 sm:p-6">
+                        <dt class="text-sm font-medium text-gray-500 truncate">Healthy</dt>
+                        <dd class="mt-1 text-3xl font-semibold text-green-600" id="summary-healthy">-</dd>
+                    </div>
+                </div>
+                <div class="bg-white overflow-hidden shadow-md rounded-lg border border-red-200 hover:shadow-lg transition-shadow">
+                    <div class="px-4 py-5 sm:p-6">
+                        <dt class="text-sm font-medium text-gray-500 truncate">Critical Issues</dt>
+                        <dd class="mt-1 text-3xl font-semibold text-red-600" id="summary-critical">-</dd>
+                    </div>
+                </div>
+                <div class="bg-white overflow-hidden shadow-md rounded-lg border border-purple-200 hover:shadow-lg transition-shadow">
+                    <div class="px-4 py-5 sm:p-6">
+                        <dt class="text-sm font-medium text-gray-500 truncate">Avg Health Score</dt>
+                        <dd class="mt-1 text-3xl font-semibold text-purple-600" id="summary-score">-</dd>
+                    </div>
                 </div>
             </div>
-            <div class="bg-white overflow-hidden shadow rounded-lg">
-                <div class="px-4 py-5 sm:p-6">
-                    <dt class="text-sm font-medium text-gray-500 truncate">Critical Issues</dt>
-                    <dd class="mt-1 text-3xl font-semibold text-red-600" id="summary-critical">-</dd>
-                </div>
+
+            <!-- Instance Grid -->
+            <div class="grid grid-cols-1 gap-6 lg:grid-cols-2" id="instance-grid">
+                <!-- Instances will be injected here -->
             </div>
-            <div class="bg-white overflow-hidden shadow rounded-lg">
-                <div class="px-4 py-5 sm:p-6">
-                    <dt class="text-sm font-medium text-gray-500 truncate">Avg Health Score</dt>
-                    <dd class="mt-1 text-3xl font-semibold text-purple-600" id="summary-score">-</dd>
+        </div>
+
+        <!-- QUERY OPTIMIZER TAB -->
+        <div id="content-optimizer" class="tab-content hidden">
+            <div class="bg-white rounded-lg shadow-lg p-8 border border-gray-200">
+                <div class="flex items-center justify-between mb-6">
+                    <div>
+                        <h2 class="text-3xl font-bold text-gray-900 flex items-center gap-3">
+                            🚀 AI Query Optimizer
+                            <span class="text-sm font-normal text-gray-500 bg-purple-100 px-3 py-1 rounded-full">Powered by GPT-4</span>
+                        </h2>
+                        <p class="text-gray-600 mt-2">Paste your slow query and watch AI optimize it instantly</p>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-6 mb-6">
+                    <!-- Original Query -->
+                    <div>
+                        <label class="block font-semibold mb-3 text-gray-700">Your Query</label>
+                        <textarea
+                            id="original-query"
+                            class="w-full h-80 font-mono text-sm p-4 border-2 border-gray-300 rounded-lg focus:border-purple-500 focus:outline-none transition-colors"
+                            placeholder="SELECT * FROM users WHERE email LIKE '%@example.com%' AND status = 'active' ORDER BY created_at DESC"
+                        ></textarea>
+                    </div>
+
+                    <!-- Optimized Query -->
+                    <div>
+                        <label class="block font-semibold mb-3 text-gray-700">Optimized Query</label>
+                        <div id="optimized-query" class="w-full h-80 code-block p-4 rounded-lg overflow-auto">
+                            <div class="text-gray-400 text-center flex items-center justify-center h-full">
+                                Click "Optimize with AI" to see results...
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flex gap-3 mb-6">
+                    <button onclick="optimizeQuery()" class="ai-gradient text-white px-8 py-3 rounded-lg font-semibold hover:opacity-90 transition-opacity flex items-center gap-2 shadow-lg">
+                        <span>✨</span>
+                        <span>Optimize with AI</span>
+                    </button>
+                    <button onclick="explainOptimization()" id="explain-btn" class="bg-gray-200 text-gray-700 px-6 py-3 rounded-lg font-semibold hover:bg-gray-300 transition-colors disabled:opacity-50" disabled>
+                        💡 Explain Changes
+                    </button>
+                    <button onclick="copyOptimized()" id="copy-btn" class="bg-green-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-green-700 transition-colors disabled:opacity-50" disabled>
+                        📋 Copy SQL
+                    </button>
+                </div>
+
+                <!-- Results -->
+                <div id="optimization-results" class="hidden">
+                    <div class="bg-gradient-to-r from-green-50 to-emerald-50 border-l-4 border-green-600 p-6 rounded-lg">
+                        <h3 class="font-bold text-xl mb-4 flex items-center gap-2">
+                            ✨ Optimization Results
+                        </h3>
+                        <div class="grid grid-cols-3 gap-6 mb-4">
+                            <div class="bg-white rounded-lg p-4 shadow-sm">
+                                <div class="text-sm text-gray-600">Rules Applied</div>
+                                <div id="rules-applied" class="text-3xl font-bold text-purple-600 mt-1">-</div>
+                            </div>
+                            <div class="bg-white rounded-lg p-4 shadow-sm">
+                                <div class="text-sm text-gray-600">Estimated Improvement</div>
+                                <div id="estimated-improvement" class="text-3xl font-bold text-green-600 mt-1">-</div>
+                            </div>
+                            <div class="bg-white rounded-lg p-4 shadow-sm">
+                                <div class="text-sm text-gray-600">Confidence</div>
+                                <div id="confidence" class="text-3xl font-bold text-blue-600 mt-1">95%</div>
+                            </div>
+                        </div>
+                        <div class="bg-white rounded-lg p-4 shadow-sm">
+                            <h4 class="font-semibold mb-2 text-gray-700">📝 Applied Transformations:</h4>
+                            <ul id="rules-list" class="list-disc list-inside text-gray-700 space-y-1">
+                                <!-- Rules will be listed here -->
+                            </ul>
+                        </div>
+                        <div id="explanation-section" class="mt-4 bg-white rounded-lg p-4 shadow-sm hidden">
+                            <h4 class="font-semibold mb-2 text-gray-700">💡 AI Explanation:</h4>
+                            <div id="explanation-text" class="text-gray-700 leading-relaxed"></div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
 
-        <!-- Instance Grid -->
-        <div class="grid grid-cols-1 gap-6 lg:grid-cols-2" id="instance-grid">
-            <!-- Instances will be injected here -->
+        <!-- CONFIG TUNING TAB -->
+        <div id="content-config" class="tab-content hidden">
+            <div class="bg-white rounded-lg shadow-lg p-8 border border-gray-200">
+                <h2 class="text-3xl font-bold text-gray-900 mb-2 flex items-center gap-3">
+                    ⚙️ PostgreSQL Configuration Tuner
+                    <span class="text-sm font-normal text-gray-500 bg-blue-100 px-3 py-1 rounded-full">Auto-Detect Workload</span>
+                </h2>
+                <p class="text-gray-600 mb-8">Get optimal PostgreSQL configuration based on your hardware and workload</p>
+
+                <!-- System Info Form -->
+                <div class="grid grid-cols-2 gap-6 mb-6">
+                    <div>
+                        <label class="block font-semibold mb-2 text-gray-700">Database Instance</label>
+                        <select id="config-instance" class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none">
+                            <option value="">Auto-detect from connected DB</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block font-semibold mb-2 text-gray-700">Workload Type</label>
+                        <select id="workload-type" class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none">
+                            <option value="">Auto-detect</option>
+                            <option value="oltp">OLTP (High Concurrency)</option>
+                            <option value="data_warehouse">Data Warehouse (Analytics)</option>
+                            <option value="web">Web Application</option>
+                            <option value="mixed">Mixed Workload</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-3 gap-6 mb-6">
+                    <div>
+                        <label class="block font-semibold mb-2 text-gray-700">RAM (GB)</label>
+                        <input type="number" id="ram-gb" class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none" placeholder="Auto-detect">
+                    </div>
+                    <div>
+                        <label class="block font-semibold mb-2 text-gray-700">CPU Cores</label>
+                        <input type="number" id="cpu-count" class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none" placeholder="Auto-detect">
+                    </div>
+                    <div>
+                        <label class="block font-semibold mb-2 text-gray-700">Disk Type</label>
+                        <select id="disk-type" class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none">
+                            <option value="">Auto-detect</option>
+                            <option value="ssd">SSD</option>
+                            <option value="hdd">HDD</option>
+                            <option value="nvme">NVMe</option>
+                        </select>
+                    </div>
+                </div>
+
+                <button onclick="generateConfig()" class="bg-blue-600 text-white px-8 py-3 rounded-lg font-semibold hover:bg-blue-700 transition-colors shadow-lg">
+                    Generate Optimal Configuration
+                </button>
+
+                <!-- Config Output -->
+                <div id="config-output" class="mt-8 hidden">
+                    <div class="bg-gradient-to-r from-blue-50 to-indigo-50 border-l-4 border-blue-600 p-6 rounded-lg mb-6">
+                        <h3 class="font-bold text-xl mb-4">📊 Detected Environment</h3>
+                        <div class="grid grid-cols-3 gap-4">
+                            <div>
+                                <span class="text-sm text-gray-600">Workload:</span>
+                                <div id="detected-workload" class="font-semibold text-blue-600"></div>
+                            </div>
+                            <div>
+                                <span class="text-sm text-gray-600">System RAM:</span>
+                                <div id="detected-ram" class="font-semibold"></div>
+                            </div>
+                            <div>
+                                <span class="text-sm text-gray-600">CPU Cores:</span>
+                                <div id="detected-cpu" class="font-semibold"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <h4 class="font-semibold mb-3 text-gray-700 text-lg">Recommended postgresql.conf Changes:</h4>
+                    <pre id="postgresql-conf" class="code-block p-6 rounded-lg overflow-x-auto mb-4 shadow-lg"></pre>
+
+                    <div class="flex gap-3">
+                        <button onclick="downloadConfig()" class="bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 font-semibold">
+                            💾 Download postgresql.conf
+                        </button>
+                        <button onclick="copyConfig()" class="bg-gray-200 px-6 py-3 rounded-lg hover:bg-gray-300 font-semibold">
+                            📋 Copy to Clipboard
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- LOCK ANALYSIS TAB -->
+        <div id="content-locks" class="tab-content hidden">
+            <div class="bg-white rounded-lg shadow-lg p-8 border border-gray-200">
+                <h2 class="text-3xl font-bold text-gray-900 mb-2 flex items-center gap-3">
+                    🔒 Lock Contention Analysis
+                    <span class="text-sm font-normal text-gray-500 bg-red-100 px-3 py-1 rounded-full">eBPF-Powered</span>
+                </h2>
+                <p class="text-gray-600 mb-8">Real-time lock contention tracking at the kernel level</p>
+
+                <!-- Lock Stats -->
+                <div class="grid grid-cols-3 gap-6 mb-8">
+                    <div class="bg-gradient-to-br from-red-50 to-orange-50 rounded-lg p-6 border-l-4 border-red-500">
+                        <div class="text-sm text-gray-600">Blocked Queries</div>
+                        <div id="blocked-count" class="text-4xl font-bold text-red-600 mt-2">-</div>
+                    </div>
+                    <div class="bg-gradient-to-br from-yellow-50 to-amber-50 rounded-lg p-6 border-l-4 border-yellow-500">
+                        <div class="text-sm text-gray-600">Total Wait Time</div>
+                        <div id="total-wait-time" class="text-4xl font-bold text-yellow-600 mt-2">-</div>
+                    </div>
+                    <div class="bg-gradient-to-br from-purple-50 to-pink-50 rounded-lg p-6 border-l-4 border-purple-500">
+                        <div class="text-sm text-gray-600">Lock Events (5min)</div>
+                        <div id="lock-events" class="text-4xl font-bold text-purple-600 mt-2">-</div>
+                    </div>
+                </div>
+
+                <!-- Lock Visualization -->
+                <div class="mb-8">
+                    <h3 class="font-semibold mb-4 text-gray-700 text-lg">Lock Wait Time Trend</h3>
+                    <canvas id="lock-chart" class="w-full" height="100"></canvas>
+                </div>
+
+                <!-- Blocking Queries Table -->
+                <div>
+                    <h3 class="font-semibold mb-4 text-gray-700 text-lg">Top Blocking Queries</h3>
+                    <div class="overflow-x-auto">
+                        <table class="w-full">
+                            <thead class="bg-gray-100">
+                                <tr>
+                                    <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700">Query</th>
+                                    <th class="px-4 py-3 text-center text-sm font-semibold text-gray-700">Blocking</th>
+                                    <th class="px-4 py-3 text-center text-sm font-semibold text-gray-700">Wait Time</th>
+                                    <th class="px-4 py-3 text-center text-sm font-semibold text-gray-700">Lock Type</th>
+                                    <th class="px-4 py-3 text-center text-sm font-semibold text-gray-700">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="blocking-queries" class="divide-y divide-gray-200">
+                                <tr>
+                                    <td colspan="5" class="px-4 py-8 text-center text-gray-500">
+                                        No lock contention detected
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
         </div>
 
     </main>
 
+    <!-- AI Chat Assistant (Floating Panel) -->
+    <div id="ai-chat-panel" class="fixed bottom-6 right-6 w-96 bg-white rounded-xl shadow-2xl border border-purple-200 hidden z-50">
+        <div class="ai-gradient p-4 rounded-t-xl flex justify-between items-center">
+            <h3 class="text-white font-bold flex items-center gap-2">
+                🤖 AI Database Assistant
+                <span class="text-xs bg-purple-800 bg-opacity-50 px-2 py-1 rounded">GPT-4</span>
+            </h3>
+            <button onclick="toggleAiChat()" class="text-white hover:text-gray-200 text-2xl leading-none">×</button>
+        </div>
+
+        <div id="chat-messages" class="h-96 overflow-y-auto p-4 space-y-3 bg-gray-50">
+            <div class="chat-message bg-purple-100 rounded-lg p-3 text-sm">
+                <strong class="text-purple-700">AI Assistant:</strong>
+                <p class="text-gray-700 mt-1">Hi! I'm your AI database expert. Ask me anything about your PostgreSQL fleet!</p>
+            </div>
+        </div>
+
+        <div class="p-4 border-t bg-white rounded-b-xl">
+            <div class="flex gap-2">
+                <input
+                    id="ai-question"
+                    type="text"
+                    placeholder="Ask anything about your databases..."
+                    class="flex-1 px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-purple-500 focus:outline-none text-sm"
+                    onkeypress="if(event.key==='Enter') askAI()"
+                />
+                <button
+                    onclick="askAI()"
+                    class="ai-gradient text-white px-4 py-2 rounded-lg hover:opacity-90 font-semibold"
+                >
+                    Send
+                </button>
+            </div>
+
+            <!-- Quick Prompts -->
+            <div class="mt-3 flex flex-wrap gap-2">
+                <button class="text-xs bg-gray-100 px-3 py-1.5 rounded-full hover:bg-purple-100 hover:text-purple-700 transition-colors" onclick="setQuestion('Why is my database slow?')">
+                    Diagnose slow performance
+                </button>
+                <button class="text-xs bg-gray-100 px-3 py-1.5 rounded-full hover:bg-purple-100 hover:text-purple-700 transition-colors" onclick="setQuestion('What indexes should I create?')">
+                    Index recommendations
+                </button>
+                <button class="text-xs bg-gray-100 px-3 py-1.5 rounded-full hover:bg-purple-100 hover:text-purple-700 transition-colors" onclick="setQuestion('Which database needs attention first?')">
+                    Triage priority
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Instance Detail Modal -->
+    <div id="instance-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden z-40 flex items-center justify-center p-4">
+        <div class="bg-white rounded-xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+            <div class="sticky top-0 bg-white border-b p-6 flex justify-between items-center">
+                <div>
+                    <h2 class="text-2xl font-bold text-gray-900" id="modal-instance-name">Database Details</h2>
+                    <p class="text-gray-600" id="modal-instance-host"></p>
+                </div>
+                <button onclick="closeModal()" class="text-gray-500 hover:text-gray-700 text-3xl leading-none">&times;</button>
+            </div>
+            <div id="modal-content" class="p-6">
+                <!-- Content will be injected here -->
+            </div>
+        </div>
+    </div>
+
     <script>
-        const API_BASE = '/api/v1'; // Relative path to work on any port
-
-        // State to track existing instances and avoid full re-renders
+        const API_BASE = '/api/v1';
         const instanceState = new Set();
+        let currentInstanceData = {};
+        let lockChart = null;
+        let optimizationData = null;
 
+        // Tab Management
+        function showTab(tabName) {
+            // Hide all tabs
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+            document.querySelectorAll('nav a').forEach(el => {
+                el.classList.remove('tab-active', 'border-purple-500', 'text-gray-900');
+                el.classList.add('border-transparent', 'text-gray-500');
+            });
+
+            // Show selected tab
+            document.getElementById(`content-${tabName}`).classList.remove('hidden');
+            document.getElementById(`tab-${tabName}`).classList.add('tab-active', 'border-purple-500', 'text-gray-900');
+
+            // Load data for specific tabs
+            if (tabName === 'locks') {
+                loadLockAnalysis();
+            }
+        }
+
+        // Fleet Data Management
         async function fetchFleetData() {
             try {
-                // Fetch Summary
                 const summaryRes = await fetch(`${API_BASE}/fleet/summary`);
                 const summary = await summaryRes.json();
                 updateSummary(summary);
 
-                // Fetch Instances
                 const instancesRes = await fetch(`${API_BASE}/fleet`);
                 const instances = await instancesRes.json();
                 updateInstances(instances);
+
+                // Calculate total savings
+                calculateTotalSavings(instances);
 
             } catch (error) {
                 console.error('Error fetching fleet data:', error);
@@ -108,11 +484,29 @@
             document.getElementById('summary-score').textContent = summary.average_health_score ? Math.round(summary.average_health_score) : '-';
         }
 
+        function calculateTotalSavings(instances) {
+            let totalSavings = 0;
+            let totalRecs = 0;
+
+            instances.forEach(instance => {
+                if (instance.summary?.recommendations) {
+                    totalRecs += instance.summary.recommendations.length;
+                    instance.summary.recommendations.forEach(rec => {
+                        if (rec.estimated_cost_savings_usd_monthly) {
+                            totalSavings += rec.estimated_cost_savings_usd_monthly;
+                        }
+                    });
+                }
+            });
+
+            document.getElementById('total-savings').textContent = `$${totalSavings.toFixed(0)}/month`;
+            document.getElementById('total-recommendations').textContent = totalRecs;
+        }
+
         function updateInstances(instances) {
             const grid = document.getElementById('instance-grid');
             const currentIds = new Set(instances.map(i => i.id));
 
-            // Remove stale instances
             instanceState.forEach(id => {
                 if (!currentIds.has(id)) {
                     const el = document.getElementById(`instance-${id}`);
@@ -122,13 +516,12 @@
             });
 
             instances.forEach(instance => {
+                currentInstanceData[instance.id] = instance;
                 if (!instanceState.has(instance.id)) {
-                    // Create new card
                     const card = createInstanceCard(instance);
                     grid.appendChild(card);
                     instanceState.add(instance.id);
                 } else {
-                    // Update existing card
                     updateInstanceCard(instance);
                 }
             });
@@ -146,15 +539,23 @@
         function createInstanceCard(instance) {
             const div = document.createElement('div');
             div.id = `instance-${instance.id}`;
-            div.className = 'bg-white overflow-hidden shadow rounded-lg border border-gray-200 transition-all duration-300';
-            
+            div.className = 'bg-white overflow-hidden shadow-md rounded-lg border border-gray-200 hover:shadow-xl transition-all duration-300 cursor-pointer';
+            div.onclick = () => showInstanceDetails(instance.id);
+
+            const recCount = instance.summary?.total_issues || 0;
+            const savings = instance.summary?.recommendations?.reduce((sum, r) => sum + (r.estimated_cost_savings_usd_monthly || 0), 0) || 0;
+
             div.innerHTML = `
                 <div class="px-4 py-5 sm:px-6 border-b border-gray-100 flex justify-between items-center">
-                    <div>
-                        <h3 class="text-lg leading-6 font-medium text-gray-900">${instance.name}</h3>
+                    <div class="flex-1">
+                        <div class="flex items-center gap-2">
+                            <h3 class="text-lg leading-6 font-semibold text-gray-900">${instance.name}</h3>
+                            ${recCount > 0 ? `<span class="bg-purple-100 text-purple-700 text-xs px-2 py-1 rounded-full font-semibold">🤖 ${recCount} AI tips</span>` : ''}
+                        </div>
                         <p class="mt-1 max-w-2xl text-sm text-gray-500">${instance.connection_string.split('@')[1] || 'localhost'}</p>
+                        ${savings > 0 ? `<p class="mt-1 text-sm font-semibold text-green-600">💰 Save $${savings.toFixed(0)}/mo</p>` : ''}
                     </div>
-                    <span id="status-${instance.id}" class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusColor(instance.status)}">
+                    <span id="status-${instance.id}" class="px-3 py-1 text-xs leading-5 font-semibold rounded-full ${getStatusColor(instance.status)}">
                         ${instance.status}
                     </span>
                 </div>
@@ -162,23 +563,28 @@
                     <div class="grid grid-cols-2 gap-4 mb-4">
                         <div>
                             <div class="text-sm text-gray-500">Health Score</div>
-                            <div class="text-2xl font-bold" id="score-${instance.id}">${instance.health_score || '-'}</div>
+                            <div class="text-3xl font-bold ${instance.health_score >= 90 ? 'text-green-600' : instance.health_score >= 70 ? 'text-yellow-600' : 'text-red-600'}" id="score-${instance.id}">
+                                ${instance.health_score || '-'}
+                            </div>
                         </div>
                         <div>
                             <div class="text-sm text-gray-500">Active Connections</div>
-                            <div class="text-2xl font-bold" id="conns-${instance.id}">${instance.metrics?.active_connections || 0}</div>
+                            <div class="text-3xl font-bold text-gray-900" id="conns-${instance.id}">${instance.metrics?.active_connections || 0}</div>
                         </div>
                     </div>
-                    
-                    <!-- Detailed Metrics Pane -->
+
                     <div class="bg-gray-50 rounded-md p-3 space-y-2 text-sm">
                         <div class="flex justify-between">
                             <span class="text-gray-500">Lock Contention</span>
-                            <span class="font-medium" id="locks-${instance.id}">${instance.metrics?.locked_connections_count || 0}</span>
+                            <span class="font-medium ${(instance.metrics?.locked_connections_count || 0) > 0 ? 'text-red-600' : ''}" id="locks-${instance.id}">
+                                ${instance.metrics?.locked_connections_count || 0}
+                            </span>
                         </div>
                         <div class="flex justify-between">
-                            <span class="text-gray-500">Idle Tx</span>
-                            <span class="font-medium" id="idle-${instance.id}">${instance.metrics?.idle_in_transaction_count || 0}</span>
+                            <span class="text-gray-500">Idle Transactions</span>
+                            <span class="font-medium ${(instance.metrics?.idle_in_transaction_count || 0) > 0 ? 'text-yellow-600' : ''}" id="idle-${instance.id}">
+                                ${instance.metrics?.idle_in_transaction_count || 0}
+                            </span>
                         </div>
                         <div class="flex justify-between">
                             <span class="text-gray-500">eBPF Lock Wait</span>
@@ -187,37 +593,457 @@
                             </span>
                         </div>
                     </div>
+
+                    <div class="mt-4 text-center">
+                        <span class="text-sm text-purple-600 font-semibold">Click for AI recommendations →</span>
+                    </div>
                 </div>
             `;
             return div;
         }
 
         function updateInstanceCard(instance) {
-            // Granular DOM updates - no innerHTML replacement
             const statusEl = document.getElementById(`status-${instance.id}`);
-            statusEl.className = `px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusColor(instance.status)}`;
-            statusEl.textContent = instance.status;
+            if (statusEl) {
+                statusEl.className = `px-3 py-1 text-xs leading-5 font-semibold rounded-full ${getStatusColor(instance.status)}`;
+                statusEl.textContent = instance.status;
+            }
 
-            document.getElementById(`score-${instance.id}`).textContent = instance.health_score || '-';
-            document.getElementById(`conns-${instance.id}`).textContent = instance.metrics?.active_connections || 0;
-            document.getElementById(`locks-${instance.id}`).textContent = instance.metrics?.locked_connections_count || 0;
-            document.getElementById(`idle-${instance.id}`).textContent = instance.metrics?.idle_in_transaction_count || 0;
-            
-            const ebpfEl = document.getElementById(`ebpf-${instance.id}`);
-            if (instance.metrics?.ebpf_lock_summary) {
-                ebpfEl.textContent = instance.metrics.ebpf_lock_summary.total_wait_time_ms.toFixed(1) + 'ms';
-                ebpfEl.classList.remove('text-gray-400');
-            } else {
-                ebpfEl.textContent = 'N/A';
-                ebpfEl.classList.add('text-gray-400');
+            const scoreEl = document.getElementById(`score-${instance.id}`);
+            if (scoreEl) {
+                scoreEl.textContent = instance.health_score || '-';
+                scoreEl.className = `text-3xl font-bold ${instance.health_score >= 90 ? 'text-green-600' : instance.health_score >= 70 ? 'text-yellow-600' : 'text-red-600'}`;
+            }
+
+            const el = (id) => document.getElementById(id);
+            if (el(`conns-${instance.id}`)) el(`conns-${instance.id}`).textContent = instance.metrics?.active_connections || 0;
+            if (el(`locks-${instance.id}`)) el(`locks-${instance.id}`).textContent = instance.metrics?.locked_connections_count || 0;
+            if (el(`idle-${instance.id}`)) el(`idle-${instance.id}`).textContent = instance.metrics?.idle_in_transaction_count || 0;
+
+            const ebpfEl = el(`ebpf-${instance.id}`);
+            if (ebpfEl) {
+                ebpfEl.textContent = instance.metrics?.ebpf_lock_summary ?
+                    instance.metrics.ebpf_lock_summary.total_wait_time_ms.toFixed(1) + 'ms' : 'N/A';
             }
         }
 
-        // Initial fetch
-        fetchFleetData();
+        // Instance Details Modal
+        function showInstanceDetails(instanceId) {
+            const instance = currentInstanceData[instanceId];
+            if (!instance) return;
 
-        // Poll every 5 seconds
+            document.getElementById('modal-instance-name').textContent = instance.name;
+            document.getElementById('modal-instance-host').textContent = instance.connection_string.split('@')[1] || 'localhost';
+
+            const recommendations = instance.summary?.recommendations || [];
+
+            let modalContent = `
+                <div class="space-y-6">
+                    <div class="grid grid-cols-3 gap-4">
+                        <div class="bg-gray-50 rounded-lg p-4">
+                            <div class="text-sm text-gray-600">PostgreSQL Version</div>
+                            <div class="text-lg font-semibold mt-1">${instance.version || 'Unknown'}</div>
+                        </div>
+                        <div class="bg-gray-50 rounded-lg p-4">
+                            <div class="text-sm text-gray-600">Database Size</div>
+                            <div class="text-lg font-semibold mt-1">${instance.metrics?.total_size_mb?.toFixed(1) || '-'} MB</div>
+                        </div>
+                        <div class="bg-gray-50 rounded-lg p-4">
+                            <div class="text-sm text-gray-600">Tables / Indexes</div>
+                            <div class="text-lg font-semibold mt-1">${instance.metrics?.table_count || 0} / ${instance.metrics?.index_count || 0}</div>
+                        </div>
+                    </div>
+
+                    <div>
+                        <h3 class="text-xl font-bold mb-4 flex items-center gap-2">
+                            🤖 AI Recommendations
+                            <span class="text-sm font-normal bg-purple-100 text-purple-700 px-2 py-1 rounded">${recommendations.length} found</span>
+                        </h3>
+
+                        ${recommendations.length === 0 ? `
+                            <div class="bg-green-50 border-l-4 border-green-500 p-4 rounded">
+                                <p class="text-green-700">✅ No critical issues found. Your database looks healthy!</p>
+                            </div>
+                        ` : recommendations.map(rec => `
+                            <div class="bg-gradient-to-r from-purple-50 to-indigo-50 border-l-4 border-purple-600 p-6 mb-4 rounded-lg">
+                                <div class="flex items-start gap-3">
+                                    <span class="text-3xl">🤖</span>
+                                    <div class="flex-1">
+                                        <h4 class="font-bold text-lg text-gray-900">${rec.title}</h4>
+                                        <p class="text-gray-700 mt-2">${rec.description}</p>
+
+                                        ${rec.estimated_time_savings_ms || rec.estimated_cost_savings_usd_monthly ? `
+                                            <div class="mt-3 flex gap-3 text-sm">
+                                                ${rec.estimated_time_savings_ms ? `
+                                                    <div class="bg-green-100 px-3 py-1 rounded-full font-semibold text-green-700">
+                                                        ⚡ Saves ${rec.estimated_time_savings_ms.toFixed(0)}ms per query
+                                                    </div>
+                                                ` : ''}
+                                                ${rec.estimated_cost_savings_usd_monthly ? `
+                                                    <div class="bg-blue-100 px-3 py-1 rounded-full font-semibold text-blue-700">
+                                                        💰 Saves $${rec.estimated_cost_savings_usd_monthly}/month
+                                                    </div>
+                                                ` : ''}
+                                            </div>
+                                        ` : ''}
+
+                                        <details class="mt-4">
+                                            <summary class="cursor-pointer text-sm font-semibold text-gray-600 hover:text-gray-900">Show SQL Migration</summary>
+                                            <pre class="code-block p-3 rounded mt-2 text-xs overflow-x-auto">${rec.migration_sql}</pre>
+                                        </details>
+
+                                        <div class="mt-4 flex gap-2">
+                                            <button onclick="applyRecommendation('${rec.id}')" class="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 text-sm font-semibold">
+                                                Apply Now
+                                            </button>
+                                            <button onclick="explainRecommendation('${rec.id}')" class="bg-gray-200 px-4 py-2 rounded-lg hover:bg-gray-300 text-sm font-semibold">
+                                                💡 Ask AI to Explain
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+
+            document.getElementById('modal-content').innerHTML = modalContent;
+            document.getElementById('instance-modal').classList.remove('hidden');
+        }
+
+        function closeModal() {
+            document.getElementById('instance-modal').classList.add('hidden');
+        }
+
+        async function applyRecommendation(recId) {
+            if (!confirm('Are you sure you want to apply this recommendation? This will modify your database.')) return;
+
+            try {
+                const response = await fetch(`${API_BASE}/recommendations/${recId}/approve`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ approved_by: 'user', notes: 'Applied from dashboard' })
+                });
+
+                const data = await response.json();
+                alert('✅ Recommendation approved! Auto-apply will process it in the next cycle.');
+
+            } catch (error) {
+                alert('❌ Error: ' + error.message);
+            }
+        }
+
+        async function explainRecommendation(recId) {
+            // This would call the AI to explain the recommendation
+            alert('This feature requires AI backend integration. Coming soon!');
+        }
+
+        // AI Chat Functions
+        function toggleAiChat() {
+            document.getElementById('ai-chat-panel').classList.toggle('hidden');
+        }
+
+        function setQuestion(question) {
+            document.getElementById('ai-question').value = question;
+        }
+
+        async function askAI() {
+            const question = document.getElementById('ai-question').value.trim();
+            if (!question) return;
+
+            addChatMessage('user', question);
+            document.getElementById('ai-question').value = '';
+
+            const loadingId = addChatMessage('ai', 'Thinking... 🤔', true);
+
+            try {
+                // Build context from fleet
+                const summary = await fetch(`${API_BASE}/fleet/summary`).then(r => r.json());
+                const context = `Fleet: ${summary.total_databases} databases, ${summary.critical_count} critical issues`;
+
+                const response = await fetch(`${API_BASE}/ai/ask`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ question, context })
+                });
+
+                if (!response.ok) throw new Error('AI service unavailable. Please set OPENAI_API_KEY environment variable.');
+
+                const data = await response.json();
+                removeChatMessage(loadingId);
+                addChatMessage('ai', data.answer || data.data?.answer || 'Sorry, I couldn\'t process that.');
+
+            } catch (error) {
+                removeChatMessage(loadingId);
+                addChatMessage('ai', `❌ ${error.message}`);
+            }
+        }
+
+        function addChatMessage(role, text, isTemp = false) {
+            const messagesDiv = document.getElementById('chat-messages');
+            const msgId = 'msg-' + Date.now();
+            const div = document.createElement('div');
+            div.id = msgId;
+            div.className = `chat-message ${role === 'user' ? 'bg-blue-100' : 'bg-purple-100'} rounded-lg p-3 text-sm`;
+            div.innerHTML = `
+                <strong class="${role === 'user' ? 'text-blue-700' : 'text-purple-700'}">
+                    ${role === 'user' ? 'You:' : 'AI Assistant:'}
+                </strong>
+                <p class="text-gray-700 mt-1">${text}</p>
+            `;
+            messagesDiv.appendChild(div);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+            return isTemp ? msgId : null;
+        }
+
+        function removeChatMessage(msgId) {
+            const el = document.getElementById(msgId);
+            if (el) el.remove();
+        }
+
+        // Query Optimizer Functions
+        async function optimizeQuery() {
+            const query = document.getElementById('original-query').value.trim();
+            if (!query) {
+                alert('Please enter a SQL query to optimize');
+                return;
+            }
+
+            document.getElementById('optimized-query').innerHTML = '<div class="text-gray-400 flex items-center justify-center h-full">Optimizing with AI... 🤔</div>';
+
+            try {
+                const response = await fetch(`${API_BASE}/queries/rewrite`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ query })
+                });
+
+                if (!response.ok) throw new Error('Query optimization failed');
+
+                const data = await response.json();
+                optimizationData = data.data || data;
+
+                // Show optimized query
+                document.getElementById('optimized-query').innerHTML =
+                    `<pre class="text-green-400">${optimizationData.rewritten}</pre>`;
+
+                // Show results
+                document.getElementById('optimization-results').classList.remove('hidden');
+                document.getElementById('rules-applied').textContent = optimizationData.rules_applied?.length || 0;
+                document.getElementById('estimated-improvement').textContent =
+                    `${optimizationData.estimated_improvement_pct || 0}%`;
+
+                // List rules
+                const rulesList = document.getElementById('rules-list');
+                rulesList.innerHTML = (optimizationData.rules_applied || []).map(rule =>
+                    `<li class="text-gray-700">${rule}</li>`
+                ).join('');
+
+                // Enable buttons
+                document.getElementById('explain-btn').disabled = false;
+                document.getElementById('copy-btn').disabled = false;
+
+            } catch (error) {
+                document.getElementById('optimized-query').innerHTML =
+                    `<div class="text-red-400 flex items-center justify-center h-full">❌ ${error.message}</div>`;
+            }
+        }
+
+        function explainOptimization() {
+            if (!optimizationData?.explanation) return;
+
+            document.getElementById('explanation-section').classList.remove('hidden');
+            document.getElementById('explanation-text').textContent = optimizationData.explanation;
+        }
+
+        function copyOptimized() {
+            if (!optimizationData?.rewritten) return;
+
+            navigator.clipboard.writeText(optimizationData.rewritten);
+            alert('✅ Optimized query copied to clipboard!');
+        }
+
+        // Config Tuning Functions
+        async function generateConfig() {
+            const workload = document.getElementById('workload-type').value || null;
+            const ramGb = document.getElementById('ram-gb').value ? parseFloat(document.getElementById('ram-gb').value) : null;
+            const cpuCount = document.getElementById('cpu-count').value ? parseInt(document.getElementById('cpu-count').value) : null;
+            const diskType = document.getElementById('disk-type').value || null;
+
+            try {
+                const response = await fetch(`${API_BASE}/config/tune`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        workload,
+                        ram_gb: ramGb,
+                        cpu_count: cpuCount,
+                        disk_type: diskType
+                    })
+                });
+
+                if (!response.ok) throw new Error('Config tuning failed');
+
+                const data = await response.json();
+                const config = data.data || data;
+
+                // Show detected environment
+                document.getElementById('detected-workload').textContent =
+                    `${config.workload.workload_type} ${config.workload.detected ? '(auto-detected)' : '(manual)'}`;
+                document.getElementById('detected-ram').textContent = `${config.system_info.ram_gb.toFixed(1)} GB`;
+                document.getElementById('detected-cpu').textContent = `${config.system_info.cpu_count} cores`;
+
+                // Show config
+                document.getElementById('postgresql-conf').textContent = config.postgresql_conf;
+                document.getElementById('config-output').classList.remove('hidden');
+
+            } catch (error) {
+                alert('❌ ' + error.message);
+            }
+        }
+
+        function downloadConfig() {
+            const config = document.getElementById('postgresql-conf').textContent;
+            const blob = new Blob([config], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'postgresql.conf';
+            a.click();
+        }
+
+        function copyConfig() {
+            const config = document.getElementById('postgresql-conf').textContent;
+            navigator.clipboard.writeText(config);
+            alert('✅ Config copied to clipboard!');
+        }
+
+        // Lock Analysis Functions
+        async function loadLockAnalysis() {
+            try {
+                const response = await fetch(`${API_BASE}/locks/summary`);
+                const data = await response.json();
+                const summary = data.data || data;
+
+                document.getElementById('blocked-count').textContent = summary.blocked_queries_count || 0;
+                document.getElementById('total-wait-time').textContent =
+                    `${(summary.total_wait_time_ms || 0).toFixed(1)}ms`;
+                document.getElementById('lock-events').textContent = summary.recent_events_count || 0;
+
+                // Update chart
+                updateLockChart(summary);
+
+                // Load blocking queries
+                loadBlockingQueries();
+
+            } catch (error) {
+                console.error('Error loading lock analysis:', error);
+            }
+        }
+
+        function updateLockChart(summary) {
+            const ctx = document.getElementById('lock-chart').getContext('2d');
+
+            if (lockChart) {
+                lockChart.destroy();
+            }
+
+            // Mock data for demonstration
+            const labels = ['5min ago', '4min ago', '3min ago', '2min ago', '1min ago', 'Now'];
+            const data = [12, 19, 8, 15, 22, summary.total_wait_time_ms || 0];
+
+            lockChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Lock Wait Time (ms)',
+                        data: data,
+                        borderColor: 'rgb(168, 85, 247)',
+                        backgroundColor: 'rgba(168, 85, 247, 0.1)',
+                        tension: 0.4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'top',
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+        }
+
+        async function loadBlockingQueries() {
+            try {
+                const response = await fetch(`${API_BASE}/locks/contention`);
+                const data = await response.json();
+                const queries = data.data?.blocking_queries || [];
+
+                const tbody = document.getElementById('blocking-queries');
+
+                if (queries.length === 0) {
+                    tbody.innerHTML = `
+                        <tr>
+                            <td colspan="5" class="px-4 py-8 text-center text-gray-500">
+                                ✅ No lock contention detected
+                            </td>
+                        </tr>
+                    `;
+                    return;
+                }
+
+                tbody.innerHTML = queries.map(q => `
+                    <tr class="hover:bg-gray-50">
+                        <td class="px-4 py-3 font-mono text-xs text-gray-700">${truncateQuery(q.query, 80)}</td>
+                        <td class="px-4 py-3 text-center font-semibold text-red-600">${q.blocked_count}</td>
+                        <td class="px-4 py-3 text-center font-semibold text-yellow-600">${q.total_wait_time_ms.toFixed(1)}ms</td>
+                        <td class="px-4 py-3 text-center text-sm text-gray-600">${q.lock_type || 'Unknown'}</td>
+                        <td class="px-4 py-3 text-center">
+                            <button onclick="terminateQuery('${q.pid}')" class="text-red-600 hover:underline text-sm font-semibold">
+                                Terminate
+                            </button>
+                        </td>
+                    </tr>
+                `).join('');
+
+            } catch (error) {
+                console.error('Error loading blocking queries:', error);
+            }
+        }
+
+        function truncateQuery(query, maxLen) {
+            return query.length > maxLen ? query.substring(0, maxLen) + '...' : query;
+        }
+
+        function terminateQuery(pid) {
+            if (confirm(`Terminate query with PID ${pid}? This cannot be undone.`)) {
+                alert('Query termination feature coming soon!');
+            }
+        }
+
+        function showAllRecommendations() {
+            alert('Showing all recommendations across fleet - feature coming soon!');
+        }
+
+        // Initialize
+        fetchFleetData();
         setInterval(fetchFleetData, 5000);
+
+        // Load lock data if on that tab
+        setInterval(() => {
+            if (!document.getElementById('content-locks').classList.contains('hidden')) {
+                loadLockAnalysis();
+            }
+        }, 10000);
     </script>
 </body>
 </html>

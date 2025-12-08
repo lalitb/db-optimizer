@@ -13,8 +13,6 @@ A fast, intelligent platform that analyzes your PostgreSQL databases and provide
 - **Cost Tracking**: See potential monthly savings across your entire fleet
 - **Zero Build Step**: Pure HTML/CSS/JS - just open and use!
 
-👉 **[Quick Start Guide](./QUICK_START_ENHANCED_DASHBOARD.md)** | **[Full Documentation](./docs/ENHANCED_DASHBOARD_GUIDE.md)**
-
 ### Multi-Provider AI Integration 🧠
 - **Multiple LLM Providers**: OpenAI (GPT-4), Anthropic (Claude), Ollama (local models)
 - **Automatic AI Recommendations**: AI-powered analysis integrated into core workflow
@@ -94,7 +92,7 @@ export DBO_AI_ENABLED=true
   --database-url "postgresql://user:pass@localhost/yourdb"
 
 # 4. Open your browser
-# http://localhost:8080/dashboard-enhanced.html
+# http://localhost:8080/dashboard.html
 ```
 
 **That's it!** You now have:
@@ -103,8 +101,6 @@ export DBO_AI_ENABLED=true
 - ✅ Config tuning wizard
 - ✅ Real-time lock analysis
 - ✅ AI chat assistant
-
-See **[Quick Start Guide](./QUICK_START_ENHANCED_DASHBOARD.md)** for detailed setup.
 
 ### Option 2: CLI Tool
 
@@ -163,7 +159,7 @@ Once the HTTP server is running, access these features:
 
 **Fleet Management:**
 ```
-http://localhost:8080/dashboard-enhanced.html
+http://localhost:8080/dashboard.html
 ```
 
 **API Endpoints:**
