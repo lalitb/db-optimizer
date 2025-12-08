@@ -271,6 +271,14 @@ struct ServeOptions {
     #[arg(short, long, default_value = "8080")]
     port: u16,
 
+    /// Enable eBPF-based lock contention tracking (requires Linux 5.8+ and CAP_BPF)
+    #[arg(long)]
+    enable_ebpf: bool,
+
+    /// PostgreSQL process ID to monitor with eBPF (required if --enable-ebpf is set)
+    #[arg(long)]
+    postgres_pid: Option<i32>,
+
     /// Enable verbose logging
     #[arg(short, long)]
     verbose: bool,
@@ -1318,8 +1326,41 @@ async fn run_serve_mode(opts: ServeOptions) -> Result<()> {
     );
     println!("   Press Ctrl+C to stop\n");
 
-    // Start new HTTP API server (no eBPF manager, no db_pool for now)
-    pg_query_advisor::http::serve(http_config, persistence, None, None).await
+    // Initialize eBPF manager if enabled
+    let ebpf_manager = if opts.enable_ebpf {
+        #[cfg(target_os = "linux")]
+        {
+            println!("{}  Initializing eBPF lock tracer...", "🔒".bright_purple());
+            let ebpf_config = pg_query_advisor::EbpfConfig {
+                enabled: true,
+                collect_lock_metrics: true,
+                ..Default::default()
+            };
+            match pg_query_advisor::ebpf::EbpfManager::new(ebpf_config).start() {
+                Ok(manager) => {
+                    println!("   {} eBPF lock tracer started", "✓".bright_green());
+                    Some(Arc::new(manager))
+                }
+                Err(e) => {
+                    eprintln!("   {} Failed to start eBPF: {}", "✗".bright_red(), e);
+                    eprintln!(
+                        "   Continuing without eBPF (lock metrics will use pg_stat_activity)"
+                    );
+                    None
+                }
+            }
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+            eprintln!("   {} eBPF is only supported on Linux", "⚠".bright_yellow());
+            None
+        }
+    } else {
+        None
+    };
+
+    // Start new HTTP API server
+    pg_query_advisor::http::serve(http_config, persistence, ebpf_manager, None).await
 }
 
 /// Run config tune mode

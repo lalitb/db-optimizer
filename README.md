@@ -150,8 +150,35 @@ pg-query-advisor agent \
 pg-query-advisor -d $DATABASE_URL --format json --output report.json
 
 # HTTP Server mode (for web dashboard)
-pg-query-advisor --http-server --http-port 8080 --database-url $DATABASE_URL
+pg-query-advisor --database-url $DATABASE_URL serve --port 8080
+
+# With eBPF lock tracking (Linux only, requires CAP_BPF)
+pg-query-advisor --database-url $DATABASE_URL serve --port 8080 --enable-ebpf
 ```
+
+### eBPF Setup (Linux Only)
+
+eBPF provides kernel-level lock contention tracking with sub-millisecond precision:
+
+```bash
+# 1. Requirements: Linux 5.8+ kernel with BTF support
+uname -r  # Should be >= 5.8
+
+# 2. Grant capabilities (instead of running as root)
+sudo setcap cap_bpf,cap_perfmon=eip ./target/release/pg-query-advisor
+
+# 3. Start with eBPF enabled
+./target/release/pg-query-advisor \
+  --database-url $DATABASE_URL \
+  serve --port 8080 --enable-ebpf
+
+# The dashboard will show:
+# - Real-time lock wait times (µs precision)
+# - Futex contention events
+# - Lock hotspots by table/query
+```
+
+**Without eBPF:** Lock analysis falls back to `pg_stat_activity` (still useful, but less precise).
 
 ### Web Dashboard Usage
 

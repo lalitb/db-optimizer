@@ -130,6 +130,14 @@
                 </div>
             </div>
 
+            <!-- Add Instance Button -->
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-xl font-bold text-gray-900">Database Instances</h2>
+                <button onclick="showAddInstanceModal()" class="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 font-semibold flex items-center gap-2">
+                    <span>+</span> Add Database
+                </button>
+            </div>
+
             <!-- Instance Grid -->
             <div class="grid grid-cols-1 gap-6 lg:grid-cols-2" id="instance-grid">
                 <!-- Instances will be injected here -->
@@ -429,6 +437,59 @@
             <div id="modal-content" class="p-6">
                 <!-- Content will be injected here -->
             </div>
+        </div>
+    </div>
+
+    <!-- Add Instance Modal -->
+    <div id="add-instance-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-xl shadow-2xl max-w-lg w-full">
+            <div class="border-b p-6 flex justify-between items-center">
+                <h2 class="text-xl font-bold text-gray-900">Add Database Instance</h2>
+                <button onclick="hideAddInstanceModal()" class="text-gray-500 hover:text-gray-700 text-2xl">&times;</button>
+            </div>
+            <form id="add-instance-form" class="p-6 space-y-4" onsubmit="submitAddInstance(event)">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Name *</label>
+                    <input type="text" name="name" required 
+                        class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-purple-500 focus:border-purple-500"
+                        placeholder="e.g., Production DB">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Connection String *</label>
+                    <input type="text" name="connection_string" required 
+                        class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-purple-500 focus:border-purple-500"
+                        placeholder="postgresql://user:pass@host:5432/dbname">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Agent URL (optional)</label>
+                    <input type="text" name="agent_url" 
+                        class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-purple-500 focus:border-purple-500"
+                        placeholder="http://agent-host:9090 (for eBPF metrics)">
+                    <p class="text-xs text-gray-500 mt-1">URL of the Vaanyze Node Agent running on the DB host for eBPF lock tracking</p>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Environment</label>
+                    <select name="environment" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-purple-500 focus:border-purple-500">
+                        <option value="production">Production</option>
+                        <option value="staging">Staging</option>
+                        <option value="development">Development</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Tags (comma-separated)</label>
+                    <input type="text" name="tags" 
+                        class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-purple-500 focus:border-purple-500"
+                        placeholder="e.g., critical, payments, us-east">
+                </div>
+                <div class="flex justify-end gap-3 pt-4">
+                    <button type="button" onclick="hideAddInstanceModal()" class="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200">
+                        Cancel
+                    </button>
+                    <button type="submit" class="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 font-semibold">
+                        Add Database
+                    </button>
+                </div>
+            </form>
         </div>
     </div>
 
@@ -1032,6 +1093,49 @@
 
         function showAllRecommendations() {
             alert('Showing all recommendations across fleet - feature coming soon!');
+        }
+
+        // Add Instance Modal Functions
+        function showAddInstanceModal() {
+            document.getElementById('add-instance-modal').classList.remove('hidden');
+        }
+
+        function hideAddInstanceModal() {
+            document.getElementById('add-instance-modal').classList.add('hidden');
+            document.getElementById('add-instance-form').reset();
+        }
+
+        async function submitAddInstance(e) {
+            e.preventDefault();
+            const form = e.target;
+            const formData = new FormData(form);
+            
+            const data = {
+                name: formData.get('name'),
+                connection_string: formData.get('connection_string'),
+                environment: formData.get('environment'),
+                agent_url: formData.get('agent_url') || null,
+                tags: formData.get('tags') ? formData.get('tags').split(',').map(t => t.trim()).filter(t => t) : []
+            };
+
+            try {
+                const response = await fetch(`${API_BASE}/fleet`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+
+                if (!response.ok) {
+                    const err = await response.json();
+                    throw new Error(err.error || 'Failed to add instance');
+                }
+
+                hideAddInstanceModal();
+                fetchFleetData(); // Refresh the list
+                alert('✅ Database added successfully!');
+            } catch (error) {
+                alert('❌ Error: ' + error.message);
+            }
         }
 
         // Initialize
