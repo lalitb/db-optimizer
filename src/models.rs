@@ -295,7 +295,7 @@ pub struct AnalysisReport {
     pub health_score: u8,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ReportSummary {
     pub issues_found: usize,
     pub critical_issues: usize,
@@ -306,6 +306,10 @@ pub struct ReportSummary {
     pub unused_indexes_found: usize,
 
     pub total_estimated_savings_usd_monthly: f64,
+
+    /// Number of AI-generated recommendations
+    #[serde(default)]
+    pub ai_recommendations: usize,
 }
 
 // ============================================================================

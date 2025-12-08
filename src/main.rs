@@ -9,6 +9,7 @@ use tokio::time::{interval, Duration};
 
 use pg_query_advisor::{
     agent::{AgentState, AnalysisResults},
+    ai::{AiConfig, LlmProvider},
     analyzer::HealthCalculator,
     query_rewriter::cli::{InputSource, OutputFormat as RewriterOutputFormat, RewriterCli},
     AnalysisConfig, AnalysisReport, AutoApplyConfig, AutoApplyOrchestrator, DatabaseCollector,
@@ -61,13 +62,21 @@ struct AskOptions {
     #[arg(short, long, env = "DATABASE_URL")]
     database_url: String,
 
-    /// OpenAI API Key (or set OPENAI_API_KEY env var)
-    #[arg(long, env = "OPENAI_API_KEY")]
+    /// AI provider (openai, anthropic, ollama)
+    #[arg(long, default_value = "openai")]
+    provider: String,
+
+    /// AI API key (or set OPENAI_API_KEY/ANTHROPIC_API_KEY env var)
+    #[arg(long)]
     api_key: Option<String>,
 
-    /// Model to use (default: gpt-4-turbo-preview)
-    #[arg(long, default_value = "gpt-4-turbo-preview")]
-    model: String,
+    /// Model to use
+    #[arg(long)]
+    model: Option<String>,
+
+    /// Base URL for Ollama (default: http://localhost:11434)
+    #[arg(long)]
+    base_url: Option<String>,
 }
 
 #[derive(Parser)]
@@ -145,6 +154,27 @@ struct AnalyzeOptions {
     /// Slack webhook URL for notifications (or set SLACK_WEBHOOK env var)
     #[arg(long, env = "SLACK_WEBHOOK")]
     slack_webhook: Option<String>,
+
+    // ===== AI Arguments =====
+    /// Enable AI-powered recommendations
+    #[arg(long)]
+    ai: bool,
+
+    /// AI provider (openai, anthropic, ollama)
+    #[arg(long, default_value = "openai")]
+    ai_provider: String,
+
+    /// AI model to use (e.g., gpt-4o-mini, claude-3-haiku-20240307, llama3.2)
+    #[arg(long)]
+    ai_model: Option<String>,
+
+    /// AI API key (or set OPENAI_API_KEY/ANTHROPIC_API_KEY env var)
+    #[arg(long)]
+    ai_api_key: Option<String>,
+
+    /// Ollama base URL (default: http://localhost:11434)
+    #[arg(long)]
+    ai_base_url: Option<String>,
 }
 
 #[derive(Parser)]
@@ -212,6 +242,27 @@ struct AgentOptions {
     /// Slack webhook URL for notifications
     #[arg(long, env = "SLACK_WEBHOOK")]
     slack_webhook: Option<String>,
+
+    // ===== AI Arguments =====
+    /// Enable AI-powered recommendations
+    #[arg(long)]
+    ai: bool,
+
+    /// AI provider (openai, anthropic, ollama)
+    #[arg(long, default_value = "openai")]
+    ai_provider: String,
+
+    /// AI model to use
+    #[arg(long)]
+    ai_model: Option<String>,
+
+    /// AI API key
+    #[arg(long)]
+    ai_api_key: Option<String>,
+
+    /// Ollama base URL
+    #[arg(long)]
+    ai_base_url: Option<String>,
 }
 
 #[derive(Parser)]
@@ -425,16 +476,20 @@ fn run_rewrite_sql_mode(opts: RewriteSqlOptions) -> Result<()> {
 
 /// Run ask mode (natural language query)
 async fn run_ask_mode(opts: AskOptions) -> Result<()> {
-    use pg_query_advisor::analyzer::ask::AskHandler;
+    use pg_query_advisor::ai::AiAdvisor;
 
-    let api_key = opts
-        .api_key
-        .or_else(|| std::env::var("OPENAI_API_KEY").ok())
-        .ok_or_else(|| {
-            anyhow::anyhow!(
-                "OpenAI API key is required. Set OPENAI_API_KEY env var or use --api-key"
-            )
-        })?;
+    // Build AI config from options
+    let provider: LlmProvider = opts.provider.parse()?;
+    let ai_config = AiConfig {
+        enabled: true,
+        provider,
+        api_key: opts.api_key,
+        model: opts.model,
+        base_url: opts.base_url,
+        ..Default::default()
+    };
+
+    let advisor = AiAdvisor::new(ai_config)?;
 
     let pool = PgPoolOptions::new()
         .max_connections(5)
@@ -442,9 +497,53 @@ async fn run_ask_mode(opts: AskOptions) -> Result<()> {
         .await?;
 
     let collector = DatabaseCollector::new(pool);
-    let handler = AskHandler::new(collector, api_key, opts.model);
 
-    handler.handle(&opts.question).await?;
+    println!("{}", "Gathering database context...".dimmed());
+
+    // Collect context
+    let query_stats = collector.collect_query_stats(10).await.unwrap_or_default();
+    let conn_stats = collector.collect_connection_stats().await?;
+    let db_metrics = collector
+        .collect_database_metrics()
+        .await
+        .unwrap_or_default();
+
+    // Build context string
+    let mut context = String::new();
+    context.push_str(&format!(
+        "Active Connections: {}/{}\n",
+        conn_stats.total_connections, conn_stats.max_connections
+    ));
+    context.push_str(&format!(
+        "Idle in Transaction: {}\n",
+        conn_stats.idle_in_transaction_count
+    ));
+    context.push_str(&format!(
+        "Buffer Cache Hit Ratio: {:.2}%\n",
+        db_metrics.buffer_cache_hit_ratio
+    ));
+    context.push_str(&format!("Deadlocks: {}\n", db_metrics.deadlocks));
+
+    if !query_stats.is_empty() {
+        context.push_str("\nTop Slow Queries:\n");
+        for (i, q) in query_stats.iter().take(5).enumerate() {
+            let snippet: String = q.query.chars().take(100).collect();
+            context.push_str(&format!(
+                "{}. [{:.0}ms, {} calls] {}\n",
+                i + 1,
+                q.mean_exec_time_ms,
+                q.calls,
+                snippet
+            ));
+        }
+    }
+
+    println!("{}", "Analyzing with AI...".dimmed());
+
+    let answer = advisor.ask(&opts.question, &context).await?;
+
+    println!("\n{}", "AI Analysis:".bold().green());
+    println!("{}", answer);
 
     Ok(())
 }
@@ -536,17 +635,38 @@ async fn run_analyze_mode(cli: AnalyzeOptions) -> Result<()> {
         ..Default::default()
     };
 
-    let engine = RecommendationEngine::new()
+    // Build AI config if enabled
+    let ai_config = if cli.ai {
+        let provider: LlmProvider = cli.ai_provider.parse().unwrap_or(LlmProvider::OpenAi);
+        Some(AiConfig {
+            enabled: true,
+            provider,
+            api_key: cli.ai_api_key,
+            model: cli.ai_model,
+            base_url: cli.ai_base_url,
+            ..Default::default()
+        })
+    } else {
+        None
+    };
+
+    let mut engine = RecommendationEngine::new()
         .with_analysis_config(analysis_config)
         .with_pricing_config(pricing_config);
 
-    let mut recommendations = engine.generate_recommendations(
-        &queries,
-        &tables,
-        &indexes,
-        connection_stats.as_ref(),
-        connections.as_deref(),
-    );
+    if let Some(ai_cfg) = ai_config {
+        engine = engine.with_ai_config(ai_cfg);
+    }
+
+    let mut recommendations = engine
+        .generate_recommendations_with_ai(
+            &queries,
+            &tables,
+            &indexes,
+            connection_stats.as_ref(),
+            connections.as_deref(),
+        )
+        .await;
 
     // Filter by minimum severity
     recommendations.retain(|rec| match cli.min_severity {

@@ -4,6 +4,9 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
 
+// Re-export AI config
+pub use crate::ai::AiConfig;
+
 /// Main application configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
@@ -46,6 +49,10 @@ pub struct Config {
     /// Guardrails configuration for system resource limits
     #[serde(default)]
     pub guardrails: GuardrailsConfig,
+
+    /// AI/LLM configuration
+    #[serde(default)]
+    pub ai: AiConfig,
 }
 
 impl Config {
@@ -63,6 +70,7 @@ impl Config {
             http_server: HttpServerConfig::default(),
             notifications: NotificationConfig::default(),
             guardrails: GuardrailsConfig::default(),
+            ai: AiConfig::from_env(),
         })
     }
 
@@ -882,6 +890,7 @@ mod tests {
             http_server: HttpServerConfig::default(),
             notifications: NotificationConfig::default(),
             guardrails: GuardrailsConfig::default(),
+            ai: AiConfig::default(),
         };
 
         assert!(config.validate().is_ok());
@@ -909,6 +918,7 @@ mod tests {
             http_server: HttpServerConfig::default(),
             notifications: NotificationConfig::default(),
             guardrails: GuardrailsConfig::default(),
+            ai: AiConfig::default(),
         };
 
         // Should always be in maintenance window when disabled
@@ -945,6 +955,7 @@ mod tests {
             http_server: HttpServerConfig::default(),
             notifications: NotificationConfig::default(),
             guardrails: GuardrailsConfig::default(),
+            ai: AiConfig::default(),
         };
 
         config.apply_env_overrides().unwrap();

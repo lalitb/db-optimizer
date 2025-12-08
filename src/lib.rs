@@ -11,6 +11,7 @@
 
 pub mod adapters;
 pub mod agent;
+pub mod ai;
 pub mod analyzer;
 pub mod auto_apply;
 pub mod azure;
@@ -38,6 +39,9 @@ pub use cost_estimator::{CostEstimator, PricingConfig};
 pub use models::*;
 pub use output::OutputFormatter;
 pub use recommendations::RecommendationEngine;
+
+// Re-export AI types
+pub use ai::{AiAdvisor, AiConfig, LlmProvider};
 
 // Re-export all config types for convenient access
 pub use config::{
