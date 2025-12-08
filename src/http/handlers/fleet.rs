@@ -165,10 +165,10 @@ pub async fn get_instance_details(
         if let Some(instance) = manager.get_instance(&id).await {
             // Get slow queries from summary if available
             let slow_queries = vec![]; // TODO: Store queries in instance or fetch live
-            
+
             // Get recommendations from summary
             let recommendations = vec![]; // TODO: Store recommendations in instance
-            
+
             // Get AI insights from metrics
             let ai_insights = instance
                 .metrics
