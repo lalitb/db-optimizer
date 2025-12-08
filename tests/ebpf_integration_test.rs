@@ -13,10 +13,12 @@
 /// Tests that work on all platforms using mock-friendly components
 mod common_tests {
     use pg_query_advisor::ebpf::{
-        CapabilityLevel, DegradationManager, LiveMapConfig, LoaderConfig, MetricValue,
-        PrometheusRegistry, QueryNormalizer, SessionTracker, VacuumDetector, VacuumType,
-        WalIoCorrelator,
+        DegradationManager, LiveMapConfig, LoaderConfig, MetricValue, PrometheusRegistry,
+        QueryNormalizer, SessionTracker, VacuumDetector, VacuumType, WalIoCorrelator,
     };
+
+    #[cfg(not(target_os = "linux"))]
+    use pg_query_advisor::ebpf::CapabilityLevel;
 
     /// Test query normalizer with async API
     #[tokio::test]
@@ -195,51 +197,38 @@ mod common_tests {
 /// Linux-specific tests that require eBPF
 #[cfg(target_os = "linux")]
 mod linux_tests {
-    use pg_query_advisor::ebpf::{
-        CgroupCollector, EbpfLoader, EbpfManager, EbpfMode, LoaderConfig,
-    };
+    use pg_query_advisor::ebpf::{CgroupCollector, EbpfConfig, EbpfLoader, EbpfManager, EbpfMode};
 
     /// Test that eBPF manager initializes correctly
     #[tokio::test]
     #[ignore = "Requires Linux with eBPF support and CAP_BPF"]
     async fn test_ebpf_manager_initialization() {
-        let manager = EbpfManager::new().await;
-        match manager {
-            Ok(m) => {
-                let stats = m.get_stats().await;
-                println!("eBPF Manager initialized successfully");
-                println!("Mode: {:?}", stats.mode);
-                assert!(matches!(stats.mode, EbpfMode::Full | EbpfMode::Degraded(_)));
-            }
-            Err(e) => {
-                // Expected on non-privileged systems
-                println!("eBPF not available (expected in unprivileged mode): {}", e);
-            }
-        }
+        let config = EbpfConfig::default();
+        let manager = EbpfManager::new(config);
+        let stats = manager.get_stats().await;
+        println!("eBPF Manager initialized successfully");
+        println!("Mode: {:?}", stats.mode);
+        assert!(matches!(
+            stats.mode,
+            EbpfMode::Privileged | EbpfMode::Mock | EbpfMode::Disabled
+        ));
     }
 
     /// Test container cgroup detection
     #[tokio::test]
     #[ignore = "Requires Linux with cgroup support"]
     async fn test_container_detection() {
-        let collector = CgroupCollector::new().await;
+        let collector = CgroupCollector::new();
 
-        match collector {
-            Ok(c) => {
-                // Detect runtime
-                let runtime = c.detect_runtime().await;
-                println!("Detected runtime: {:?}", runtime);
+        // Detect runtime
+        let runtime = collector.detect_runtime();
+        println!("Detected runtime: {:?}", runtime);
 
-                // Try to get self metrics
-                if let Ok(metrics) = c.collect_self_metrics().await {
-                    println!("Self metrics:");
-                    println!("  CPU usage: {:.2}%", metrics.cpu_usage_percent);
-                    println!("  Memory: {} MB", metrics.memory_usage_bytes / 1024 / 1024);
-                }
-            }
-            Err(e) => {
-                println!("Cgroup collector not available: {}", e);
-            }
+        // Try to get self metrics
+        if let Some(metrics) = collector.collect_self_metrics() {
+            println!("Self metrics:");
+            println!("  CPU usage: {:.2}%", metrics.cpu_usage_percent);
+            println!("  Memory: {} MB", metrics.memory_usage_bytes / 1024 / 1024);
         }
     }
 
@@ -247,23 +236,15 @@ mod linux_tests {
     #[tokio::test]
     #[ignore = "Requires Linux with eBPF support and CAP_BPF"]
     async fn test_program_loader() {
-        let config = LoaderConfig::default();
-        let loader = EbpfLoader::new(config);
+        let loader = EbpfLoader::new();
 
-        match loader {
-            Ok(l) => {
-                // Check BTF availability
-                let btf_available = l.btf_available();
-                println!("BTF available: {}", btf_available);
+        // Check BTF availability
+        let btf_available = loader.btf_available();
+        println!("BTF available: {}", btf_available);
 
-                // List available programs
-                let programs = l.list_available_programs();
-                println!("Available programs: {:?}", programs);
-            }
-            Err(e) => {
-                println!("Loader not available: {}", e);
-            }
-        }
+        // List available programs
+        let programs = loader.list_available_programs();
+        println!("Available programs: {:?}", programs);
     }
 }
 
