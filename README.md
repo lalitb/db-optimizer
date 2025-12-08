@@ -4,6 +4,12 @@ A fast, intelligent CLI tool that analyzes your PostgreSQL database and provides
 
 ## 🌟 What's New
 
+### Multi-Provider AI Integration 🧠
+- **Multiple LLM Providers**: OpenAI (GPT-4), Anthropic (Claude), Ollama (local models)
+- **Automatic AI Recommendations**: AI-powered analysis integrated into core workflow
+- **Natural Language Ask**: Query your database health in plain English
+- **Context-Aware Insights**: AI considers your schema, query patterns, and workload
+
 ### Phase 2 Complete: Advanced Index Intelligence ✨
 - **5 Index Types**: BTREE, HASH, GIN, GIST, BRIN (not just BTREE!)
 - **Smart Detection**: Automatically selects optimal index type based on data characteristics
@@ -21,6 +27,7 @@ A fast, intelligent CLI tool that analyzes your PostgreSQL database and provides
 
 - 🚀 **Fast Analysis** - Analyzes databases in seconds
 - 🧠 **Intelligent** - Uses PostgreSQL's own statistics (pg_stats) for data-driven decisions
+- 🤖 **AI-Powered** - Optional LLM integration for deeper insights (OpenAI, Claude, Ollama)
 - 💰 **Cost Estimation** - Shows potential monthly savings in dollars
 - 🎯 **Actionable** - Generates ready-to-run SQL migration scripts
 - 🔒 **Safe** - All index operations use `CONCURRENTLY` (no table locking)
@@ -100,6 +107,39 @@ pg-query-advisor agent \
 # Export to JSON
 pg-query-advisor -d $DATABASE_URL --format json --output report.json
 ```
+
+### AI-Powered Analysis
+
+```bash
+# Analyze with AI recommendations (uses OpenAI by default)
+pg-query-advisor -d $DATABASE_URL --ai --ai-api-key $OPENAI_API_KEY
+
+# Use Anthropic Claude for AI analysis
+pg-query-advisor -d $DATABASE_URL --ai --ai-provider anthropic --ai-api-key $ANTHROPIC_API_KEY
+
+# Use local Ollama (no API key needed)
+pg-query-advisor -d $DATABASE_URL --ai --ai-provider ollama --ollama-url http://localhost:11434
+
+# Ask natural language questions about your database
+pg-query-advisor ask "What are the slowest queries and how can I optimize them?" \
+  --database-url $DATABASE_URL \
+  --ai-provider openai \
+  --ai-api-key $OPENAI_API_KEY
+
+# Agent mode with AI recommendations
+pg-query-advisor agent \
+  --database-url $DATABASE_URL \
+  --ai --ai-provider anthropic \
+  --ai-api-key $ANTHROPIC_API_KEY
+```
+
+**Supported LLM Providers:**
+
+| Provider | Models | API Key Env Var |
+|----------|--------|-----------------|
+| OpenAI | gpt-4-turbo-preview, gpt-4, gpt-3.5-turbo | `OPENAI_API_KEY` |
+| Anthropic | claude-3-sonnet-20240229, claude-3-opus | `ANTHROPIC_API_KEY` |
+| Ollama | llama2, mistral, codellama (local) | None (local) |
 
 ## Advanced Features
 
@@ -510,6 +550,8 @@ Performance improvements from using advanced index intelligence:
 | **Partial Indexes** | ✅ Yes | ❌ No | ❌ No |
 | **Query Rewriting** | ✅ Yes | ❌ No | ✅ Yes |
 | **Auto-Apply** | ✅ With rollback | ❌ Manual only | ✅ Yes |
+| **AI/LLM Integration** | ✅ Multi-provider | ❌ No | ❌ No |
+| **eBPF Profiling** | ✅ Kernel-level | ❌ No | ❌ No |
 | **Cloud-Agnostic** | ✅ Any PostgreSQL | ✅ Yes | ❌ Aiven only |
 | **Open Source** | ✅ MIT License | ❌ Proprietary | ❌ Proprietary |
 | **Price** | Free (open source) | $150+/mo | Included with hosting |
@@ -541,12 +583,20 @@ Performance improvements from using advanced index intelligence:
 - **Session tracking** - Query correlation across connection pools
 - **Query normalization** - Consistent hashing for parameterized queries
 
-### 📅 Phase 4 Planned - Enterprise
-- Web dashboard
-- Multi-database management
-- Team collaboration
-- Historical trends
+### ✅ Phase 4 Complete - AI Integration
+- **Multi-provider LLM support** - OpenAI, Anthropic Claude, Ollama
+- **Automatic AI recommendations** - Integrated into analyze and agent modes
+- **Natural language queries** - Ask questions in plain English via `ask` command
+- **Context-aware analysis** - AI considers schema, query patterns, and workload
+- **Local model support** - Run with Ollama for privacy-sensitive environments
+
+### 📅 Phase 5 Planned - Enterprise & SaaS
+- Web dashboard with drill-down views
+- Multi-database fleet management
+- Team collaboration and RBAC
+- Historical trends and analytics
 - Grafana/Prometheus integration
+- Cloud marketplace listings (AWS, Azure, GCP)
 
 ## Contributing
 

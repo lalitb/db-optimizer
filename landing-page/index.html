@@ -159,6 +159,7 @@
                     <p class="text-xl text-gray-700 leading-relaxed">
                         Production-grade eBPF instrumentation for PostgreSQL. Captures query-level I/O latency,
                         CPU time, lock contention, and network overhead at the kernel syscall layer.
+                        <strong>AI-powered recommendations</strong> with OpenAI, Claude, or local Ollama.
                         <strong>Deploy as CLI, Agent, or Kubernetes plugin</strong> for CloudNativePG clusters.
                         Autonomous optimization with statistical verification and automatic rollback.
                     </p>
@@ -600,7 +601,21 @@
                     </div>
                 </div>
 
-                <!-- Feature 5 -->
+                <!-- Feature 5: AI/LLM Integration -->
+                <div class="bg-white p-8 rounded-2xl shadow-lg card-hover border-l-4 border-green-500">
+                    <div class="text-xs font-mono text-green-600 mb-3">MULTI-PROVIDER AI</div>
+                    <h3 class="text-xl font-bold mb-3">LLM-Powered Analysis</h3>
+                    <p class="text-gray-700 text-sm leading-relaxed">
+                        Integrate with OpenAI GPT-4, Anthropic Claude, or run locally with Ollama for complete privacy.
+                        AI explains why queries are slow, suggests schema improvements, and provides actionable insights
+                        in natural language. Ask questions about your database health conversationally.
+                    </p>
+                    <div class="mt-4 text-xs text-gray-600">
+                        <strong>Providers:</strong> OpenAI, Anthropic Claude, Ollama (local/private)
+                    </div>
+                </div>
+
+                <!-- Feature 6 -->
                 <div class="bg-white p-8 rounded-2xl shadow-lg card-hover border-l-4 border-purple-500">
                     <div class="text-xs font-mono text-purple-600 mb-3">WHAT-IF ANALYSIS</div>
                     <h3 class="text-xl font-bold mb-3">Hypothetical Indexing</h3>
@@ -949,8 +964,8 @@ int trace_vfs_read(struct pt_regs *ctx) {
                     <div class="text-5xl mb-4">🤖</div>
                     <h3 class="text-2xl font-bold mb-3">AI Query Advisor</h3>
                     <p class="text-gray-700 text-sm mb-4">
-                        LLM-powered analysis explains <em>why</em> queries are slow and suggests optimizations
-                        beyond simple index creation.
+                        Multi-provider LLM integration: <strong>OpenAI GPT-4</strong>, <strong>Anthropic Claude</strong>, 
+                        or <strong>Ollama</strong> (local). AI explains <em>why</em> queries are slow and suggests optimizations.
                     </p>
                     <div class="bg-gray-50 p-3 rounded-lg text-xs font-mono">
                         <div class="text-purple-600 mb-2">💡 AI Insight:</div>
@@ -959,6 +974,73 @@ int trace_vfs_read(struct pt_regs *ctx) {
                             The WHERE clause filters on (user_id, created_at) but only user_id is indexed.
                             <strong>Recommendation:</strong> CREATE INDEX ON orders(user_id, created_at DESC)"
                         </div>
+                    </div>
+                    <div class="mt-4 flex gap-2 flex-wrap">
+                        <span class="px-2 py-1 bg-green-100 text-green-700 text-xs rounded">OpenAI</span>
+                        <span class="px-2 py-1 bg-orange-100 text-orange-700 text-xs rounded">Claude</span>
+                        <span class="px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded">Ollama (Local)</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Multi-Provider LLM Section -->
+            <div class="bg-white p-8 rounded-2xl shadow-xl border-2 border-purple-200 mb-12">
+                <div class="grid md:grid-cols-2 gap-8 items-center">
+                    <div>
+                        <div class="text-xs font-mono text-purple-600 mb-2">NEW: MULTI-PROVIDER AI</div>
+                        <h3 class="text-2xl font-bold mb-4">Choose Your AI Provider</h3>
+                        <p class="text-gray-700 mb-6">
+                            Vaanyze integrates with multiple LLM providers, giving you flexibility in cost, performance,
+                            and data privacy. Use cloud providers for best accuracy, or run locally with Ollama for
+                            complete privacy.
+                        </p>
+                        <div class="space-y-4">
+                            <div class="flex items-start gap-4 p-3 bg-gray-50 rounded-lg">
+                                <div class="text-2xl">🟢</div>
+                                <div>
+                                    <div class="font-semibold">OpenAI (GPT-4 Turbo)</div>
+                                    <div class="text-sm text-gray-600">Best accuracy, fast responses, ideal for production</div>
+                                </div>
+                            </div>
+                            <div class="flex items-start gap-4 p-3 bg-gray-50 rounded-lg">
+                                <div class="text-2xl">🟠</div>
+                                <div>
+                                    <div class="font-semibold">Anthropic Claude</div>
+                                    <div class="text-sm text-gray-600">Excellent reasoning, detailed explanations</div>
+                                </div>
+                            </div>
+                            <div class="flex items-start gap-4 p-3 bg-gray-50 rounded-lg">
+                                <div class="text-2xl">🔵</div>
+                                <div>
+                                    <div class="font-semibold">Ollama (Local)</div>
+                                    <div class="text-sm text-gray-600">100% private, no data leaves your infrastructure</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="code-block">
+                        <div class="flex items-center gap-2 mb-4 border-b border-gray-700 pb-2">
+                            <div class="w-3 h-3 rounded-full bg-red-500"></div>
+                            <div class="w-3 h-3 rounded-full bg-yellow-500"></div>
+                            <div class="w-3 h-3 rounded-full bg-green-500"></div>
+                            <div class="ml-2 text-gray-500 text-xs">vaanyze — AI Examples</div>
+                        </div>
+                        <pre class="text-sm text-gray-300 leading-relaxed"><code><span class="text-green-400"># Analyze with AI (OpenAI)</span>
+vaanyze analyze --ai --ai-api-key $OPENAI_KEY
+
+<span class="text-green-400"># Use Anthropic Claude</span>
+vaanyze analyze --ai \
+  --ai-provider anthropic \
+  --ai-api-key $ANTHROPIC_KEY
+
+<span class="text-green-400"># Use local Ollama (private)</span>
+vaanyze analyze --ai \
+  --ai-provider ollama \
+  --ollama-url http://localhost:11434
+
+<span class="text-green-400"># Ask questions in natural language</span>
+vaanyze ask "Why is my users table slow?" \
+  --ai-provider openai</code></pre>
                     </div>
                 </div>
             </div>
