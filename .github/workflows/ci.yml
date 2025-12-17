@@ -78,7 +78,7 @@ jobs:
       run: cargo test --verbose
     
     - name: Upload binary artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: db-optimizer-${{ github.sha }}
         path: target/release/db-optimizer

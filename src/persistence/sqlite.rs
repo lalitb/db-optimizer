@@ -1,16 +1,15 @@
 // src/persistence/sqlite.rs - SQLite persistence backend
 
-use anyhow::{Result, Context};
+use anyhow::{Context, Result};
 use async_trait::async_trait;
-use sqlx::sqlite::{SqlitePool, SqlitePoolOptions, SqliteConnectOptions};
+use chrono::Utc;
+use sqlx::sqlite::{SqliteConnectOptions, SqlitePool, SqlitePoolOptions};
 use sqlx::Row;
 use std::str::FromStr;
-use chrono::{DateTime, Utc};
 
 use super::{
-    PersistenceStore, QuerySample, RecommendationRecord, RecommendationStatus,
-    ChangeEvent, ChangeEventType, BaselineSnapshot, BaselineType, WinSummary,
-    schema,
+    schema, BaselineSnapshot, BaselineType, ChangeEvent, ChangeEventType, PersistenceStore,
+    QuerySample, RecommendationRecord, RecommendationStatus, WinSummary,
 };
 
 pub struct SqliteStore {
@@ -27,24 +26,23 @@ impl SqliteStore {
         } else {
             path.to_string()
         };
-        
+
         // Create parent directory if it doesn't exist
         if let Some(parent) = std::path::Path::new(&expanded_path).parent() {
-            std::fs::create_dir_all(parent)
-                .context("Failed to create persistence directory")?;
+            std::fs::create_dir_all(parent).context("Failed to create persistence directory")?;
         }
-        
+
         // Create connection options
         let options = SqliteConnectOptions::from_str(&format!("sqlite://{}", expanded_path))?
             .create_if_missing(true);
-        
+
         // Create connection pool
         let pool = SqlitePoolOptions::new()
             .max_connections(5)
             .connect_with(options)
             .await
             .context("Failed to connect to SQLite database")?;
-        
+
         Ok(Self { pool })
     }
 }
@@ -54,7 +52,7 @@ impl PersistenceStore for SqliteStore {
     async fn initialize(&self) -> Result<()> {
         // Execute schema
         let schema_sql = schema::get_schema();
-        
+
         // Split by semicolon and execute each statement
         for statement in schema_sql.split(';') {
             let statement = statement.trim();
@@ -65,11 +63,11 @@ impl PersistenceStore for SqliteStore {
                     .context("Failed to execute schema statement")?;
             }
         }
-        
+
         tracing::info!("SQLite persistence store initialized");
         Ok(())
     }
-    
+
     async fn store_query_sample(&self, sample: &QuerySample) -> Result<()> {
         sqlx::query(
             r#"
@@ -90,7 +88,7 @@ impl PersistenceStore for SqliteStore {
                 io_wait_time_us = excluded.io_wait_time_us,
                 page_cache_misses = excluded.page_cache_misses,
                 context_switches = excluded.context_switches
-            "#
+            "#,
         )
         .bind(sample.captured_at)
         .bind(sample.query_id)
@@ -107,10 +105,10 @@ impl PersistenceStore for SqliteStore {
         .execute(&self.pool)
         .await
         .context("Failed to store query sample")?;
-        
+
         Ok(())
     }
-    
+
     async fn store_recommendation(&self, rec: &RecommendationRecord) -> Result<()> {
         sqlx::query(
             r#"
@@ -122,7 +120,7 @@ impl PersistenceStore for SqliteStore {
                 status = excluded.status,
                 applied_at = excluded.applied_at,
                 rolled_back_at = excluded.rolled_back_at
-            "#
+            "#,
         )
         .bind(&rec.id)
         .bind(rec.created_at)
@@ -137,13 +135,17 @@ impl PersistenceStore for SqliteStore {
         .execute(&self.pool)
         .await
         .context("Failed to store recommendation")?;
-        
+
         Ok(())
     }
-    
-    async fn update_recommendation_status(&self, id: &str, status: RecommendationStatus) -> Result<()> {
+
+    async fn update_recommendation_status(
+        &self,
+        id: &str,
+        status: RecommendationStatus,
+    ) -> Result<()> {
         let now = Utc::now();
-        
+
         // Update status and set appropriate timestamp
         let query = match status {
             RecommendationStatus::Applied => {
@@ -152,29 +154,28 @@ impl PersistenceStore for SqliteStore {
                     .bind(now)
                     .bind(id)
             }
-            RecommendationStatus::RolledBack => {
-                sqlx::query("UPDATE recommendations SET status = ?, rolled_back_at = ? WHERE id = ?")
-                    .bind(status.as_str())
-                    .bind(now)
-                    .bind(id)
-            }
-            _ => {
-                sqlx::query("UPDATE recommendations SET status = ? WHERE id = ?")
-                    .bind(status.as_str())
-                    .bind(id)
-            }
+            RecommendationStatus::RolledBack => sqlx::query(
+                "UPDATE recommendations SET status = ?, rolled_back_at = ? WHERE id = ?",
+            )
+            .bind(status.as_str())
+            .bind(now)
+            .bind(id),
+            _ => sqlx::query("UPDATE recommendations SET status = ? WHERE id = ?")
+                .bind(status.as_str())
+                .bind(id),
         };
-        
-        query.execute(&self.pool)
+
+        query
+            .execute(&self.pool)
             .await
             .context("Failed to update recommendation status")?;
-        
+
         Ok(())
     }
-    
+
     async fn store_change_event(&self, event: &ChangeEvent) -> Result<()> {
         let metadata_str = serde_json::to_string(&event.metadata)?;
-        
+
         sqlx::query(
             "INSERT INTO change_events (recommendation_id, event_type, timestamp, metadata) VALUES (?, ?, ?, ?)"
         )
@@ -185,13 +186,13 @@ impl PersistenceStore for SqliteStore {
         .execute(&self.pool)
         .await
         .context("Failed to store change event")?;
-        
+
         Ok(())
     }
-    
+
     async fn store_baseline(&self, baseline: &BaselineSnapshot) -> Result<()> {
         let metrics_str = serde_json::to_string(&baseline.metrics)?;
-        
+
         sqlx::query(
             "INSERT INTO baselines (recommendation_id, baseline_type, captured_at, metrics) VALUES (?, ?, ?, ?)"
         )
@@ -202,10 +203,10 @@ impl PersistenceStore for SqliteStore {
         .execute(&self.pool)
         .await
         .context("Failed to store baseline")?;
-        
+
         Ok(())
     }
-    
+
     async fn get_query_samples(&self, query_id: i64, limit: usize) -> Result<Vec<QuerySample>> {
         let rows = sqlx::query(
             r#"
@@ -217,16 +218,17 @@ impl PersistenceStore for SqliteStore {
             WHERE query_id = ?
             ORDER BY captured_at DESC
             LIMIT ?
-            "#
+            "#,
         )
         .bind(query_id)
         .bind(limit as i64)
         .fetch_all(&self.pool)
         .await
         .context("Failed to fetch query samples")?;
-        
-        let samples = rows.into_iter().map(|row| {
-            QuerySample {
+
+        let samples = rows
+            .into_iter()
+            .map(|row| QuerySample {
                 captured_at: row.get("captured_at"),
                 query_id: row.get("query_id"),
                 query_text: row.get("query_text"),
@@ -236,16 +238,25 @@ impl PersistenceStore for SqliteStore {
                 calls_per_min: row.get("calls_per_min"),
                 total_calls: row.get("total_calls"),
                 cpu_time_us: row.get::<Option<i64>, _>("cpu_time_us").map(|v| v as u64),
-                io_wait_time_us: row.get::<Option<i64>, _>("io_wait_time_us").map(|v| v as u64),
-                page_cache_misses: row.get::<Option<i32>, _>("page_cache_misses").map(|v| v as u32),
-                context_switches: row.get::<Option<i32>, _>("context_switches").map(|v| v as u32),
-            }
-        }).collect();
-        
+                io_wait_time_us: row
+                    .get::<Option<i64>, _>("io_wait_time_us")
+                    .map(|v| v as u64),
+                page_cache_misses: row
+                    .get::<Option<i32>, _>("page_cache_misses")
+                    .map(|v| v as u32),
+                context_switches: row
+                    .get::<Option<i32>, _>("context_switches")
+                    .map(|v| v as u32),
+            })
+            .collect();
+
         Ok(samples)
     }
-    
-    async fn get_recommendations_by_status(&self, status: RecommendationStatus) -> Result<Vec<RecommendationRecord>> {
+
+    async fn get_recommendations_by_status(
+        &self,
+        status: RecommendationStatus,
+    ) -> Result<Vec<RecommendationRecord>> {
         let rows = sqlx::query(
             r#"
             SELECT id, created_at, issue_type, severity, title, description,
@@ -253,15 +264,16 @@ impl PersistenceStore for SqliteStore {
             FROM recommendations
             WHERE status = ?
             ORDER BY created_at DESC
-            "#
+            "#,
         )
         .bind(status.as_str())
         .fetch_all(&self.pool)
         .await
         .context("Failed to fetch recommendations")?;
-        
-        let recommendations = rows.into_iter().map(|row| {
-            RecommendationRecord {
+
+        let recommendations = rows
+            .into_iter()
+            .map(|row| RecommendationRecord {
                 id: row.get("id"),
                 created_at: row.get("created_at"),
                 issue_type: row.get("issue_type"),
@@ -273,12 +285,12 @@ impl PersistenceStore for SqliteStore {
                     .unwrap_or(RecommendationStatus::Pending),
                 applied_at: row.get("applied_at"),
                 rolled_back_at: row.get("rolled_back_at"),
-            }
-        }).collect();
-        
+            })
+            .collect();
+
         Ok(recommendations)
     }
-    
+
     async fn get_change_history(&self, recommendation_id: &str) -> Result<Vec<ChangeEvent>> {
         let rows = sqlx::query(
             "SELECT recommendation_id, event_type, timestamp, metadata FROM change_events WHERE recommendation_id = ? ORDER BY timestamp"
@@ -287,32 +299,38 @@ impl PersistenceStore for SqliteStore {
         .fetch_all(&self.pool)
         .await
         .context("Failed to fetch change history")?;
-        
-        let events = rows.into_iter().filter_map(|row| {
-            let event_type_str: String = row.get("event_type");
-            let event_type = match event_type_str.as_str() {
-                "PROPOSED" => ChangeEventType::Proposed,
-                "APPLIED" => ChangeEventType::Applied,
-                "VERIFIED" => ChangeEventType::Verified,
-                "ROLLED_BACK" => ChangeEventType::RolledBack,
-                _ => return None,
-            };
-            
-            let metadata_str: String = row.get("metadata");
-            let metadata = serde_json::from_str(&metadata_str).ok()?;
-            
-            Some(ChangeEvent {
-                recommendation_id: row.get("recommendation_id"),
-                event_type,
-                timestamp: row.get("timestamp"),
-                metadata,
+
+        let events = rows
+            .into_iter()
+            .filter_map(|row| {
+                let event_type_str: String = row.get("event_type");
+                let event_type = match event_type_str.as_str() {
+                    "PROPOSED" => ChangeEventType::Proposed,
+                    "APPLIED" => ChangeEventType::Applied,
+                    "VERIFIED" => ChangeEventType::Verified,
+                    "ROLLED_BACK" => ChangeEventType::RolledBack,
+                    _ => return None,
+                };
+
+                let metadata_str: String = row.get("metadata");
+                let metadata = serde_json::from_str(&metadata_str).ok()?;
+
+                Some(ChangeEvent {
+                    recommendation_id: row.get("recommendation_id"),
+                    event_type,
+                    timestamp: row.get("timestamp"),
+                    metadata,
+                })
             })
-        }).collect();
-        
+            .collect();
+
         Ok(events)
     }
-    
-    async fn get_baselines(&self, recommendation_id: &str) -> Result<(Option<BaselineSnapshot>, Option<BaselineSnapshot>)> {
+
+    async fn get_baselines(
+        &self,
+        recommendation_id: &str,
+    ) -> Result<(Option<BaselineSnapshot>, Option<BaselineSnapshot>)> {
         let rows = sqlx::query(
             "SELECT recommendation_id, baseline_type, captured_at, metrics FROM baselines WHERE recommendation_id = ?"
         )
@@ -320,10 +338,10 @@ impl PersistenceStore for SqliteStore {
         .fetch_all(&self.pool)
         .await
         .context("Failed to fetch baselines")?;
-        
+
         let mut pre_apply = None;
         let mut post_apply = None;
-        
+
         for row in rows {
             let baseline_type_str: String = row.get("baseline_type");
             let baseline_type = match baseline_type_str.as_str() {
@@ -331,26 +349,26 @@ impl PersistenceStore for SqliteStore {
                 "POST_APPLY" => BaselineType::PostApply,
                 _ => continue,
             };
-            
+
             let metrics_str: String = row.get("metrics");
             let metrics = serde_json::from_str(&metrics_str).unwrap_or_default();
-            
+
             let snapshot = BaselineSnapshot {
                 recommendation_id: row.get("recommendation_id"),
                 baseline_type,
                 captured_at: row.get("captured_at"),
                 metrics,
             };
-            
+
             match baseline_type {
                 BaselineType::PreApply => pre_apply = Some(snapshot),
                 BaselineType::PostApply => post_apply = Some(snapshot),
             }
         }
-        
+
         Ok((pre_apply, post_apply))
     }
-    
+
     async fn get_top_wins(&self, limit: usize) -> Result<Vec<WinSummary>> {
         let rows = sqlx::query(
             r#"
@@ -371,41 +389,46 @@ impl PersistenceStore for SqliteStore {
             WHERE r.status = 'VERIFIED' AND r.applied_at IS NOT NULL
             ORDER BY improvement_pct DESC, r.estimated_savings_usd DESC
             LIMIT ?
-            "#
+            "#,
         )
         .bind(limit as i64)
         .fetch_all(&self.pool)
         .await
         .context("Failed to fetch top wins")?;
-        
-        let wins = rows.into_iter().map(|row| {
-            WinSummary {
+
+        let wins = rows
+            .into_iter()
+            .map(|row| WinSummary {
                 recommendation_id: row.get("recommendation_id"),
                 title: row.get("title"),
                 issue_type: row.get("issue_type"),
                 applied_at: row.get("applied_at"),
                 improvement_pct: row.get::<f64, _>("improvement_pct"),
                 estimated_savings_usd: row.get("estimated_savings_usd"),
-            }
-        }).collect();
-        
+            })
+            .collect();
+
         Ok(wins)
     }
-    
+
     async fn cleanup_old_records(&self, retention_days: u32) -> Result<u64> {
         let cutoff = Utc::now() - chrono::Duration::days(retention_days as i64);
-        
+
         // Delete old query samples
         let result = sqlx::query("DELETE FROM query_samples WHERE captured_at < ?")
             .bind(cutoff)
             .execute(&self.pool)
             .await
             .context("Failed to cleanup old query samples")?;
-        
+
         let deleted = result.rows_affected();
-        
-        tracing::info!("Cleaned up {} old query samples (retention: {} days)", deleted, retention_days);
-        
+
+        tracing::info!(
+            "Cleaned up {} old query samples (retention: {} days)",
+            deleted,
+            retention_days
+        );
+
         Ok(deleted)
     }
 }

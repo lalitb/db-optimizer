@@ -1,0 +1,132 @@
+use crate::ebpf::lock_tracer::LockContentionSummary;
+use crate::models::ReportSummary;
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+use uuid::Uuid;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DatabaseInstance {
+    pub id: String,
+    pub name: String,
+    pub connection_string: String, // In a real app, this should be encrypted or stored securely
+    pub agent_url: Option<String>, // URL of the Vaanyze Node Agent (e.g., http://host:9090)
+    pub environment: String,       // "production", "staging", "dev"
+    pub tags: Vec<String>,
+    pub created_at: DateTime<Utc>,
+    pub last_check_at: Option<DateTime<Utc>>,
+    pub health_score: Option<u8>,
+    pub status: InstanceStatus,
+    pub version: Option<String>,
+
+    // Detailed metrics
+    pub metrics: Option<InstanceMetrics>,
+    pub summary: Option<ReportSummary>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InstanceMetrics {
+    // Storage
+    pub total_size_mb: f64,
+    pub table_count: usize,
+    pub index_count: usize,
+
+    // Connections
+    pub active_connections: i32,
+    pub max_connections: i32,
+    pub connection_usage_pct: f64,
+    pub idle_in_transaction_count: i32,
+    pub locked_connections_count: i32,
+
+    // Cost & Savings
+    pub estimated_monthly_cost_usd: Option<f64>,
+    pub potential_savings_usd: Option<f64>,
+    pub recommendations_count: usize,
+    pub critical_recommendations_count: usize,
+
+    // AI Insights
+    pub ai_insights: Option<Vec<AiInsight>>,
+
+    // eBPF Metrics (if available)
+    pub ebpf_lock_summary: Option<LockContentionSummary>,
+}
+
+/// AI-generated insight for a database
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AiInsight {
+    pub id: String,
+    pub category: InsightCategory,
+    pub severity: InsightSeverity,
+    pub title: String,
+    pub description: String,
+    pub recommendation: Option<String>,
+    pub estimated_impact: Option<String>,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum InsightCategory {
+    Performance,
+    Cost,
+    Security,
+    Maintenance,
+    Schema,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum InsightSeverity {
+    Info,
+    Warning,
+    Critical,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum InstanceStatus {
+    Unknown,
+    Healthy,
+    Warning,
+    Critical,
+    Unreachable,
+}
+
+impl DatabaseInstance {
+    pub fn new(name: String, connection_string: String, environment: String) -> Self {
+        Self {
+            id: Uuid::new_v4().to_string(),
+            name,
+            connection_string,
+            agent_url: None,
+            environment,
+            tags: Vec::new(),
+            created_at: Utc::now(),
+            last_check_at: None,
+            health_score: None,
+            status: InstanceStatus::Unknown,
+            version: None,
+            metrics: None,
+            summary: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FleetSummary {
+    pub total_databases: usize,
+    pub healthy_count: usize,
+    pub warning_count: usize,
+    pub critical_count: usize,
+    pub unreachable_count: usize,
+    pub average_health_score: Option<f64>,
+    // Cost metrics
+    pub total_monthly_cost_usd: Option<f64>,
+    pub total_potential_savings_usd: Option<f64>,
+    pub total_recommendations: usize,
+    pub total_ai_insights: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateInstanceRequest {
+    pub name: String,
+    pub connection_string: String,
+    pub environment: String,
+    pub tags: Option<Vec<String>>,
+}

@@ -1,7 +1,6 @@
 // API request/response models
 
 use crate::ebpf::{LockContentionMetrics, LockContentionSummary};
-use crate::models::Recommendation;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 

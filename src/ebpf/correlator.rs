@@ -2,15 +2,14 @@
 
 use anyhow::Result;
 use async_trait::async_trait;
-use std::collections::HashMap;
 
-use crate::traits::{
-    MetricsCorrelator, UnifiedQueryMetrics, SystemMetrics, RootCauseAnalysis, RootCause,
-};
 use crate::models::QueryStats;
+use crate::traits::{
+    MetricsCorrelator, RootCause, RootCauseAnalysis, SystemMetrics, UnifiedQueryMetrics,
+};
 
 /// Default implementation of MetricsCorrelator
-/// 
+///
 /// Correlates database metrics (from pg_stat_statements) with system-level
 /// metrics (from eBPF) to provide root cause analysis of performance issues.
 pub struct DefaultMetricsCorrelator {
@@ -22,16 +21,16 @@ pub struct DefaultMetricsCorrelator {
 pub struct CorrelatorConfig {
     /// CPU time threshold (microseconds) above which to flag as CPU-bound
     pub cpu_bound_threshold_us: u64,
-    
+
     /// IO wait threshold (microseconds) above which to flag as IO-bound
     pub io_bound_threshold_us: u64,
-    
+
     /// Page cache miss threshold above which to flag memory pressure
     pub page_cache_miss_threshold: u32,
-    
+
     /// Lock wait threshold (microseconds) above which to flag lock contention
     pub lock_wait_threshold_us: u64,
-    
+
     /// Confidence threshold (0.0-1.0) for reporting root causes
     pub min_confidence: f64,
 }
@@ -39,10 +38,10 @@ pub struct CorrelatorConfig {
 impl Default for CorrelatorConfig {
     fn default() -> Self {
         Self {
-            cpu_bound_threshold_us: 50_000,      // 50ms
-            io_bound_threshold_us: 100_000,      // 100ms
+            cpu_bound_threshold_us: 50_000, // 50ms
+            io_bound_threshold_us: 100_000, // 100ms
             page_cache_miss_threshold: 100,
-            lock_wait_threshold_us: 10_000,      // 10ms
+            lock_wait_threshold_us: 10_000, // 10ms
             min_confidence: 0.6,
         }
     }
@@ -53,49 +52,55 @@ impl DefaultMetricsCorrelator {
     pub fn new() -> Self {
         Self::with_config(CorrelatorConfig::default())
     }
-    
+
     /// Create a new correlator with custom config
     pub fn with_config(config: CorrelatorConfig) -> Self {
         Self { config }
     }
-    
+
     /// Analyze system metrics to determine dominant resource bottleneck
     fn analyze_system_metrics(&self, metrics: &SystemMetrics) -> Vec<(RootCause, f64)> {
         let mut causes = Vec::new();
-        
+
         // Check CPU time
         if metrics.cpu_time_us > self.config.cpu_bound_threshold_us {
-            let severity = (metrics.cpu_time_us as f64 / self.config.cpu_bound_threshold_us as f64).min(2.0);
-            let confidence = (severity - 1.0).max(0.0).min(1.0);
+            let severity =
+                (metrics.cpu_time_us as f64 / self.config.cpu_bound_threshold_us as f64).min(2.0);
+            let confidence = (severity - 1.0).clamp(0.0, 1.0);
             causes.push((RootCause::CpuBound, confidence));
         }
-        
+
         // Check IO wait time
         if metrics.io_wait_time_us > self.config.io_bound_threshold_us {
-            let severity = (metrics.io_wait_time_us as f64 / self.config.io_bound_threshold_us as f64).min(2.0);
-            let confidence = (severity - 1.0).max(0.0).min(1.0);
+            let severity = (metrics.io_wait_time_us as f64
+                / self.config.io_bound_threshold_us as f64)
+                .min(2.0);
+            let confidence = (severity - 1.0).clamp(0.0, 1.0);
             causes.push((RootCause::IoSaturation, confidence));
         }
-        
+
         // Check page cache misses
         if metrics.page_cache_misses > self.config.page_cache_miss_threshold {
-            let severity = (metrics.page_cache_misses as f64 / self.config.page_cache_miss_threshold as f64).min(2.0);
-            let confidence = (severity - 1.0).max(0.0).min(1.0);
+            let severity = (metrics.page_cache_misses as f64
+                / self.config.page_cache_miss_threshold as f64)
+                .min(2.0);
+            let confidence = (severity - 1.0).clamp(0.0, 1.0);
             causes.push((RootCause::MemoryPressure, confidence));
         }
-        
+
         // Check lock wait time
         if let Some(lock_wait) = metrics.lock_wait_time_us {
             if lock_wait > self.config.lock_wait_threshold_us {
-                let severity = (lock_wait as f64 / self.config.lock_wait_threshold_us as f64).min(2.0);
-                let confidence = (severity - 1.0).max(0.0).min(1.0);
+                let severity =
+                    (lock_wait as f64 / self.config.lock_wait_threshold_us as f64).min(2.0);
+                let confidence = (severity - 1.0).clamp(0.0, 1.0);
                 causes.push((RootCause::LockContention, confidence));
             }
         }
-        
+
         causes
     }
-    
+
     /// Generate evidence strings for root cause
     fn generate_evidence(
         &self,
@@ -104,7 +109,7 @@ impl DefaultMetricsCorrelator {
         cause: &RootCause,
     ) -> Vec<String> {
         let mut evidence = Vec::new();
-        
+
         match cause {
             RootCause::CpuBound => {
                 evidence.push(format!(
@@ -129,16 +134,12 @@ impl DefaultMetricsCorrelator {
                     metrics.io_wait_time_us as f64 / 1000.0,
                     self.config.io_bound_threshold_us as f64 / 1000.0
                 ));
-                evidence.push(format!(
-                    "Query returns {} rows per execution",
-                    query.rows
-                ));
+                evidence.push(format!("Query returns {} rows per execution", query.rows));
             }
             RootCause::MemoryPressure => {
                 evidence.push(format!(
                     "Page cache misses: {} (threshold: {})",
-                    metrics.page_cache_misses,
-                    self.config.page_cache_miss_threshold
+                    metrics.page_cache_misses, self.config.page_cache_miss_threshold
                 ));
                 if let Some(mem) = metrics.memory_bytes {
                     evidence.push(format!(
@@ -155,21 +156,21 @@ impl DefaultMetricsCorrelator {
                         self.config.lock_wait_threshold_us as f64 / 1000.0
                     ));
                 }
-                evidence.push(format!(
-                    "Query called {} times",
-                    query.calls
-                ));
+                evidence.push(format!("Query called {} times", query.calls));
             }
             RootCause::MissingIndex => {
                 evidence.push("Database metrics indicate potential missing index".to_string());
-                evidence.push(format!("Query execution time: {:.2}ms", query.mean_exec_time_ms));
+                evidence.push(format!(
+                    "Query execution time: {:.2}ms",
+                    query.mean_exec_time_ms
+                ));
             }
             _ => {}
         }
-        
+
         evidence
     }
-    
+
     /// Generate recommendations for root cause
     fn generate_recommendations(&self, cause: &RootCause, query: &QueryStats) -> Vec<String> {
         match cause {
@@ -230,72 +231,67 @@ impl MetricsCorrelator for DefaultMetricsCorrelator {
         // - Query ID
         // - Timestamp
         // - PostgreSQL PID
-        
+
         let mut unified = Vec::new();
-        
+
         for (idx, query_stats) in db_metrics.iter().enumerate() {
             let system_metrics_opt = system_metrics.get(idx).cloned();
-            
+
             unified.push(UnifiedQueryMetrics {
                 query_stats: query_stats.clone(),
                 system_metrics: system_metrics_opt,
             });
         }
-        
+
         tracing::info!(
             "Correlated {} database metrics with {} system metrics",
             db_metrics.len(),
             system_metrics.len()
         );
-        
+
         Ok(unified)
     }
-    
+
     async fn identify_root_causes(
         &self,
         unified_metrics: &[UnifiedQueryMetrics],
     ) -> Result<Vec<RootCauseAnalysis>> {
         let mut analyses = Vec::new();
-        
+
         for unified in unified_metrics {
             // Skip if no system metrics available
             let sys_metrics = match &unified.system_metrics {
                 Some(m) => m,
                 None => continue,
             };
-            
+
             // Analyze system metrics to identify potential causes
             let causes = self.analyze_system_metrics(sys_metrics);
-            
+
             // Filter by confidence threshold
             let high_confidence_causes: Vec<_> = causes
                 .into_iter()
                 .filter(|(_, confidence)| *confidence >= self.config.min_confidence)
                 .collect();
-            
+
             if high_confidence_causes.is_empty() {
                 continue;
             }
-            
+
             // Find the primary cause (highest confidence)
             let (primary_cause, confidence) = high_confidence_causes
                 .iter()
                 .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap())
                 .unwrap()
                 .clone();
-            
+
             // Generate evidence and recommendations
-            let evidence = self.generate_evidence(
-                &unified.query_stats,
-                sys_metrics,
-                &primary_cause,
-            );
-            
-            let recommendations = self.generate_recommendations(
-                &primary_cause,
-                &unified.query_stats,
-            );
-            
+            let evidence =
+                self.generate_evidence(&unified.query_stats, sys_metrics, &primary_cause);
+
+            let recommendations =
+                self.generate_recommendations(&primary_cause, &unified.query_stats);
+
             analyses.push(RootCauseAnalysis {
                 query_id: unified.query_stats.queryid.unwrap_or(0),
                 root_cause: primary_cause,
@@ -304,13 +300,13 @@ impl MetricsCorrelator for DefaultMetricsCorrelator {
                 recommendations,
             });
         }
-        
+
         tracing::info!(
             "Identified {} root causes from {} unified metrics",
             analyses.len(),
             unified_metrics.len()
         );
-        
+
         Ok(analyses)
     }
 }
@@ -328,11 +324,11 @@ fn truncate_query(query: &str, max_len: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[tokio::test]
     async fn test_identify_cpu_bound() {
         let correlator = DefaultMetricsCorrelator::new();
-        
+
         let query = QueryStats {
             queryid: Some(1),
             query: "SELECT * FROM users".to_string(),
@@ -340,8 +336,10 @@ mod tests {
             total_exec_time_ms: 100000.0,
             mean_exec_time_ms: 100.0,
             rows: 10000,
+            shared_blks_read: 0,
+            shared_blks_hit: 0,
         };
-        
+
         let metrics = SystemMetrics {
             cpu_time_us: 150_000, // 150ms - above threshold
             io_wait_time_us: 10_000,
@@ -350,14 +348,14 @@ mod tests {
             memory_bytes: Some(1_000_000),
             lock_wait_time_us: Some(0),
         };
-        
+
         let unified = vec![UnifiedQueryMetrics {
             query_stats: query,
             system_metrics: Some(metrics),
         }];
-        
+
         let analyses = correlator.identify_root_causes(&unified).await.unwrap();
-        
+
         assert_eq!(analyses.len(), 1);
         assert_eq!(analyses[0].root_cause, RootCause::CpuBound);
         assert!(analyses[0].confidence > 0.6);

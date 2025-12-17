@@ -72,7 +72,7 @@ mod tests {
 
     #[test]
     fn test_config_tuner_creation() {
-        let tuner = ConfigTuner::new();
+        let _tuner = ConfigTuner::new();
         assert!(true, "ConfigTuner created successfully");
     }
 

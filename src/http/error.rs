@@ -13,16 +13,16 @@ use std::fmt;
 pub enum ApiError {
     /// Resource not found
     NotFound(String),
-    
+
     /// Bad request (validation error)
     BadRequest(String),
-    
+
     /// Internal server error
     Internal(String),
-    
+
     /// Database error
     Database(String),
-    
+
     /// Service unavailable (e.g., eBPF not enabled)
     ServiceUnavailable(String),
 }
@@ -57,7 +57,9 @@ impl IntoResponse for ApiError {
             ApiError::BadRequest(_) => (StatusCode::BAD_REQUEST, "BAD_REQUEST"),
             ApiError::Internal(_) => (StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL_ERROR"),
             ApiError::Database(_) => (StatusCode::INTERNAL_SERVER_ERROR, "DATABASE_ERROR"),
-            ApiError::ServiceUnavailable(_) => (StatusCode::SERVICE_UNAVAILABLE, "SERVICE_UNAVAILABLE"),
+            ApiError::ServiceUnavailable(_) => {
+                (StatusCode::SERVICE_UNAVAILABLE, "SERVICE_UNAVAILABLE")
+            }
         };
 
         let body = ApiErrorResponse {

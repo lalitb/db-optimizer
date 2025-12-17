@@ -1,0 +1,67 @@
+{{- if .Values.prometheusRule.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ include "db-optimizer.fullname" . }}
+  {{- if .Values.prometheusRule.namespace }}
+  namespace: {{ .Values.prometheusRule.namespace }}
+  {{- end }}
+  labels:
+    {{- include "db-optimizer.labels" . | nindent 4 }}
+    {{- with .Values.prometheusRule.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  groups:
+    - name: db-optimizer
+      rules:
+        {{- if .Values.prometheusRule.rules }}
+        {{- toYaml .Values.prometheusRule.rules | nindent 8 }}
+        {{- else }}
+        # Default alerting rules
+        - alert: DatabaseHealthCritical
+          expr: db_optimizer_health_score < 30
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Database health is critical"
+            description: "Database {{ $labels.database }} health score is {{ $value }} (below 30)"
+        
+        - alert: DatabaseHealthWarning
+          expr: db_optimizer_health_score < 60 and db_optimizer_health_score >= 30
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Database health is degraded"
+            description: "Database {{ $labels.database }} health score is {{ $value }} (below 60)"
+        
+        - alert: SlowQueryDetected
+          expr: rate(db_optimizer_slow_queries_total[5m]) > 1
+          for: 2m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Slow queries detected"
+            description: "{{ $value }} slow queries per second detected in {{ $labels.database }}"
+        
+        - alert: HighConnectionCount
+          expr: db_optimizer_active_connections > 100
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "High connection count"
+            description: "Database {{ $labels.database }} has {{ $value }} active connections"
+        
+        - alert: MissingIndexRecommendation
+          expr: db_optimizer_recommendations_total{type="missing_index"} > 0
+          for: 1h
+          labels:
+            severity: info
+          annotations:
+            summary: "Missing index recommendations available"
+            description: "{{ $value }} missing index recommendations for {{ $labels.database }}"
+        {{- end }}
+{{- end }}

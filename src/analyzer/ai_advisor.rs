@@ -1,8 +1,8 @@
-use crate::models::{QueryStats, TableInfo, IndexInfo, Recommendation, Severity, IssueType};
-use anyhow::{Result, Context};
+use crate::models::{IndexInfo, IssueType, QueryStats, Recommendation, Severity, TableInfo};
+use anyhow::{Context, Result};
 use async_trait::async_trait;
-use serde::{Deserialize, Serialize};
 use reqwest::Client;
+use serde::Deserialize;
 use serde_json::json;
 
 /// Interface for LLM interaction
@@ -52,7 +52,7 @@ impl LlmClient for OpenAiClient {
         let content = response["choices"][0]["message"]["content"]
             .as_str()
             .ok_or_else(|| anyhow::anyhow!("Invalid response structure from OpenAI"))?;
-            
+
         Ok(content.to_string())
     }
 }
@@ -75,13 +75,13 @@ impl<T: LlmClient> AiAdvisor<T> {
         indexes: &[IndexInfo],
     ) -> Result<Option<Recommendation>> {
         let prompt = self.build_prompt(query, tables, indexes);
-        
+
         let response_text = self.llm_client.complete(&prompt).await?;
-        
+
         // Extract JSON from response (handle markdown code blocks if present)
         let json_str = if let Some(start) = response_text.find("```json") {
             if let Some(end) = response_text[start..].find("```") {
-                &response_text[start+7..start+end]
+                &response_text[start + 7..start + end]
             } else {
                 &response_text
             }
@@ -121,16 +121,27 @@ impl<T: LlmClient> AiAdvisor<T> {
         }))
     }
 
-    fn build_prompt(&self, query: &QueryStats, tables: &[TableInfo], indexes: &[IndexInfo]) -> String {
+    fn build_prompt(
+        &self,
+        query: &QueryStats,
+        tables: &[TableInfo],
+        indexes: &[IndexInfo],
+    ) -> String {
         let mut prompt = String::new();
         prompt.push_str("Analyze the following PostgreSQL query for performance issues:\n\n");
         prompt.push_str(&format!("Query: {}\n", query.query));
-        prompt.push_str(&format!("Execution Time (mean): {:.2}ms\n", query.mean_exec_time_ms));
+        prompt.push_str(&format!(
+            "Execution Time (mean): {:.2}ms\n",
+            query.mean_exec_time_ms
+        ));
         prompt.push_str(&format!("Calls: {}\n", query.calls));
-        
+
         prompt.push_str("\nRelevant Tables:\n");
         for table in tables {
-            prompt.push_str(&format!("- {} ({} rows, {:.2} MB)\n", table.table_name, table.row_count, table.table_size_mb));
+            prompt.push_str(&format!(
+                "- {} ({} rows, {:.2} MB)\n",
+                table.table_name, table.row_count, table.table_size_mb
+            ));
         }
 
         prompt.push_str("\nExisting Indexes:\n");
@@ -139,8 +150,10 @@ impl<T: LlmClient> AiAdvisor<T> {
         }
 
         prompt.push_str("\nProvide recommendations in JSON format with the following fields:\n");
-        prompt.push_str("- title\n- description\n- severity (LOW, MEDIUM, HIGH, CRITICAL)\n- migration_sql\n");
-        
+        prompt.push_str(
+            "- title\n- description\n- severity (LOW, MEDIUM, HIGH, CRITICAL)\n- migration_sql\n",
+        );
+
         prompt
     }
 }

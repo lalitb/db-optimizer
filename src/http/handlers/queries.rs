@@ -2,10 +2,13 @@
 
 use crate::http::{
     error::{ApiError, ApiResult},
-    models::{AnalyzeQueryRequest, ApiResponse, PaginationParams, RewriteQueryRequest, RewriteQueryResponse},
+    models::{
+        AnalyzeQueryRequest, ApiResponse, PaginationParams, RewriteQueryRequest,
+        RewriteQueryResponse,
+    },
     AppState,
 };
-use crate::query_rewriter::{QueryRewriter, RewriteRule};
+use crate::query_rewriter::QueryRewriter;
 use axum::{
     extract::{Path, Query, State},
     Json,
@@ -53,7 +56,7 @@ pub async fn rewrite_query(
     Json(req): Json<RewriteQueryRequest>,
 ) -> ApiResult<Json<ApiResponse<RewriteQueryResponse>>> {
     let rewriter = QueryRewriter::new();
-    
+
     let result = rewriter
         .optimize(&req.query)
         .map_err(|e| ApiError::BadRequest(e.to_string()))?;

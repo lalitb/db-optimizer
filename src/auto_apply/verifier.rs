@@ -1,10 +1,11 @@
-use crate::models::*;
 use crate::auto_apply::baseline::BaselineCollector;
-use sqlx::PgPool;
+use crate::models::*;
 use anyhow::Result;
+use sqlx::PgPool;
 use tokio::time::{sleep, Duration};
 
 pub struct Verifier {
+    #[allow(dead_code)] // Reserved for direct pool queries
     pool: PgPool,
     baseline_collector: BaselineCollector,
     config: AutoApplyConfig,
@@ -19,7 +20,7 @@ impl Verifier {
             config,
         }
     }
-    
+
     /// Verify impact of applied change
     pub async fn verify(
         &self,
@@ -30,22 +31,22 @@ impl Verifier {
             "Verifying impact for {} seconds...",
             self.config.verification_duration_secs
         );
-        
+
         // Wait for specified duration to collect new metrics
         sleep(Duration::from_secs(self.config.verification_duration_secs)).await;
-        
+
         // Capture new baseline
         let post_apply = self.baseline_collector.capture(rec).await?;
-        
+
         // Calculate improvement
         let improvement_pct = self.calculate_improvement(baseline, &post_apply);
-        
+
         // Check if improvement meets threshold
         let met_threshold = improvement_pct >= self.config.min_improvement_threshold;
-        
+
         // Determine if we should rollback
         let should_rollback = !met_threshold && self.config.auto_rollback_on_failure;
-        
+
         Ok(VerificationResult {
             post_apply,
             improvement_pct,
@@ -53,7 +54,7 @@ impl Verifier {
             should_rollback,
         })
     }
-    
+
     fn calculate_improvement(
         &self,
         baseline: &PerformanceBaseline,
@@ -62,12 +63,12 @@ impl Verifier {
         if baseline.mean_exec_time_ms == 0.0 {
             return 0.0;
         }
-        
+
         let improvement = baseline.mean_exec_time_ms - post_apply.mean_exec_time_ms;
         let improvement_pct = (improvement / baseline.mean_exec_time_ms) * 100.0;
-        
+
         // Cap at reasonable bounds
-        improvement_pct.max(-100.0).min(100.0)
+        improvement_pct.clamp(-100.0, 100.0)
     }
 }
 
@@ -83,7 +84,7 @@ pub struct VerificationResult {
 mod tests {
     use super::*;
     use chrono::Utc;
-    
+
     #[test]
     fn test_calculate_improvement() {
         // Create a dummy config and verifier for testing the calculation logic
@@ -101,7 +102,7 @@ mod tests {
             index_size_mb: None,
             total_queries_analyzed: 0,
         };
-        
+
         let post_apply = PerformanceBaseline {
             captured_at: Utc::now(),
             query_id: None,
@@ -116,11 +117,12 @@ mod tests {
             index_size_mb: None,
             total_queries_analyzed: 0,
         };
-        
+
         // Test the calculation directly
-        let improvement = (baseline.mean_exec_time_ms - post_apply.mean_exec_time_ms) 
-            / baseline.mean_exec_time_ms * 100.0;
-        
+        let improvement = (baseline.mean_exec_time_ms - post_apply.mean_exec_time_ms)
+            / baseline.mean_exec_time_ms
+            * 100.0;
+
         assert_eq!(improvement, 80.0); // 80% improvement
     }
 }

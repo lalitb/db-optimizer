@@ -1,10 +1,10 @@
 // src/auto_apply/enhanced_safety.rs - Enhanced safety filtering and governance
 
-use anyhow::{Result, anyhow};
-use chrono::{DateTime, Utc, Timelike, Weekday, Datelike};
+use anyhow::Result;
+use chrono::{DateTime, Utc, Weekday};
 
+use crate::config::{OperationMode, SafetyConfig};
 use crate::models::Recommendation;
-use crate::config::{SafetyConfig, OperationMode, MaintenanceWindow};
 
 /// Enhanced safety filter with comprehensive governance rules
 pub struct EnhancedSafetyFilter {
@@ -20,32 +20,38 @@ impl EnhancedSafetyFilter {
             operation_mode,
         }
     }
-    
+
     /// Evaluate if a recommendation is safe to auto-apply
     pub fn is_safe_to_apply(&self, recommendation: &Recommendation) -> Result<SafetyDecision> {
-        tracing::info!("Evaluating safety for recommendation: {}", recommendation.id);
-        
+        tracing::info!(
+            "Evaluating safety for recommendation: {}",
+            recommendation.id
+        );
+
         // Check 1: Operation mode allows auto-apply
         if let OperationMode::ObserveOnly = self.operation_mode {
             return Ok(SafetyDecision::Rejected {
                 reason: "Operation mode is ObserveOnly - no auto-apply allowed".to_string(),
             });
         }
-        
+
         // Check 2: Maintenance window - NOTE: Maintenance window is now in parent Config, not SafetyConfig
         // This check would need access to the full Config struct, so we'll skip it here
         // and handle it at a higher level where Config is available
-        
+
         // Check 3: Protected resources
         if self.is_protected_resource(recommendation)? {
             return Ok(SafetyDecision::Rejected {
                 reason: format!(
                     "Resource is protected: {}",
-                    recommendation.affected_table.as_ref().unwrap_or(&"unknown".to_string())
+                    recommendation
+                        .affected_table
+                        .as_ref()
+                        .unwrap_or(&"unknown".to_string())
                 ),
             });
         }
-        
+
         // Check 4: Operation mode specific restrictions
         match self.operation_mode {
             OperationMode::ObserveOnly => {
@@ -65,18 +71,15 @@ impl EnhancedSafetyFilter {
                 // (handled below)
             }
         }
-        
+
         // Check 5: Index size limits
         let size_limit = self.config.max_index_size_mb;
         if self.exceeds_index_size_limit(recommendation, size_limit)? {
             return Ok(SafetyDecision::Rejected {
-                reason: format!(
-                    "Estimated index size exceeds limit ({} MB)",
-                    size_limit
-                ),
+                reason: format!("Estimated index size exceeds limit ({} MB)", size_limit),
             });
         }
-        
+
         // Check 6: DDL duration estimate
         let duration_limit = self.config.max_ddl_lock_time_secs;
         if self.exceeds_ddl_duration_limit(recommendation, duration_limit)? {
@@ -87,109 +90,133 @@ impl EnhancedSafetyFilter {
                 ),
             });
         }
-        
+
         // Check 7: Primary key / unique constraint protection
         if self.affects_primary_or_unique_constraint(recommendation)? {
             return Ok(SafetyDecision::Rejected {
                 reason: "Cannot modify primary keys or unique constraints".to_string(),
             });
         }
-        
+
         // All checks passed
         Ok(SafetyDecision::Approved {
             confidence: self.calculate_confidence(recommendation),
             risk_level: self.assess_risk_level(recommendation),
         })
     }
-    
+
     // Maintenance window methods removed - these are now handled at Config level
     // If needed, create a separate struct that takes the full Config
-    
+
     /// Check if recommendation affects protected resources
     fn is_protected_resource(&self, recommendation: &Recommendation) -> Result<bool> {
         if let Some(ref table) = recommendation.affected_table {
             // Check protected schemas
-            if self.config.protected_schemas.iter().any(|schema| table.starts_with(&format!("{}.", schema))) {
+            if self
+                .config
+                .protected_schemas
+                .iter()
+                .any(|schema| table.starts_with(&format!("{}.", schema)))
+            {
                 return Ok(true);
             }
-            
+
             // Check protected tables
-            if self.config.protected_tables.iter().any(|protected| table == protected) {
+            if self
+                .config
+                .protected_tables
+                .iter()
+                .any(|protected| table == protected)
+            {
                 return Ok(true);
             }
         }
-        
+
         Ok(false)
     }
-    
+
     /// Check if operation is safe (for SafeAuto mode)
     fn is_safe_operation(&self, recommendation: &Recommendation) -> Result<bool> {
         use crate::models::IssueType;
-        
+
         match recommendation.issue_type {
             IssueType::MissingIndex => {
                 // Check if CREATE INDEX CONCURRENTLY
-                Ok(recommendation.migration_sql.to_lowercase().contains("concurrently"))
+                Ok(recommendation
+                    .migration_sql
+                    .to_lowercase()
+                    .contains("concurrently"))
             }
             IssueType::UnusedIndex => {
                 // Check if DROP INDEX CONCURRENTLY
-                Ok(recommendation.migration_sql.to_lowercase().contains("concurrently"))
+                Ok(recommendation
+                    .migration_sql
+                    .to_lowercase()
+                    .contains("concurrently"))
             }
-            IssueType::SlowQuery |
-            IssueType::HighVolumeQuery => {
+            IssueType::SlowQuery | IssueType::HighVolumeQuery => {
                 // These usually don't auto-apply DDL, so not safe for auto-apply
                 Ok(false)
             }
             // Connection-related issues - these are runtime issues, not DDL operations
-            IssueType::IdleInTransaction |
-            IssueType::ConnectionPoolExhaustion |
-            IssueType::LockContention => {
+            IssueType::IdleInTransaction
+            | IssueType::ConnectionPoolExhaustion
+            | IssueType::LockContention => {
                 // These are informational/monitoring recommendations, not auto-applicable DDL
                 Ok(false)
             }
         }
     }
-    
+
     /// Estimate if index size will exceed limit
-    fn exceeds_index_size_limit(&self, _recommendation: &Recommendation, _limit_mb: f64) -> Result<bool> {
+    fn exceeds_index_size_limit(
+        &self,
+        _recommendation: &Recommendation,
+        _limit_mb: f64,
+    ) -> Result<bool> {
         // TODO: Implement actual index size estimation based on:
         // - Table row count
         // - Column data types
         // - Existing table size
-        
+
         // For now, conservative estimate
         Ok(false)
     }
-    
+
     /// Estimate if DDL duration will exceed limit
-    fn exceeds_ddl_duration_limit(&self, _recommendation: &Recommendation, _limit_seconds: u64) -> Result<bool> {
+    fn exceeds_ddl_duration_limit(
+        &self,
+        _recommendation: &Recommendation,
+        _limit_seconds: u64,
+    ) -> Result<bool> {
         // TODO: Implement actual DDL duration estimation based on:
         // - Table size
         // - Operation type (CREATE INDEX, DROP INDEX, etc.)
         // - System load
-        
+
         // For now, conservative estimate
         Ok(false)
     }
-    
+
     /// Check if recommendation affects primary key or unique constraint
-    fn affects_primary_or_unique_constraint(&self, recommendation: &Recommendation) -> Result<bool> {
+    fn affects_primary_or_unique_constraint(
+        &self,
+        recommendation: &Recommendation,
+    ) -> Result<bool> {
         let sql_lower = recommendation.migration_sql.to_lowercase();
-        
+
         // Check for operations on primary keys or unique constraints
-        Ok(
-            sql_lower.contains("primary key") ||
-            sql_lower.contains("alter table") && sql_lower.contains("drop constraint") ||
-            sql_lower.contains("alter table") && sql_lower.contains("add constraint")
-        )
+        Ok(sql_lower.contains("primary key")
+            || sql_lower.contains("alter table") && sql_lower.contains("drop constraint")
+            || sql_lower.contains("alter table") && sql_lower.contains("add constraint"))
     }
-    
+
     /// Calculate confidence score for this recommendation
     fn calculate_confidence(&self, recommendation: &Recommendation) -> f64 {
-        use crate::models::{Severity, IssueType};
-        
+        use crate::models::{IssueType, Severity};
+
         let mut confidence: f64 = 0.7; // Base confidence
-        
+
         // Adjust based on severity
         match recommendation.severity {
             Severity::Critical => confidence += 0.2,
@@ -197,31 +224,34 @@ impl EnhancedSafetyFilter {
             Severity::Medium => confidence += 0.0,
             Severity::Low => confidence -= 0.1,
         }
-        
+
         // Adjust based on issue type
         match recommendation.issue_type {
-            IssueType::MissingIndex => confidence += 0.1,  // Well understood
-            IssueType::UnusedIndex => confidence += 0.15,  // Very safe
+            IssueType::MissingIndex => confidence += 0.1, // Well understood
+            IssueType::UnusedIndex => confidence += 0.15, // Very safe
             _ => confidence += 0.0,
         }
-        
+
         // Adjust based on estimated savings
         if let Some(savings) = recommendation.estimated_cost_savings_usd_monthly {
             if savings > 100.0 {
                 confidence += 0.05;
             }
         }
-        
-        confidence.max(0.0).min(1.0)
+
+        confidence.clamp(0.0, 1.0)
     }
-    
+
     /// Assess risk level
     fn assess_risk_level(&self, recommendation: &Recommendation) -> RiskLevel {
         use crate::models::IssueType;
-        
+
         // Check if uses CONCURRENTLY
-        let uses_concurrently = recommendation.migration_sql.to_lowercase().contains("concurrently");
-        
+        let uses_concurrently = recommendation
+            .migration_sql
+            .to_lowercase()
+            .contains("concurrently");
+
         match recommendation.issue_type {
             IssueType::UnusedIndex if uses_concurrently => RiskLevel::Low,
             IssueType::MissingIndex if uses_concurrently => RiskLevel::Medium,
@@ -240,12 +270,10 @@ pub enum SafetyDecision {
         confidence: f64,
         risk_level: RiskLevel,
     },
-    
+
     /// Recommendation rejected (will never be auto-applied)
-    Rejected {
-        reason: String,
-    },
-    
+    Rejected { reason: String },
+
     /// Recommendation deferred (can be retried later)
     Deferred {
         reason: String,
@@ -272,6 +300,7 @@ impl std::fmt::Display for RiskLevel {
 }
 
 /// Format weekday for comparison
+#[allow(dead_code)] // Reserved for maintenance window display
 fn format_weekday(weekday: Weekday) -> String {
     match weekday {
         Weekday::Mon => "monday".to_string(),
@@ -284,36 +313,35 @@ fn format_weekday(weekday: Weekday) -> String {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::models::{IssueType, Severity};
-    
+
     #[test]
     fn test_observe_only_mode() {
         let config = SafetyConfig::default();
         let filter = EnhancedSafetyFilter::new(config, OperationMode::ObserveOnly);
-        
+
         let rec = create_test_recommendation();
         let decision = filter.is_safe_to_apply(&rec).unwrap();
-        
+
         assert!(matches!(decision, SafetyDecision::Rejected { .. }));
     }
-    
+
     #[test]
     fn test_safe_auto_mode_with_concurrently() {
         let config = SafetyConfig::default();
         let filter = EnhancedSafetyFilter::new(config, OperationMode::SafeAuto);
-        
+
         let mut rec = create_test_recommendation();
         rec.migration_sql = "CREATE INDEX CONCURRENTLY idx_test ON users (email);".to_string();
-        
+
         let decision = filter.is_safe_to_apply(&rec).unwrap();
-        
+
         assert!(matches!(decision, SafetyDecision::Approved { .. }));
     }
-    
+
     fn create_test_recommendation() -> Recommendation {
         Recommendation {
             id: "test-1".to_string(),

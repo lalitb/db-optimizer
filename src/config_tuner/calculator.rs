@@ -1,8 +1,6 @@
 // Configuration calculator - implements PGTune formulas
 
-use super::models::{
-    DiskType, HugePagesMode, OptimalConfig, OsType, SystemInfo, WorkloadType,
-};
+use super::models::{DiskType, HugePagesMode, OptimalConfig, OsType, SystemInfo, WorkloadType};
 
 /// Configuration calculator using PGTune algorithms
 #[derive(Clone)]
@@ -47,11 +45,11 @@ impl ConfigCalculator {
     /// Calculate shared_buffers (25% of RAM for most workloads)
     fn calc_shared_buffers(&self, system: &SystemInfo, workload: WorkloadType) -> u64 {
         let base_value = match workload {
-            WorkloadType::Web => system.total_ram_kb / 4,        // 25%
-            WorkloadType::OLTP => system.total_ram_kb / 4,       // 25%
+            WorkloadType::Web => system.total_ram_kb / 4,  // 25%
+            WorkloadType::OLTP => system.total_ram_kb / 4, // 25%
             WorkloadType::DataWarehouse => system.total_ram_kb / 4, // 25%
-            WorkloadType::Desktop => system.total_ram_kb / 16,   // 6.25%
-            WorkloadType::Mixed => system.total_ram_kb / 4,      // 25%
+            WorkloadType::Desktop => system.total_ram_kb / 16, // 6.25%
+            WorkloadType::Mixed => system.total_ram_kb / 4, // 25%
         };
 
         // Windows PG<10 limitation: max 512MB
@@ -66,22 +64,22 @@ impl ConfigCalculator {
     /// Calculate effective_cache_size (75% of RAM for servers)
     fn calc_effective_cache_size(&self, system: &SystemInfo, workload: WorkloadType) -> u64 {
         match workload {
-            WorkloadType::Web => (system.total_ram_kb * 3) / 4,          // 75%
-            WorkloadType::OLTP => (system.total_ram_kb * 3) / 4,         // 75%
+            WorkloadType::Web => (system.total_ram_kb * 3) / 4, // 75%
+            WorkloadType::OLTP => (system.total_ram_kb * 3) / 4, // 75%
             WorkloadType::DataWarehouse => (system.total_ram_kb * 3) / 4, // 75%
-            WorkloadType::Desktop => system.total_ram_kb / 4,            // 25%
-            WorkloadType::Mixed => (system.total_ram_kb * 3) / 4,        // 75%
+            WorkloadType::Desktop => system.total_ram_kb / 4,   // 25%
+            WorkloadType::Mixed => (system.total_ram_kb * 3) / 4, // 75%
         }
     }
 
     /// Calculate maintenance_work_mem (capped at 2GB)
     fn calc_maintenance_work_mem(&self, system: &SystemInfo, workload: WorkloadType) -> u64 {
         let base_value = match workload {
-            WorkloadType::Web => system.total_ram_kb / 16,           // 6.25%
-            WorkloadType::OLTP => system.total_ram_kb / 16,          // 6.25%
-            WorkloadType::DataWarehouse => system.total_ram_kb / 8,  // 12.5%
-            WorkloadType::Desktop => system.total_ram_kb / 16,       // 6.25%
-            WorkloadType::Mixed => system.total_ram_kb / 16,         // 6.25%
+            WorkloadType::Web => system.total_ram_kb / 16, // 6.25%
+            WorkloadType::OLTP => system.total_ram_kb / 16, // 6.25%
+            WorkloadType::DataWarehouse => system.total_ram_kb / 8, // 12.5%
+            WorkloadType::Desktop => system.total_ram_kb / 16, // 6.25%
+            WorkloadType::Mixed => system.total_ram_kb / 16, // 6.25%
         };
 
         // Cap at 2GB
@@ -90,7 +88,7 @@ impl ConfigCalculator {
 
         // Windows: reduce by 1MB to avoid errors
         if system.os_type == OsType::Windows && final_value >= limit_kb {
-            return final_value - (1 * 1024 * 1024); // Subtract 1MB
+            return final_value - (1024 * 1024); // Subtract 1MB
         }
 
         final_value
@@ -133,11 +131,11 @@ impl ConfigCalculator {
     /// Calculate WAL sizes (in MB)
     fn calc_wal_sizes(&self, workload: WorkloadType) -> (u32, u32) {
         match workload {
-            WorkloadType::Web => (1024, 4096),           // 1GB min, 4GB max
-            WorkloadType::OLTP => (2048, 8192),          // 2GB min, 8GB max
+            WorkloadType::Web => (1024, 4096),            // 1GB min, 4GB max
+            WorkloadType::OLTP => (2048, 8192),           // 2GB min, 8GB max
             WorkloadType::DataWarehouse => (4096, 16384), // 4GB min, 16GB max
-            WorkloadType::Desktop => (100, 2048),        // 100MB min, 2GB max
-            WorkloadType::Mixed => (1024, 4096),         // 1GB min, 4GB max
+            WorkloadType::Desktop => (100, 2048),         // 100MB min, 2GB max
+            WorkloadType::Mixed => (1024, 4096),          // 1GB min, 4GB max
         }
     }
 
@@ -236,12 +234,12 @@ mod tests {
     #[test]
     fn test_work_mem_bounds() {
         let calc = ConfigCalculator::new();
-        
+
         // Small system: 4GB RAM
         let system = create_test_system(4, DiskType::SSD);
         let sb = calc.calc_shared_buffers(&system, WorkloadType::Web);
         let wm = calc.calc_work_mem(&system, sb, 200);
-        
+
         assert!(wm >= 64); // Minimum 64KB
         assert!(wm <= 512 * 1024); // Maximum 512MB
     }

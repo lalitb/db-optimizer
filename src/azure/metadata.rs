@@ -12,7 +12,7 @@ pub struct AzureMetadata {
     pub region: String,
     pub vm_size: String,
     pub zone: Option<String>,
-    
+
     // Postgres-specific metadata (if applicable)
     pub postgres_server_name: Option<String>,
     pub postgres_sku: Option<String>,
@@ -57,35 +57,37 @@ impl AzureMetadataCollector {
             imds_endpoint: "http://169.254.169.254/metadata/instance".to_string(),
         }
     }
-    
+
     /// Check if running in Azure
     pub async fn is_azure(&self) -> bool {
         self.client
-            .get(&format!("{}?api-version=2021-02-01", self.imds_endpoint))
+            .get(format!("{}?api-version=2021-02-01", self.imds_endpoint))
             .header("Metadata", "true")
             .send()
             .await
             .is_ok()
     }
-    
+
     /// Collect metadata from Azure IMDS
     pub async fn collect(&self) -> Result<AzureMetadata, Box<dyn std::error::Error>> {
-        let response = self.client
-            .get(&format!("{}?api-version=2021-02-01", self.imds_endpoint))
+        let response = self
+            .client
+            .get(format!("{}?api-version=2021-02-01", self.imds_endpoint))
             .header("Metadata", "true")
             .send()
             .await?;
-        
+
         if !response.status().is_success() {
             return Err(format!("IMDS returned status: {}", response.status()).into());
         }
-        
+
         let imds: ImdsResponse = response.json().await?;
-        
+
         // Try to detect if this is a Postgres Flexible Server
-        let (postgres_server_name, postgres_sku, postgres_tier, postgres_version) = 
-            self.detect_postgres_metadata(&imds.compute.resource_group).await;
-        
+        let (postgres_server_name, postgres_sku, postgres_tier, postgres_version) = self
+            .detect_postgres_metadata(&imds.compute.resource_group)
+            .await;
+
         Ok(AzureMetadata {
             subscription_id: imds.compute.subscription_id,
             resource_group: imds.compute.resource_group,
@@ -99,17 +101,22 @@ impl AzureMetadataCollector {
             postgres_version,
         })
     }
-    
+
     /// Detect Postgres-specific metadata
     async fn detect_postgres_metadata(
         &self,
-        resource_group: &str,
-    ) -> (Option<String>, Option<String>, Option<String>, Option<String>) {
+        _resource_group: &str,
+    ) -> (
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+    ) {
         // This would require Azure SDK or REST API calls
         // For now, return None - can be enhanced with proper Azure authentication
         (None, None, None, None)
     }
-    
+
     /// Get metadata with fallback values
     pub async fn collect_or_default(&self) -> AzureMetadata {
         self.collect().await.unwrap_or_else(|_| AzureMetadata {
@@ -136,18 +143,21 @@ impl Default for AzureMetadataCollector {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[tokio::test]
     async fn test_metadata_collector_creation() {
         let collector = AzureMetadataCollector::new();
-        assert_eq!(collector.imds_endpoint, "http://169.254.169.254/metadata/instance");
+        assert_eq!(
+            collector.imds_endpoint,
+            "http://169.254.169.254/metadata/instance"
+        );
     }
-    
+
     #[tokio::test]
     async fn test_metadata_default() {
         let collector = AzureMetadataCollector::new();
         let metadata = collector.collect_or_default().await;
-        
+
         // Should return default values when not in Azure
         assert!(!metadata.subscription_id.is_empty());
     }

@@ -19,8 +19,8 @@ tokio-stream = { version = "0.1", optional = true }
 kube = { version = "0.87", features = ["runtime", "derive"], optional = true }
 k8s-openapi = { version = "0.20", features = ["v1_27"], optional = true }
 rand = "0.8"
-# Database
-sqlx = { version = "0.7", features = ["postgres", "sqlite", "runtime-tokio-native-tls", "chrono"] }
+# Database - updated to fix RUSTSEC-2024-0363
+sqlx = { version = "0.8", features = ["postgres", "sqlite", "runtime-tokio-native-tls", "chrono"] }
 tokio = { version = "1", features = ["full"] }
 async-trait = "0.1"
 
@@ -47,9 +47,22 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 # Date/time
 chrono = { version = "0.4", features = ["serde"] }
 
-# eBPF support (optional - only needed if building with eBPF features)
-# libbpf-rs = { version = "0.22", optional = true }
-# libbpf-sys = { version = "1.2", optional = true }
+# eBPF support (using aya - pure Rust eBPF library)
+aya = { version = "0.12", optional = true }
+aya-log = { version = "0.2", optional = true }
+
+# Binary serialization for IPC protocol
+bincode = "1.3"
+
+# Byte manipulation for safe event parsing
+bytemuck = { version = "1.14", features = ["derive"] }
+zerocopy = { version = "0.7", features = ["derive"] }
+
+# Prometheus metrics for self-observability - updated to fix RUSTSEC-2024-0437
+prometheus = "0.14"
+
+# libc for clock operations
+libc = "0.2"
 
 # String utilities
 regex = "1"
@@ -60,13 +73,13 @@ tonic-build = "0.10"
 # System information
 num_cpus = "1"
 
-# HTTP client for notifications
-reqwest = { version = "0.11", features = ["json"] }
+# HTTP client for notifications - updated to fix RUSTSEC-2025-0134
+reqwest = { version = "0.12", features = ["json"] }
 
 # HTTP server
 axum = "0.7"
 tower = "0.4"
-tower-http = { version = "0.5", features = ["cors", "trace"] }
+tower-http = { version = "0.5", features = ["cors", "trace", "fs"] }
 lazy_static = "1.4"
 
 # SQL parsing for query rewriting
@@ -75,6 +88,14 @@ sqlparser = "0.39"
 # UUID generation
 uuid = { version = "1.6", features = ["v4", "serde"] }
 
+# gRPC support for CNPG plugin
+tonic = "0.11"
+prost = "0.12"
+
 [dev-dependencies]
 tokio-test = "0.4"
 tempfile = "3.8"
+
+[features]
+default = []
+ebpf = ["aya", "aya-log"]

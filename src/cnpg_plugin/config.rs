@@ -1,6 +1,6 @@
+use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use anyhow::Result;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[allow(dead_code)]
@@ -51,7 +51,7 @@ pub fn load_plugin_config(path: Option<PathBuf>) -> Result<PluginConfig> {
             return Ok(serde_yaml::from_str(&content)?);
         }
     }
-    
+
     // Fallback to environment variables or default
     Ok(PluginConfig::default())
 }

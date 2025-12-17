@@ -1,0 +1,58 @@
+1. Get the application URL by running these commands:
+{{- if .Values.ingress.enabled }}
+{{- range $host := .Values.ingress.hosts }}
+  {{- range .paths }}
+  http{{ if $.Values.ingress.tls }}s{{ end }}://{{ $host.host }}{{ .path }}
+  {{- end }}
+{{- end }}
+{{- else if contains "NodePort" .Values.service.type }}
+  export NODE_PORT=$(kubectl get --namespace {{ .Release.Namespace }} -o jsonpath="{.spec.ports[0].nodePort}" services {{ include "db-optimizer.fullname" . }})
+  export NODE_IP=$(kubectl get nodes --namespace {{ .Release.Namespace }} -o jsonpath="{.items[0].status.addresses[0].address}")
+  echo http://$NODE_IP:$NODE_PORT
+{{- else if contains "LoadBalancer" .Values.service.type }}
+     NOTE: It may take a few minutes for the LoadBalancer IP to be available.
+           You can watch the status of by running 'kubectl get --namespace {{ .Release.Namespace }} svc -w {{ include "db-optimizer.fullname" . }}'
+  export SERVICE_IP=$(kubectl get svc --namespace {{ .Release.Namespace }} {{ include "db-optimizer.fullname" . }} --template "{{"{{ range (index .status.loadBalancer.ingress 0) }}{{.}}{{ end }}"}}")
+  echo http://$SERVICE_IP:{{ .Values.service.port }}
+{{- else if contains "ClusterIP" .Values.service.type }}
+  export POD_NAME=$(kubectl get pods --namespace {{ .Release.Namespace }} -l "app.kubernetes.io/name={{ include "db-optimizer.name" . }},app.kubernetes.io/instance={{ .Release.Name }}" -o jsonpath="{.items[0].metadata.name}")
+  export CONTAINER_PORT=$(kubectl get pod --namespace {{ .Release.Namespace }} $POD_NAME -o jsonpath="{.spec.containers[0].ports[0].containerPort}")
+  echo "Visit http://127.0.0.1:8080 to use your application"
+  kubectl --namespace {{ .Release.Namespace }} port-forward $POD_NAME 8080:$CONTAINER_PORT
+{{- end }}
+
+2. View metrics at:
+{{- if .Values.ingress.enabled }}
+  {{- range $host := .Values.ingress.hosts }}
+  http{{ if $.Values.ingress.tls }}s{{ end }}://{{ $host.host }}/metrics
+  {{- end }}
+{{- else }}
+  kubectl --namespace {{ .Release.Namespace }} port-forward svc/{{ include "db-optimizer.fullname" . }} {{ .Values.service.metricsPort }}:{{ .Values.service.metricsPort }}
+  curl http://127.0.0.1:{{ .Values.service.metricsPort }}/metrics
+{{- end }}
+
+3. Check the logs:
+  kubectl --namespace {{ .Release.Namespace }} logs -f deployment/{{ include "db-optimizer.fullname" . }}
+
+{{- if .Values.cnpgPlugin.enabled }}
+
+4. CloudNativePG Plugin:
+   The CNPG gRPC plugin is available on port {{ .Values.cnpgPlugin.port }}
+   Configure your CNPG cluster to use this sidecar for optimization recommendations.
+{{- end }}
+
+{{- if .Values.ebpf.enabled }}
+
+5. eBPF Daemon:
+   eBPF-based observability is enabled. Ensure the node has:
+   - Linux kernel 5.4+ with BTF support
+   - CAP_BPF and CAP_SYS_ADMIN capabilities (handled by securityContext)
+   - /sys/kernel/debug mounted (if using kprobes)
+{{- end }}
+
+{{- if .Values.serviceMonitor.enabled }}
+
+6. Prometheus Integration:
+   ServiceMonitor is enabled. Ensure you have the Prometheus Operator installed.
+   Metrics will be automatically discovered and scraped.
+{{- end }}

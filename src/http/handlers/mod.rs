@@ -1,17 +1,19 @@
 // HTTP request handlers
 
+pub mod ai;
 pub mod config_tuning;
+pub mod fleet;
 pub mod locks;
 pub mod queries;
 pub mod recommendations;
 pub mod stats;
 
-use crate::http::{ApiResponse, HealthStatus};
-use axum::{response::Html, Json};
+use axum::response::Html;
 
 /// Root endpoint - API information
 pub async fn root() -> Html<&'static str> {
-    Html(r#"
+    Html(
+        r#"
 <!DOCTYPE html>
 <html>
 <head>
@@ -93,7 +95,25 @@ pub async fn root() -> Html<&'static str> {
     <div class="endpoint">
         <span class="method">GET</span> <code>/api/v1/config/detect-workload</code> - Auto-detect workload type
     </div>
+
+    <h3>Fleet Management</h3>
+    <div class="endpoint">
+        <span class="method">GET</span> <code>/api/v1/fleet</code> - List instances
+    </div>
+    <div class="endpoint">
+        <span class="method">GET</span> <code>/api/v1/fleet/summary</code> - Fleet summary
+    </div>
+    <div class="endpoint">
+        <span class="method">POST</span> <code>/api/v1/fleet</code> - Register instance
+    </div>
+    <div class="endpoint">
+        <span class="method">GET</span> <code>/api/v1/fleet/:id</code> - Instance details
+    </div>
+    <div class="endpoint">
+        <span class="method">POST</span> <code>/api/v1/fleet/:id/check</code> - Trigger health check
+    </div>
 </body>
 </html>
-    "#)
+    "#,
+    )
 }

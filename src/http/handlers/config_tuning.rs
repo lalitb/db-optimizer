@@ -9,8 +9,8 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 use crate::config_tuner::{
+    models::{DiskType, OptimalConfig, OsType, SystemInfo, WorkloadType},
     ConfigTuner, ConfigValidator, WorkloadDetector,
-    models::{SystemInfo, WorkloadType, OptimalConfig, ValidationReport, DiskType, OsType},
 };
 use crate::http::{error::ApiError, models::ApiResponse};
 
@@ -69,12 +69,11 @@ pub async fn tune_config(
     Json(req): Json<TuneConfigRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
     // Get or detect system info
-    let mut system_info = if req.ram_gb.is_some() || req.cpu_count.is_some() {
+    let system_info = if req.ram_gb.is_some() || req.cpu_count.is_some() {
         // User provided overrides
-        let base = SystemInfo::detect().map_err(|e| {
-            ApiError::Internal(format!("Failed to detect system info: {}", e))
-        })?;
-        
+        let base = SystemInfo::detect()
+            .map_err(|e| ApiError::Internal(format!("Failed to detect system info: {}", e)))?;
+
         SystemInfo {
             total_ram_kb: req
                 .ram_gb
@@ -86,9 +85,8 @@ pub async fn tune_config(
             pg_version: req.pg_version.unwrap_or(base.pg_version),
         }
     } else {
-        SystemInfo::detect().map_err(|e| {
-            ApiError::Internal(format!("Failed to detect system info: {}", e))
-        })?
+        SystemInfo::detect()
+            .map_err(|e| ApiError::Internal(format!("Failed to detect system info: {}", e)))?
     };
 
     // Get or detect workload
@@ -97,10 +95,11 @@ pub async fn tune_config(
     } else {
         // Auto-detect workload
         let detector = WorkloadDetector::new();
-        let detected_workload = detector.detect(&state.pool).await.map_err(|e| {
-            ApiError::Internal(format!("Failed to detect workload: {}", e))
-        })?;
-        
+        let detected_workload = detector
+            .detect(&state.pool)
+            .await
+            .map_err(|e| ApiError::Internal(format!("Failed to detect workload: {}", e)))?;
+
         // Calculate confidence (we'd need to re-fetch stats, simplified here)
         (detected_workload, true, Some(0.75))
     };
@@ -138,9 +137,10 @@ pub async fn validate_config(
     State(state): State<Arc<ConfigTuningState>>,
 ) -> Result<impl IntoResponse, ApiError> {
     let validator = ConfigValidator::new();
-    let report = validator.validate(&state.pool).await.map_err(|e| {
-        ApiError::Internal(format!("Failed to validate config: {}", e))
-    })?;
+    let report = validator
+        .validate(&state.pool)
+        .await
+        .map_err(|e| ApiError::Internal(format!("Failed to validate config: {}", e)))?;
 
     Ok((StatusCode::OK, Json(ApiResponse::ok(report))))
 }
@@ -151,9 +151,10 @@ pub async fn detect_workload(
     State(state): State<Arc<ConfigTuningState>>,
 ) -> Result<impl IntoResponse, ApiError> {
     let detector = WorkloadDetector::new();
-    let workload = detector.detect(&state.pool).await.map_err(|e| {
-        ApiError::Internal(format!("Failed to detect workload: {}", e))
-    })?;
+    let workload = detector
+        .detect(&state.pool)
+        .await
+        .map_err(|e| ApiError::Internal(format!("Failed to detect workload: {}", e)))?;
 
     #[derive(Serialize)]
     struct DetectWorkloadResponse {
@@ -207,7 +208,7 @@ mod tests {
             detected: true,
             confidence: Some(0.85),
         };
-        
+
         let json = serde_json::to_string(&response).unwrap();
         assert!(json.contains("\"workload_type\":\"oltp\""));
         assert!(json.contains("\"detected\":true"));

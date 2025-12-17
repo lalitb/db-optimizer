@@ -1,25 +1,63 @@
 // eBPF Manager - Orchestrates eBPF programs and event processing
 // Integrates lock tracking with the rest of the optimizer
+//
+// Architecture (v2):
+// - In privileged mode: Runs EbpfDaemon directly with full kernel access
+// - In client mode: Connects to daemon via Unix socket IPC
+// - Supports both modes transparently via MetricsSource trait
 
-use super::loader::{EbpfProgram, EbpfEventStream, EbpfTarget, EventStreamStats};
-use super::lock_tracer::{LockEvent, LockTracer, LockContentionMetrics, LockContentionSummary};
+use super::aggregator::AggregatedMetrics;
+use super::daemon::DaemonClient;
+#[cfg(test)]
+use super::loader::EventStreamStats;
+use super::loader::{EbpfEventStream, EbpfProgram, EbpfTarget};
+use super::lock_tracer::{LockContentionMetrics, LockContentionSummary, LockEvent, LockTracer};
+use super::metrics::{EbpfMetrics, SharedMetrics};
+use super::protocol::MetricsData;
+use super::SystemMetrics;
 use crate::config::EbpfConfig;
 use anyhow::{Context, Result};
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::RwLock;
-use tokio::time::interval;
-use tracing::{debug, error, info, warn};
+use tokio::sync::{mpsc, RwLock};
+use tracing::{debug, error, info};
+
+/// Mode of operation for the eBPF manager
+#[derive(Debug, Clone, PartialEq)]
+pub enum EbpfMode {
+    /// Disabled - no eBPF collection
+    Disabled,
+    /// Connect to privileged daemon via Unix socket
+    Client { socket_path: PathBuf },
+    /// Run in privileged mode (requires CAP_BPF, etc.)
+    Privileged,
+    /// Use mock data for testing
+    Mock,
+}
+
+impl Default for EbpfMode {
+    fn default() -> Self {
+        Self::Disabled
+    }
+}
 
 /// Manages eBPF programs and event processing
 pub struct EbpfManager {
     config: EbpfConfig,
+    mode: EbpfMode,
     programs: Vec<Box<dyn EbpfProgram>>,
     lock_tracer: Arc<LockTracer>,
     running: Arc<AtomicBool>,
     stats: Arc<RwLock<ManagerStats>>,
+    metrics: SharedMetrics,
+    /// Channel for receiving aggregated metrics (from daemon or direct collection)
+    #[allow(dead_code)] // Used for async metrics processing
+    metrics_rx: Option<mpsc::Receiver<AggregatedMetrics>>,
+    /// Daemon client (when in Client mode)
+    daemon_client: Option<DaemonClient>,
 }
 
 /// Statistics about the eBPF manager
@@ -30,29 +68,81 @@ pub struct ManagerStats {
     pub total_events_processed: u64,
     pub total_events_dropped: u64,
     pub last_cycle_duration_ms: u64,
+    pub mode: String,
+    pub daemon_connected: bool,
 }
 
 impl EbpfManager {
-    /// Create a new eBPF manager
+    /// Create a new eBPF manager in disabled mode
     pub fn new(config: EbpfConfig) -> Self {
+        let mode = if config.enabled {
+            EbpfMode::Mock // Default to mock if enabled but no socket specified
+        } else {
+            EbpfMode::Disabled
+        };
+
         Self {
             config,
+            mode,
             programs: Vec::new(),
             lock_tracer: Arc::new(LockTracer::new()),
             running: Arc::new(AtomicBool::new(false)),
             stats: Arc::new(RwLock::new(ManagerStats::default())),
+            metrics: Arc::new(EbpfMetrics::new()),
+            metrics_rx: None,
+            daemon_client: None,
         }
     }
 
-    /// Create a new manager with existing lock tracer
-    pub fn with_lock_tracer(config: EbpfConfig, lock_tracer: Arc<LockTracer>) -> Self {
+    /// Create a manager that connects to a daemon via Unix socket
+    pub fn client(config: EbpfConfig, socket_path: PathBuf) -> Self {
         Self {
             config,
+            mode: EbpfMode::Client { socket_path },
+            programs: Vec::new(),
+            lock_tracer: Arc::new(LockTracer::new()),
+            running: Arc::new(AtomicBool::new(false)),
+            stats: Arc::new(RwLock::new(ManagerStats::default())),
+            metrics: Arc::new(EbpfMetrics::new()),
+            metrics_rx: None,
+            daemon_client: None,
+        }
+    }
+
+    /// Create a manager with existing lock tracer
+    pub fn with_lock_tracer(config: EbpfConfig, lock_tracer: Arc<LockTracer>) -> Self {
+        let mode = if config.enabled {
+            EbpfMode::Mock
+        } else {
+            EbpfMode::Disabled
+        };
+
+        Self {
+            config,
+            mode,
             programs: Vec::new(),
             lock_tracer,
             running: Arc::new(AtomicBool::new(false)),
             stats: Arc::new(RwLock::new(ManagerStats::default())),
+            metrics: Arc::new(EbpfMetrics::new()),
+            metrics_rx: None,
+            daemon_client: None,
         }
+    }
+
+    /// Set the operating mode
+    pub fn set_mode(&mut self, mode: EbpfMode) {
+        self.mode = mode;
+    }
+
+    /// Get current mode
+    pub fn mode(&self) -> &EbpfMode {
+        &self.mode
+    }
+
+    /// Get shared metrics handle
+    pub fn metrics(&self) -> SharedMetrics {
+        Arc::clone(&self.metrics)
     }
 
     /// Add an eBPF program to be managed
@@ -61,35 +151,66 @@ impl EbpfManager {
     }
 
     /// Start the eBPF manager
-    /// 
-    /// Loads and attaches all programs, then begins event processing
+    ///
+    /// Behavior depends on mode:
+    /// - Disabled: Does nothing
+    /// - Client: Connects to daemon via Unix socket
+    /// - Privileged: Loads and attaches eBPF programs directly
+    /// - Mock: Uses mock event generator for testing
     pub async fn start(&mut self, target: EbpfTarget) -> Result<()> {
-        if !self.config.enabled {
-            info!("eBPF is disabled in configuration, skipping start");
-            return Ok(());
+        match &self.mode {
+            EbpfMode::Disabled => {
+                info!("eBPF is disabled, skipping start");
+                return Ok(());
+            }
+            EbpfMode::Client { socket_path } => {
+                info!(
+                    "Starting eBPF manager in client mode, connecting to {:?}",
+                    socket_path
+                );
+                let socket_str = socket_path.to_string_lossy();
+                let client = DaemonClient::connect(&socket_str).map_err(|e| {
+                    anyhow::anyhow!("Failed to connect to daemon at {:?}: {}", socket_path, e)
+                })?;
+                self.daemon_client = Some(client);
+
+                let mut stats = self.stats.write().await;
+                stats.mode = "client".to_string();
+                stats.daemon_connected = true;
+            }
+            EbpfMode::Privileged => {
+                info!(
+                    "Starting eBPF manager in privileged mode with {} programs",
+                    self.programs.len()
+                );
+
+                // Load all programs
+                for program in &mut self.programs {
+                    program.load().with_context(|| {
+                        format!("Failed to load eBPF program: {}", program.name())
+                    })?;
+                    info!("Loaded eBPF program: {}", program.name());
+                }
+
+                // Attach all programs
+                for program in &mut self.programs {
+                    program.attach(&target).with_context(|| {
+                        format!("Failed to attach eBPF program: {}", program.name())
+                    })?;
+                    info!("Attached eBPF program: {} to {:?}", program.name(), target);
+                }
+
+                let mut stats = self.stats.write().await;
+                stats.programs_loaded = self.programs.iter().filter(|p| p.is_loaded()).count();
+                stats.programs_attached = self.programs.iter().filter(|p| p.is_attached()).count();
+                stats.mode = "privileged".to_string();
+            }
+            EbpfMode::Mock => {
+                info!("Starting eBPF manager in mock mode");
+                let mut stats = self.stats.write().await;
+                stats.mode = "mock".to_string();
+            }
         }
-
-        info!("Starting eBPF manager with {} programs", self.programs.len());
-
-        // Load all programs
-        for program in &mut self.programs {
-            program.load()
-                .with_context(|| format!("Failed to load eBPF program: {}", program.name()))?;
-            info!("Loaded eBPF program: {}", program.name());
-        }
-
-        // Attach all programs
-        for program in &mut self.programs {
-            program.attach(&target)
-                .with_context(|| format!("Failed to attach eBPF program: {}", program.name()))?;
-            info!("Attached eBPF program: {} to {:?}", program.name(), target);
-        }
-
-        // Update stats
-        let mut stats = self.stats.write().await;
-        stats.programs_loaded = self.programs.iter().filter(|p| p.is_loaded()).count();
-        stats.programs_attached = self.programs.iter().filter(|p| p.is_attached()).count();
-        drop(stats);
 
         self.running.store(true, Ordering::SeqCst);
         info!("eBPF manager started successfully");
@@ -98,7 +219,7 @@ impl EbpfManager {
     }
 
     /// Stop the eBPF manager
-    /// 
+    ///
     /// Detaches and unloads all programs
     pub async fn stop(&mut self) -> Result<()> {
         if !self.running.load(Ordering::SeqCst) {
@@ -108,7 +229,12 @@ impl EbpfManager {
         info!("Stopping eBPF manager");
         self.running.store(false, Ordering::SeqCst);
 
-        // Detach all programs
+        // Disconnect from daemon if in client mode
+        if let Some(client) = self.daemon_client.take() {
+            drop(client);
+        }
+
+        // Detach all programs if in privileged mode
         for program in &mut self.programs {
             if let Err(e) = program.detach() {
                 error!("Failed to detach program {}: {}", program.name(), e);
@@ -125,7 +251,7 @@ impl EbpfManager {
     }
 
     /// Process events from an event stream
-    /// 
+    ///
     /// This would be called in a loop for each event stream
     pub async fn process_lock_events<S>(&self, stream: &mut S) -> Result<usize>
     where
@@ -171,7 +297,7 @@ impl EbpfManager {
     }
 
     /// Update table name mappings
-    /// 
+    ///
     /// Call this periodically to keep table names in sync with database
     pub fn update_table_names(&self, oid_to_name: HashMap<u32, String>) {
         self.lock_tracer.update_table_names(oid_to_name);
@@ -185,6 +311,55 @@ impl EbpfManager {
     /// Get reference to lock tracer
     pub fn lock_tracer(&self) -> Arc<LockTracer> {
         Arc::clone(&self.lock_tracer)
+    }
+
+    /// Poll for metrics from daemon (client mode only)
+    ///
+    /// Returns None if not in client mode or not connected
+    pub fn get_pid_metrics(&mut self, pid: u32) -> Option<MetricsData> {
+        if let Some(ref mut client) = self.daemon_client {
+            match client.get_metrics(pid) {
+                Ok(metrics_data) => {
+                    self.metrics
+                        .events_received
+                        .inc_by(metrics_data.events_processed);
+                    Some(metrics_data)
+                }
+                Err(e) => {
+                    error!("Failed to poll metrics from daemon: {}", e);
+                    self.metrics.ipc_errors.inc();
+                    None
+                }
+            }
+        } else {
+            None
+        }
+    }
+
+    /// Convert MetricsData to SystemMetrics for use with the correlation engine
+    pub fn metrics_to_system_metrics(data: &MetricsData) -> SystemMetrics {
+        SystemMetrics {
+            total_time_us: data.total_time_us,
+            cpu_time_us: data.cpu_time_us,
+            io_wait_time_us: data.io_wait_time_us,
+            lock_wait_time_us: data.lock_wait_time_us,
+            bytes_read: data.bytes_read,
+            bytes_written: data.bytes_written,
+            read_syscalls: data.read_syscalls,
+            write_syscalls: data.write_syscalls,
+            fsync_count: data.fsync_count,
+            page_cache_hits: 0,
+            page_cache_misses: 0,
+            page_faults: data.page_faults,
+            context_switches: data.context_switches,
+            events_processed: data.events_processed,
+            events_dropped: data.events_dropped,
+        }
+    }
+
+    /// Check if connected to daemon (client mode)
+    pub fn is_daemon_connected(&self) -> bool {
+        self.daemon_client.is_some()
     }
 }
 
@@ -293,6 +468,7 @@ mod tests {
         };
 
         let mut manager = EbpfManager::new(config);
+        manager.set_mode(EbpfMode::Privileged);
         manager.add_program(Box::new(MockEbpfProgram::new("test_program")));
 
         // Start manager
@@ -353,7 +529,7 @@ mod tests {
         };
 
         let mut manager = EbpfManager::new(config);
-        
+
         // Should succeed but do nothing
         manager.start(EbpfTarget::ProcessPid(1234)).await.unwrap();
         assert!(!manager.is_running());

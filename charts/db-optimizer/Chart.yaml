@@ -1,0 +1,31 @@
+apiVersion: v2
+name: db-optimizer
+description: A Helm chart for db-optimizer - PostgreSQL performance optimization with eBPF
+
+type: application
+
+version: 0.1.0
+appVersion: "0.1.0"
+
+keywords:
+  - postgresql
+  - postgres
+  - database
+  - optimization
+  - ebpf
+  - performance
+  - monitoring
+
+home: https://github.com/lalitb/db-optimizer
+sources:
+  - https://github.com/lalitb/db-optimizer
+
+maintainers:
+  - name: lalitb
+    url: https://github.com/lalitb
+
+dependencies: []
+
+annotations:
+  artifacthub.io/category: database
+  artifacthub.io/license: MIT

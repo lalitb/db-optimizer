@@ -72,12 +72,8 @@ impl SystemInfo {
         use std::process::Command;
 
         // Get total memory using sysctl
-        let output = Command::new("sysctl")
-            .args(&["-n", "hw.memsize"])
-            .output()?;
-        let mem_bytes = String::from_utf8(output.stdout)?
-            .trim()
-            .parse::<u64>()?;
+        let output = Command::new("sysctl").args(["-n", "hw.memsize"]).output()?;
+        let mem_bytes = String::from_utf8(output.stdout)?.trim().parse::<u64>()?;
         let total_ram_kb = mem_bytes / 1024;
 
         // Get CPU count
@@ -326,7 +322,11 @@ pub struct ValidationIssue {
 
 impl ValidationIssue {
     /// Create a new critical issue
-    pub fn critical(category: impl Into<String>, title: impl Into<String>, description: impl Into<String>) -> Self {
+    pub fn critical(
+        category: impl Into<String>,
+        title: impl Into<String>,
+        description: impl Into<String>,
+    ) -> Self {
         Self {
             severity: ValidationSeverity::Critical,
             category: category.into(),
@@ -339,7 +339,11 @@ impl ValidationIssue {
     }
 
     /// Create a new high severity issue
-    pub fn high(category: impl Into<String>, title: impl Into<String>, description: impl Into<String>) -> Self {
+    pub fn high(
+        category: impl Into<String>,
+        title: impl Into<String>,
+        description: impl Into<String>,
+    ) -> Self {
         Self {
             severity: ValidationSeverity::High,
             category: category.into(),
@@ -352,7 +356,11 @@ impl ValidationIssue {
     }
 
     /// Create a new medium severity issue
-    pub fn medium(category: impl Into<String>, title: impl Into<String>, description: impl Into<String>) -> Self {
+    pub fn medium(
+        category: impl Into<String>,
+        title: impl Into<String>,
+        description: impl Into<String>,
+    ) -> Self {
         Self {
             severity: ValidationSeverity::Medium,
             category: category.into(),
@@ -365,7 +373,11 @@ impl ValidationIssue {
     }
 
     /// Create a new low severity issue
-    pub fn low(category: impl Into<String>, title: impl Into<String>, description: impl Into<String>) -> Self {
+    pub fn low(
+        category: impl Into<String>,
+        title: impl Into<String>,
+        description: impl Into<String>,
+    ) -> Self {
         Self {
             severity: ValidationSeverity::Low,
             category: category.into(),
@@ -384,7 +396,11 @@ impl ValidationIssue {
     }
 
     /// Set current and recommended values
-    pub fn with_values(mut self, current: impl Into<String>, recommended: impl Into<String>) -> Self {
+    pub fn with_values(
+        mut self,
+        current: impl Into<String>,
+        recommended: impl Into<String>,
+    ) -> Self {
         self.current_value = Some(current.into());
         self.recommended_value = Some(recommended.into());
         self
@@ -483,10 +499,10 @@ mod tests {
     #[test]
     fn test_optimal_config_formatting() {
         let config = OptimalConfig {
-            shared_buffers_kb: 16 * 1024 * 1024, // 16GB
+            shared_buffers_kb: 16 * 1024 * 1024,       // 16GB
             effective_cache_size_kb: 48 * 1024 * 1024, // 48GB
-            maintenance_work_mem_kb: 2 * 1024 * 1024, // 2GB
-            work_mem_kb: 64 * 1024, // 64MB
+            maintenance_work_mem_kb: 2 * 1024 * 1024,  // 2GB
+            work_mem_kb: 64 * 1024,                    // 64MB
             max_connections: 200,
             min_wal_size_mb: 1024,
             max_wal_size_mb: 4096,

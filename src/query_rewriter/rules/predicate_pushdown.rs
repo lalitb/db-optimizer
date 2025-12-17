@@ -1,9 +1,9 @@
 use crate::query_rewriter::RewriteRule;
-use sqlparser::ast::{Statement, SetExpr, TableFactor};
 use anyhow::Result;
+use sqlparser::ast::{SetExpr, Statement, TableFactor};
 
 /// Pushes predicates (WHERE clauses) closer to the data source
-/// 
+///
 /// This optimization moves filtering operations as early as possible in the query execution,
 /// reducing the amount of data that needs to be processed in subsequent operations.
 ///
@@ -11,7 +11,7 @@ use anyhow::Result;
 /// ```sql
 /// -- Before
 /// SELECT * FROM (SELECT * FROM large_table) t WHERE t.date > '2024-01-01'
-/// 
+///
 /// -- After
 /// SELECT * FROM (SELECT * FROM large_table WHERE date > '2024-01-01') t
 /// ```
@@ -27,7 +27,7 @@ impl PredicatePushdown {
     pub fn new() -> Self {
         Self
     }
-    
+
     fn has_subquery_with_external_filter(stmt: &Statement) -> bool {
         match stmt {
             Statement::Query(query) => {
@@ -51,15 +51,15 @@ impl RewriteRule for PredicatePushdown {
     fn name(&self) -> &str {
         "Predicate Pushdown"
     }
-    
+
     fn description(&self) -> &str {
         "Moves WHERE conditions closer to data sources to reduce processed data volume"
     }
-    
+
     fn applies_to(&self, stmt: &Statement) -> bool {
         Self::has_subquery_with_external_filter(stmt)
     }
-    
+
     fn rewrite(&self, stmt: Statement) -> Result<Statement> {
         // Note: This is a complex transformation that requires:
         // 1. Identifying which predicates can be safely pushed down
@@ -72,16 +72,16 @@ impl RewriteRule for PredicatePushdown {
         // - Check if those columns exist in the subquery
         // - Safely push down applicable predicates
         // - Handle edge cases (aggregations, window functions, etc.)
-        
+
         tracing::info!(
             "Predicate pushdown detected opportunity. \
             Manual optimization recommended for complex queries."
         );
-        
+
         // Return original - full implementation requires sophisticated analysis
         Ok(stmt)
     }
-    
+
     fn estimated_improvement(&self) -> f64 {
         50.0 // High impact on large datasets
     }
@@ -98,36 +98,34 @@ mod tests {
     use super::*;
     use sqlparser::dialect::PostgreSqlDialect;
     use sqlparser::parser::Parser;
-    
+
     fn parse(sql: &str) -> Statement {
         let dialect = PostgreSqlDialect {};
         let mut ast = Parser::parse_sql(&dialect, sql).unwrap();
         ast.pop().unwrap()
     }
-    
+
     #[test]
     fn test_detects_subquery_with_filter() {
         let rule = PredicatePushdown::new();
-        let stmt = parse(
-            "SELECT * FROM (SELECT * FROM large_table) t WHERE t.date > '2024-01-01'"
-        );
-        
+        let stmt = parse("SELECT * FROM (SELECT * FROM large_table) t WHERE t.date > '2024-01-01'");
+
         assert!(rule.applies_to(&stmt));
     }
-    
+
     #[test]
     fn test_ignores_simple_query() {
         let rule = PredicatePushdown::new();
         let stmt = parse("SELECT * FROM users WHERE id = 1");
-        
+
         assert!(!rule.applies_to(&stmt));
     }
-    
+
     #[test]
     fn test_ignores_subquery_without_outer_filter() {
         let rule = PredicatePushdown::new();
         let stmt = parse("SELECT * FROM (SELECT * FROM users) t");
-        
+
         assert!(!rule.applies_to(&stmt));
     }
 }

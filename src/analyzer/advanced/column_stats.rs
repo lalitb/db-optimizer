@@ -1,5 +1,5 @@
-use sqlx::{PgPool, Row};
 use serde::{Deserialize, Serialize};
+use sqlx::{PgPool, Row};
 use std::collections::HashMap;
 
 /// Comprehensive column statistics for intelligent index type selection
@@ -10,18 +10,18 @@ pub struct ColumnStats {
     pub column_name: String,
     pub data_type: PostgresType,
     pub total_rows: i64,
-    
+
     // Cardinality and distribution
     pub distinct_values: i64,
     pub null_fraction: f64,
-    pub cardinality_ratio: f64,  // distinct_values / total_rows
-    pub correlation: f64,         // Physical vs logical order (-1.0 to 1.0)
-    
+    pub cardinality_ratio: f64, // distinct_values / total_rows
+    pub correlation: f64,       // Physical vs logical order (-1.0 to 1.0)
+
     // Value characteristics
     pub avg_width: i32,
     pub most_common_values: Vec<String>,
     pub most_common_freqs: Vec<f64>,
-    
+
     // Query pattern flags (detected from pg_stat_statements)
     pub has_json_ops: bool,
     pub has_array_ops: bool,
@@ -39,37 +39,37 @@ pub enum PostgresType {
     Numeric,
     Real,
     DoublePrecision,
-    
+
     // Text types
     Text,
     Varchar,
-    
+
     // Date/Time types
     Date,
     Timestamp,
     TimestampTz,
-    
+
     // Binary types
     Bytea,
-    
+
     // JSON types
     Json,
     Jsonb,
-    
+
     // Special types
     Uuid,
     Boolean,
-    
+
     // Array types
     Array(Box<PostgresType>),
-    
+
     // Geometric types (PostGIS)
     Geometry,
     Point,
-    
+
     // Full-text search
     Tsvector,
-    
+
     // Custom/Unknown
     Custom(String),
 }
@@ -86,7 +86,7 @@ impl ColumnStatsCollector {
             cache: HashMap::new(),
         }
     }
-    
+
     /// Collect comprehensive statistics for a column
     pub async fn collect_column_stats(
         &mut self,
@@ -99,28 +99,28 @@ impl ColumnStatsCollector {
         if let Some(stats) = self.cache.get(&cache_key) {
             return Ok(stats.clone());
         }
-        
+
         // Get data type
         let data_type = self.get_column_type(schema, table, column).await?;
-        
+
         // Get pg_stats statistics
         let pg_stats = self.get_pg_stats(schema, table, column).await?;
-        
+
         // Get row count
         let total_rows = self.get_row_count(schema, table).await?;
-        
+
         // Analyze query patterns
         let query_patterns = self.analyze_query_patterns(table, column).await?;
-        
+
         // Calculate derived values
         let cardinality_ratio = if total_rows > 0 {
             pg_stats.n_distinct as f64 / total_rows as f64
         } else {
             0.0
         };
-        
+
         let is_sequential = pg_stats.correlation.map(|c| c.abs() > 0.9).unwrap_or(false);
-        
+
         // Build comprehensive stats
         let stats = ColumnStats {
             schema_name: schema.to_string(),
@@ -142,13 +142,13 @@ impl ColumnStatsCollector {
             has_geometric_ops: query_patterns.has_geometric_ops,
             has_range_queries: query_patterns.has_range_queries,
         };
-        
+
         // Cache the result
         self.cache.insert(cache_key, stats.clone());
-        
+
         Ok(stats)
     }
-    
+
     async fn get_column_type(
         &self,
         schema: &str,
@@ -162,18 +162,18 @@ impl ColumnStatsCollector {
               AND table_name = $2
               AND column_name = $3
         "#;
-        
+
         let row = sqlx::query(query)
             .bind(schema)
             .bind(table)
             .bind(column)
             .fetch_one(&self.pool)
             .await?;
-        
+
         let data_type: String = row.get("data_type");
         Ok(self.parse_postgres_type(&data_type))
     }
-    
+
     async fn get_pg_stats(
         &self,
         schema: &str,
@@ -191,14 +191,14 @@ impl ColumnStatsCollector {
               AND tablename = $2
               AND attname = $3
         "#;
-        
+
         let row = sqlx::query(query)
             .bind(schema)
             .bind(table)
             .bind(column)
             .fetch_optional(&self.pool)
             .await?;
-        
+
         if let Some(row) = row {
             Ok(PgStats {
                 n_distinct: row.get::<f64, _>("n_distinct") as i64,
@@ -220,24 +220,19 @@ impl ColumnStatsCollector {
             })
         }
     }
-    
+
     async fn get_row_count(
         &self,
         schema: &str,
         table: &str,
     ) -> Result<i64, Box<dyn std::error::Error>> {
-        let query = format!(
-            "SELECT COUNT(*) as count FROM {}.{}",
-            schema, table
-        );
-        
-        let row = sqlx::query(&query)
-            .fetch_one(&self.pool)
-            .await?;
-        
+        let query = format!("SELECT COUNT(*) as count FROM {}.{}", schema, table);
+
+        let row = sqlx::query(&query).fetch_one(&self.pool).await?;
+
         Ok(row.get::<i64, _>("count"))
     }
-    
+
     async fn analyze_query_patterns(
         &self,
         table: &str,
@@ -249,18 +244,16 @@ impl ColumnStatsCollector {
             FROM pg_extension
             WHERE extname = 'pg_stat_statements'
         "#;
-        
-        let row = sqlx::query(check_extension)
-            .fetch_one(&self.pool)
-            .await?;
-        
+
+        let row = sqlx::query(check_extension).fetch_one(&self.pool).await?;
+
         let has_extension: i64 = row.get("count");
-        
+
         if has_extension == 0 {
             // Extension not available, return defaults
             return Ok(QueryPatterns::default());
         }
-        
+
         // Analyze query patterns from pg_stat_statements
         let query = r#"
             SELECT query
@@ -268,53 +261,53 @@ impl ColumnStatsCollector {
             WHERE query LIKE '%' || $1 || '%'
             LIMIT 100
         "#;
-        
-        let rows = sqlx::query(query)
-            .bind(table)
-            .fetch_all(&self.pool)
-            .await?;
-        
+
+        let rows = sqlx::query(query).bind(table).fetch_all(&self.pool).await?;
+
         let mut patterns = QueryPatterns::default();
-        
+
         for row in rows {
             let query_text: String = row.get("query");
-            
+
             // Check for JSON operations
-            if query_text.contains(&format!("{}->>", column)) ||
-               query_text.contains(&format!("{}->", column)) ||
-               query_text.contains("jsonb_") {
+            if query_text.contains(&format!("{}->>", column))
+                || query_text.contains(&format!("{}->", column))
+                || query_text.contains("jsonb_")
+            {
                 patterns.has_json_ops = true;
             }
-            
+
             // Check for array operations
-            if query_text.contains("ANY(") || 
-               query_text.contains("@>") ||
-               query_text.contains("<@") {
+            if query_text.contains("ANY(") || query_text.contains("@>") || query_text.contains("<@")
+            {
                 patterns.has_array_ops = true;
             }
-            
+
             // Check for text pattern matching
-            if query_text.contains(&format!("{} LIKE", column)) ||
-               query_text.contains(&format!("{} ILIKE", column)) {
+            if query_text.contains(&format!("{} LIKE", column))
+                || query_text.contains(&format!("{} ILIKE", column))
+            {
                 patterns.has_text_patterns = true;
             }
-            
+
             // Check for geometric operations
             if query_text.contains("ST_") || query_text.contains("&&") {
                 patterns.has_geometric_ops = true;
             }
-            
+
             // Check for range queries
-            if query_text.contains(&format!("{} >", column)) ||
-               query_text.contains(&format!("{} <", column)) ||
-               query_text.contains("BETWEEN") {
+            if query_text.contains(&format!("{} >", column))
+                || query_text.contains(&format!("{} <", column))
+                || query_text.contains("BETWEEN")
+            {
                 patterns.has_range_queries = true;
             }
         }
-        
+
         Ok(patterns)
     }
-    
+
+    #[allow(clippy::only_used_in_recursion)]
     fn parse_postgres_type(&self, type_str: &str) -> PostgresType {
         match type_str.to_lowercase().as_str() {
             "integer" | "int" | "int4" => PostgresType::Integer,

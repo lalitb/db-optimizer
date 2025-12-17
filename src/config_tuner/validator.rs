@@ -1,6 +1,10 @@
 // Configuration validator - implements PostgreSQLTuner validation rules
+#![allow(clippy::needless_borrow)]
+#![allow(clippy::needless_borrows_for_generic_args)]
 
-use super::models::{SystemInfo, ValidationIssue, ValidationReport, ValidationSeverity};
+#[cfg(test)]
+use super::models::ValidationSeverity;
+use super::models::{SystemInfo, ValidationIssue, ValidationReport};
 use anyhow::Result;
 use sqlx::{PgPool, Row};
 
@@ -67,7 +71,7 @@ impl ConfigValidator {
                 'log_checkpoints',
                 'superuser_reserved_connections'
             )
-            "#
+            "#,
         )
         .fetch_all(pool)
         .await?;
@@ -84,16 +88,12 @@ impl ConfigValidator {
                     config.shared_buffers_kb = Self::parse_memory(&setting, unit.as_deref())?
                 }
                 "effective_cache_size" => {
-                    config.effective_cache_size_kb =
-                        Self::parse_memory(&setting, unit.as_deref())?
+                    config.effective_cache_size_kb = Self::parse_memory(&setting, unit.as_deref())?
                 }
                 "maintenance_work_mem" => {
-                    config.maintenance_work_mem_kb =
-                        Self::parse_memory(&setting, unit.as_deref())?
+                    config.maintenance_work_mem_kb = Self::parse_memory(&setting, unit.as_deref())?
                 }
-                "work_mem" => {
-                    config.work_mem_kb = Self::parse_memory(&setting, unit.as_deref())?
-                }
+                "work_mem" => config.work_mem_kb = Self::parse_memory(&setting, unit.as_deref())?,
                 "max_connections" => config.max_connections = setting.parse()?,
                 "fsync" => config.fsync = setting == "on",
                 "full_page_writes" => config.full_page_writes = setting == "on",
@@ -238,10 +238,7 @@ impl SafetyValidator {
                     "Checkpoint I/O not spread out enough, may cause I/O spikes",
                 )
                 .with_recommendation("Increase to 0.9 to spread I/O over time")
-                .with_values(
-                    &config.checkpoint_completion_target.to_string(),
-                    "0.9",
-                ),
+                .with_values(&config.checkpoint_completion_target.to_string(), "0.9"),
             );
         }
 
@@ -266,10 +263,7 @@ impl MemoryValidator {
                     format!("Using {:.1}% of RAM, recommend 25-40%", sb_ratio * 100.0),
                 )
                 .with_recommendation("Increase shared_buffers to 25-40% of RAM")
-                .with_values(
-                    &format!("{:.1}%", sb_ratio * 100.0),
-                    "25-40%",
-                ),
+                .with_values(&format!("{:.1}%", sb_ratio * 100.0), "25-40%"),
             );
         } else if sb_ratio > 0.40 {
             issues.push(
@@ -279,10 +273,7 @@ impl MemoryValidator {
                     format!("Using {:.1}% of RAM, may cause swapping", sb_ratio * 100.0),
                 )
                 .with_recommendation("Reduce shared_buffers to 25-40% of RAM")
-                .with_values(
-                    &format!("{:.1}%", sb_ratio * 100.0),
-                    "25-40%",
-                ),
+                .with_values(&format!("{:.1}%", sb_ratio * 100.0), "25-40%"),
             );
         }
 
@@ -303,10 +294,7 @@ impl MemoryValidator {
                     ),
                 )
                 .with_recommendation("Reduce work_mem or max_connections")
-                .with_values(
-                    &format!("{:.1}%", usage_ratio * 100.0),
-                    "<60%",
-                ),
+                .with_values(&format!("{:.1}%", usage_ratio * 100.0), "<60%"),
             );
         }
 
@@ -320,10 +308,7 @@ impl MemoryValidator {
                     "May lead to poor query plans",
                 )
                 .with_recommendation("Set to 75% of RAM for servers, 25% for desktops")
-                .with_values(
-                    &format!("{:.1}%", ecs_ratio * 100.0),
-                    "75%",
-                ),
+                .with_values(&format!("{:.1}%", ecs_ratio * 100.0), "75%"),
             );
         }
 
@@ -339,8 +324,7 @@ impl ConnectionValidator {
         let mut issues = Vec::new();
 
         // Check superuser slots
-        let su_ratio =
-            config.superuser_reserved_connections as f64 / config.max_connections as f64;
+        let su_ratio = config.superuser_reserved_connections as f64 / config.max_connections as f64;
         if su_ratio < 0.02 {
             issues.push(
                 ValidationIssue::medium(
@@ -446,10 +430,10 @@ mod tests {
 
     fn create_test_config() -> PgConfig {
         PgConfig {
-            shared_buffers_kb: 16 * 1024 * 1024, // 16GB
+            shared_buffers_kb: 16 * 1024 * 1024,       // 16GB
             effective_cache_size_kb: 48 * 1024 * 1024, // 48GB
-            maintenance_work_mem_kb: 2 * 1024 * 1024, // 2GB
-            work_mem_kb: 64 * 1024, // 64MB
+            maintenance_work_mem_kb: 2 * 1024 * 1024,  // 2GB
+            work_mem_kb: 64 * 1024,                    // 64MB
             max_connections: 200,
             superuser_reserved_connections: 3,
             fsync: true,
@@ -479,7 +463,9 @@ mod tests {
 
         let issues = validator.validate(&config);
         assert!(!issues.is_empty());
-        assert!(issues.iter().any(|i| i.severity == ValidationSeverity::Critical));
+        assert!(issues
+            .iter()
+            .any(|i| i.severity == ValidationSeverity::Critical));
         assert!(issues.iter().any(|i| i.title.contains("fsync")));
     }
 
@@ -490,7 +476,9 @@ mod tests {
         config.full_page_writes = false;
 
         let issues = validator.validate(&config);
-        assert!(issues.iter().any(|i| i.severity == ValidationSeverity::Critical));
+        assert!(issues
+            .iter()
+            .any(|i| i.severity == ValidationSeverity::Critical));
         assert!(issues.iter().any(|i| i.title.contains("full_page_writes")));
     }
 
@@ -501,8 +489,12 @@ mod tests {
         config.synchronous_commit = "off".to_string();
 
         let issues = validator.validate(&config);
-        assert!(issues.iter().any(|i| i.severity == ValidationSeverity::High));
-        assert!(issues.iter().any(|i| i.title.contains("synchronous_commit")));
+        assert!(issues
+            .iter()
+            .any(|i| i.severity == ValidationSeverity::High));
+        assert!(issues
+            .iter()
+            .any(|i| i.title.contains("synchronous_commit")));
     }
 
     #[test]
@@ -513,7 +505,9 @@ mod tests {
         config.shared_buffers_kb = 4 * 1024 * 1024; // 4GB (6.25% of 64GB)
 
         let issues = validator.validate(&config, &system);
-        assert!(issues.iter().any(|i| i.title.contains("shared_buffers too low")));
+        assert!(issues
+            .iter()
+            .any(|i| i.title.contains("shared_buffers too low")));
     }
 
     #[test]
@@ -524,7 +518,9 @@ mod tests {
         config.shared_buffers_kb = 32 * 1024 * 1024; // 32GB (50% of 64GB)
 
         let issues = validator.validate(&config, &system);
-        assert!(issues.iter().any(|i| i.title.contains("shared_buffers too high")));
+        assert!(issues
+            .iter()
+            .any(|i| i.title.contains("shared_buffers too high")));
     }
 
     #[test]
@@ -573,11 +569,13 @@ mod tests {
         let critical_or_high = all_issues
             .iter()
             .filter(|i| {
-                i.severity == ValidationSeverity::Critical
-                    || i.severity == ValidationSeverity::High
+                i.severity == ValidationSeverity::Critical || i.severity == ValidationSeverity::High
             })
             .count();
 
-        assert_eq!(critical_or_high, 0, "Healthy config should have no critical/high issues");
+        assert_eq!(
+            critical_or_high, 0,
+            "Healthy config should have no critical/high issues"
+        );
     }
 }

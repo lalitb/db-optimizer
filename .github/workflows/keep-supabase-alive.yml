@@ -1,0 +1,33 @@
+name: Keep Supabase Alive
+
+on:
+  schedule:
+    # Run every 5 days to prevent 7-day auto-pause
+    - cron: '0 0 */5 * *'
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  ping-supabase:
+    name: Ping Supabase Database
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Ping Supabase to prevent auto-pause
+        run: |
+          # Simple health check request to Supabase
+          response=$(curl -s -o /dev/null -w "%{http_code}" \
+            -X GET \
+            -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}" \
+            "${{ secrets.SUPABASE_URL }}/rest/v1/contact_submissions?select=count&limit=1")
+          
+          if [ "$response" = "200" ] || [ "$response" = "406" ]; then
+            echo "✅ Supabase ping successful (HTTP $response)"
+          else
+            echo "⚠️ Supabase ping returned HTTP $response"
+            # Don't fail the job - the project might be paused
+          fi
+          
+      - name: Log ping time
+        run: |
+          echo "Pinged Supabase at $(date -u '+%Y-%m-%d %H:%M:%S UTC')"

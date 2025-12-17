@@ -14,24 +14,24 @@ pub enum EbpfTarget {
 }
 
 /// Trait for eBPF programs
-/// 
+///
 /// Allows for testing and mocking without requiring actual eBPF capabilities
 pub trait EbpfProgram: Send + Sync {
     /// Program name (for logging/debugging)
     fn name(&self) -> &str;
-    
+
     /// Load the eBPF program into the kernel
     fn load(&mut self) -> Result<()>;
-    
+
     /// Attach to target process/binary
     fn attach(&mut self, target: &EbpfTarget) -> Result<()>;
-    
+
     /// Detach from target
     fn detach(&mut self) -> Result<()>;
-    
+
     /// Check if program is currently loaded
     fn is_loaded(&self) -> bool;
-    
+
     /// Check if program is currently attached
     fn is_attached(&self) -> bool;
 }
@@ -40,12 +40,12 @@ pub trait EbpfProgram: Send + Sync {
 pub trait EbpfEventStream: Send + Sync {
     /// Event type produced by this stream
     type Event: Send + Sync;
-    
+
     /// Poll for new events with timeout
-    /// 
+    ///
     /// Returns empty vec if no events available within timeout
     fn poll_events(&mut self, timeout: Duration) -> Result<Vec<Self::Event>>;
-    
+
     /// Get statistics about event processing
     fn stats(&self) -> EventStreamStats;
 }
@@ -79,7 +79,7 @@ mod tests {
             events_dropped: 5,
             last_poll_duration_us: 1000,
         };
-        
+
         assert_eq!(stats.success_rate(), 0.95);
     }
 
