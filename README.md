@@ -4,7 +4,15 @@ A fast, intelligent platform that analyzes your PostgreSQL databases and provide
 
 ## 🌟 What's New
 
-### 🎯 NEW: AI-Powered Web Dashboard (Phase 5 Released!)
+### ☸️ NEW: CloudNativePG Plugin (Beta v0.1.0)
+- **Kubernetes-Native**: Deploy as a CNPG operator plugin
+- **gRPC Integration**: Native CNPG-I protocol support
+- **Health Checks**: Automatic liveness/readiness probes
+- **Multi-Cluster**: Manage optimization across all CNPG clusters
+- **Container-Ready**: Production Docker images with eBPF support
+- **CI/CD**: Automated testing and deployment workflows
+
+### 🎯 AI-Powered Web Dashboard (Phase 5)
 - **Fleet Management**: Monitor all your databases in one beautiful interface
 - **AI Chat Assistant**: Ask questions in plain English, get expert answers instantly
 - **Query Optimizer UI**: Paste slow queries, get AI-optimized versions with explanations
@@ -179,6 +187,36 @@ sudo setcap cap_bpf,cap_perfmon=eip ./target/release/pg-query-advisor
 ```
 
 **Without eBPF:** Lock analysis falls back to `pg_stat_activity` (still useful, but less precise).
+
+### CloudNativePG Plugin (Kubernetes)
+
+Deploy Vaanyze as a native CloudNativePG operator plugin for autonomous optimization:
+
+```bash
+# 1. Install CloudNativePG operator (if not already installed)
+kubectl apply -f https://raw.githubusercontent.com/cloudnative-pg/cloudnative-pg/release-1.22/releases/cnpg-1.22.1.yaml
+
+# 2. Deploy Vaanyze CNPG plugin
+kubectl apply -f k8s/cnpg-plugin.yaml
+
+# 3. The plugin automatically discovers and optimizes CNPG clusters
+kubectl logs -n cnpg-system -l app=vaanyze-cnpg-plugin --tail=50
+```
+
+**What it does:**
+- ✅ Discovers all PostgreSQL clusters managed by CNPG operator
+- ✅ Provides AI-powered optimization recommendations
+- ✅ Auto-applies safe changes (CREATE INDEX CONCURRENTLY)
+- ✅ Integrates with Prometheus for metrics
+- ✅ Reports health status via Kubernetes probes
+- ✅ Works alongside CNPG's built-in monitoring (complementary, not duplicate)
+
+**How it's different from CNPG monitoring:**
+- **CNPG provides:** Metrics (WAL stats, replication lag, query counts) → "What's happening?"
+- **Vaanyze provides:** AI optimization (missing indexes, query rewrites) → "How to fix it?"
+- **Together:** CNPG alerts on slow queries → Vaanyze creates indexes automatically
+
+See [CNPG_QUICK_START.md](CNPG_QUICK_START.md) for detailed setup instructions.
 
 ### Web Dashboard Usage
 
@@ -650,17 +688,64 @@ Performance improvements from using advanced index intelligence:
 
 ## Comparison to Alternatives
 
-| Feature | pg-query-advisor | pganalyze | Aiven Optimizer |
-|---------|------------------|-----------|-----------------|
-| **Index Types** | 5 (BTREE, HASH, GIN, GIST, BRIN) | 1 (BTREE only) | 2-3 |
-| **Partial Indexes** | ✅ Yes | ❌ No | ❌ No |
-| **Query Rewriting** | ✅ Yes | ❌ No | ✅ Yes |
-| **Auto-Apply** | ✅ With rollback | ❌ Manual only | ✅ Yes |
-| **AI/LLM Integration** | ✅ Multi-provider | ❌ No | ❌ No |
-| **eBPF Profiling** | ✅ Kernel-level | ❌ No | ❌ No |
-| **Cloud-Agnostic** | ✅ Any PostgreSQL | ✅ Yes | ❌ Aiven only |
-| **Open Source** | ✅ MIT License | ❌ Proprietary | ❌ Proprietary |
-| **Price** | Free (open source) | $150+/mo | Included with hosting |
+**Vaanyze vs Observability Tools:** Vaanyze is an **AI-powered optimization platform**, not just an observability tool. It's complementary to monitoring solutions like CloudNativePG, pgNow, pganalyze, and Grafana.
+
+### How Vaanyze is Different
+
+**Observability Tools** (CNPG, pgNow, pganalyze, Grafana):
+- **What they do:** Show you metrics, dashboards, alerts
+- **Focus:** "What's happening?" - Current state visibility
+- **Action required:** Manual interpretation and fixes
+- **Examples:** Query execution times, replication lag, connection counts
+
+**Vaanyze - Autonomous Optimization**:
+- **What it does:** Analyzes patterns and **automatically fixes** problems
+- **Focus:** "How to optimize?" - AI-powered recommendations + auto-apply
+- **Action:** Autonomous with safety guarantees (auto-rollback)
+- **Examples:** "Add index X → saves $120/month", then applies it safely
+
+**They work together:** 
+- CNPG/pgNow/Grafana **detect** the problem → Vaanyze **fixes** it automatically
+- Monitoring shows "query slow" → Vaanyze creates index and validates improvement
+
+### Feature Comparison
+
+| Feature | Vaanyze | pgNow | CloudNativePG | pganalyze |
+|---------|---------|-------|---------------|-----------|
+| **Purpose** | AI Optimization | Diagnostics | Monitoring | Analytics |
+| **Index Types** | 5 (BTREE, HASH, GIN, GIST, BRIN) | Basic stats | Metrics only | 1 (BTREE) |
+| **Missing Index Detection** | ✅ Yes + Auto-create | ❌ No | ❌ No | ✅ Yes |
+| **Unused Index Detection** | ✅ Yes + Auto-drop | Limited | ❌ No | ✅ Yes |
+| **Query Rewriting** | ✅ AI-powered | ❌ No | ❌ No | ❌ No |
+| **Auto-Apply** | ✅ With rollback | ❌ No | ❌ No | ❌ Manual |
+| **AI/LLM Integration** | ✅ Multi-provider | ❌ No | ❌ No | ❌ No |
+| **eBPF Profiling** | ✅ Kernel-level | ❌ No | ❌ No | ❌ No |
+| **Vacuum Analysis** | ✅ Real-time eBPF | ✅ Reporting | ✅ Metrics | ✅ Yes |
+| **Live Session Monitor** | ✅ eBPF + API | ✅ Desktop UI | ✅ Metrics | ✅ Yes |
+| **Cost Estimation** | ✅ Per-recommendation | ❌ No | ❌ No | ❌ No |
+| **CloudNativePG Plugin** | ✅ Native gRPC | ❌ No | ✅ Built-in | ❌ No |
+| **Kubernetes Native** | ✅ CNPG plugin | ❌ No | ✅ Operator | ✅ Helm |
+| **Architecture** | Server-side daemon | Desktop app | Operator | SaaS |
+| **Deployment** | K8s/Docker/Binary | Desktop install | K8s only | Cloud |
+| **Price** | Free (MIT) | Free | Free (Apache) | $150+/mo |
+
+**Use Vaanyze when:**
+- You want **autonomous optimization** not just monitoring
+- You need **AI-powered recommendations** with automatic fixes
+- You want to **reduce cloud costs** with proven ROI tracking
+- You manage **multiple databases** (fleet management)
+- You need **Kubernetes-native** optimization (CNPG plugin)
+
+**Use pgNow/CNPG/Grafana when:**
+- You need **dashboards** and visualizations
+- You want **ad-hoc debugging** with desktop UI
+- You prefer **manual control** over all changes
+- You need **historical metrics** for compliance
+
+**Best approach:** Use **both together**
+- CloudNativePG/Grafana: Monitoring + alerting
+- Vaanyze: Automated optimization + cost reduction
+- pgNow: Ad-hoc debugging when needed
 
 ## Roadmap
 
@@ -706,6 +791,14 @@ Performance improvements from using advanced index intelligence:
 - **Cost tracking** - Aggregate potential savings across fleet
 - **HTTP API** - RESTful API for programmatic access
 - **Chart.js integration** - Interactive time-series visualizations
+
+### ✅ Phase 5.5 Complete - CloudNativePG Integration
+- **CNPG Plugin** - Native CloudNativePG operator plugin (v0.1.0-beta)
+- **gRPC Protocol** - CNPG-I protocol implementation
+- **Kubernetes Deployment** - Production-ready manifests with health probes
+- **Docker Images** - Multi-stage builds with eBPF support
+- **CI/CD Pipeline** - Automated testing and container builds
+- **Documentation** - Complete quick-start guide and integration docs
 
 ### 📅 Phase 6 Planned - Enterprise Features
 - Team collaboration and RBAC
