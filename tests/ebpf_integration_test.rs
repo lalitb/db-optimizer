@@ -197,7 +197,8 @@ mod common_tests {
 /// Linux-specific tests that require eBPF
 #[cfg(target_os = "linux")]
 mod linux_tests {
-    use pg_query_advisor::ebpf::{CgroupCollector, EbpfConfig, EbpfLoader, EbpfManager, EbpfMode};
+    use pg_query_advisor::ebpf::{CgroupCollector, EbpfManager, ContainerRuntime};
+    use pg_query_advisor::EbpfConfig;
 
     /// Test that eBPF manager initializes correctly
     #[tokio::test]
@@ -207,11 +208,14 @@ mod linux_tests {
         let manager = EbpfManager::new(config);
         let stats = manager.get_stats().await;
         println!("eBPF Manager initialized successfully");
-        println!("Mode: {:?}", stats.mode);
-        assert!(matches!(
-            stats.mode,
-            EbpfMode::Privileged | EbpfMode::Mock | EbpfMode::Disabled
-        ));
+        println!("Mode: {}", stats.mode);
+        // stats.mode is now a String, not an enum
+        assert!(
+            stats.mode == "Privileged" 
+            || stats.mode == "Mock" 
+            || stats.mode == "Disabled"
+            || stats.mode == "Client"
+        );
     }
 
     /// Test container cgroup detection
@@ -220,31 +224,37 @@ mod linux_tests {
     async fn test_container_detection() {
         let collector = CgroupCollector::new();
 
-        // Detect runtime
-        let runtime = collector.detect_runtime();
+        // Detect runtime using static method
+        let runtime = collector.container_runtime();
         println!("Detected runtime: {:?}", runtime);
+        
+        // Check if containerized
+        let is_container = collector.is_containerized();
+        println!("Running in container: {}", is_container);
 
-        // Try to get self metrics
-        if let Some(metrics) = collector.collect_self_metrics() {
-            println!("Self metrics:");
-            println!("  CPU usage: {:.2}%", metrics.cpu_usage_percent);
-            println!("  Memory: {} MB", metrics.memory_usage_bytes / 1024 / 1024);
-        }
+        // Collect metrics
+        let metrics = collector.collect().await;
+        println!("Container metrics:");
+        println!("  CPU limit: {:.2} cores", metrics.cpu.cpu_limit_cores());
+        println!("  Memory limit: {} MB", metrics.memory.limit_bytes / 1024 / 1024);
+        println!("  Memory usage: {} MB", metrics.memory.usage_bytes / 1024 / 1024);
     }
 
     /// Test eBPF program loader
     #[tokio::test]
     #[ignore = "Requires Linux with eBPF support and CAP_BPF"]
     async fn test_program_loader() {
+        use pg_query_advisor::ebpf::program_loader::EbpfLoader;
+        
         let loader = EbpfLoader::new();
 
-        // Check BTF availability
-        let btf_available = loader.btf_available();
-        println!("BTF available: {}", btf_available);
+        // Detect capabilities first
+        let result = loader.detect_capabilities().await;
+        println!("Capability detection result: {:?}", result);
 
-        // List available programs
-        let programs = loader.list_available_programs();
-        println!("Available programs: {:?}", programs);
+        // Note: btf_available is a private field, not a method
+        // We can't access it directly in tests
+        println!("Loader initialized successfully");
     }
 }
 
