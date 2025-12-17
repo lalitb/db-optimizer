@@ -2,7 +2,7 @@
 # Production-ready build with minimal runtime footprint
 
 # Stage 1: Builder
-FROM rust:1.75-slim as builder
+FROM rust:1.92-slim as builder
 
 # Install build dependencies
 RUN apt-get update && apt-get install -y \
@@ -30,7 +30,6 @@ RUN mkdir -p src && \
 # Copy actual source code
 COPY src ./src
 COPY bpf ./bpf
-COPY build.rs ./
 
 # Build the actual application with CNPG feature
 RUN cargo build --release --features cnpg && \

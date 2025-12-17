@@ -22,10 +22,7 @@ use pg_query_advisor::{
 #[command(about = "PostgreSQL Query Health Advisor - Find performance issues and cost savings", long_about = None)]
 struct Cli {
     #[command(subcommand)]
-    command: Option<Commands>,
-
-    #[command(flatten)]
-    analyze_opts: Option<AnalyzeOptions>,
+    command: Commands,
 }
 
 #[derive(Subcommand)]
@@ -448,26 +445,17 @@ impl From<MaxRiskLevel> for RiskLevel {
 async fn main() -> Result<()> {
     let cli = Cli::parse();
 
-    // Handle subcommands or default to analyze
+    // Handle subcommands
     match cli.command {
-        Some(Commands::Analyze(opts)) => run_analyze_mode(opts).await,
-        Some(Commands::Agent(opts)) => run_agent_mode(opts).await,
-        Some(Commands::RewriteSql(opts)) => run_rewrite_sql_mode(opts),
-        Some(Commands::Serve(opts)) => run_serve_mode(opts).await,
-        Some(Commands::ConfigTune(opts)) => run_config_tune_mode(opts).await,
-        Some(Commands::ConfigValidate(opts)) => run_config_validate_mode(opts).await,
-        Some(Commands::Ask(opts)) => run_ask_mode(opts).await,
+        Commands::Analyze(opts) => run_analyze_mode(opts).await,
+        Commands::Agent(opts) => run_agent_mode(opts).await,
+        Commands::RewriteSql(opts) => run_rewrite_sql_mode(opts),
+        Commands::Serve(opts) => run_serve_mode(opts).await,
+        Commands::ConfigTune(opts) => run_config_tune_mode(opts).await,
+        Commands::ConfigValidate(opts) => run_config_validate_mode(opts).await,
+        Commands::Ask(opts) => run_ask_mode(opts).await,
         #[cfg(feature = "cnpg")]
-        Some(Commands::CnpgPlugin(opts)) => run_cnpg_plugin_mode(opts).await,
-        None => {
-            // Default behavior - run analyze with flattened options
-            if let Some(opts) = cli.analyze_opts {
-                run_analyze_mode(opts).await
-            } else {
-                eprintln!("Error: No command specified. Use --help for usage information.");
-                std::process::exit(1)
-            }
-        }
+        Commands::CnpgPlugin(opts) => run_cnpg_plugin_mode(opts).await,
     }
 }
 
