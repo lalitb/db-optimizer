@@ -19,14 +19,13 @@
 
 ### Vaanyze CNPG Plugin (AI-Powered Optimization)
 **What it provides:**
-- **Deep inspection**: eBPF-based lock contention, I/O patterns, query parsing
-- **Intelligence**: AI-powered root cause analysis and optimization recommendations
-- **Action-oriented**: "What should I do?" - Concrete, implementable changes
+- **Safe config tuning**: Adds tuned keys under `.spec.postgresql.parameters`
+- **Policy & guardrails**: Opt-in via annotation and never overwrites existing parameter keys
+- **Action-oriented**: "What should I set?" - Concrete, implementable configuration changes
 - **Examples:**
-  - "Add index on `users(email, created_at)` → 450ms → 2ms (99.5% faster)"
-  - "Rewrite `SELECT *` → `SELECT id, name` to reduce I/O by 80%"
-  - "Increase `work_mem` from 4MB → 16MB for this workload"
-  - Auto-apply safe changes in production
+  - "Add/adjust `shared_buffers`, `work_mem`, `effective_cache_size` based on CPU/RAM"
+  - "Optionally manage `max_connections` only when explicitly enabled"
+  - "Apply changes via CNPG-I JSONPatch, without replacing your existing settings"
 
 **Use case:** Performance optimization, cost reduction, autonomous database tuning
 
@@ -49,37 +48,20 @@
           │            (Observability - "What's happening?")
           │
           └──────────► Vaanyze Plugin (gRPC)
-                       (Intelligence - "How to optimize?")
+                       (Tuning - "What should I set?")
                        
                        ┌─────────────────────┐
-                       │ eBPF Data Collection│
-                       │ + AI Analysis       │
-                       │ + Recommendations   │
-                       │ + Auto-Apply        │
+                       │ CNPG-I MutateCluster│
+                       │ + JSONPatch tuning  │
+                       │ + Opt-in guardrails │
                        └─────────────────────┘
 ```
 
-**Real-World Example:**
+**Real-World Example (MVP):**
 
-1. **CNPG Monitoring shows:**
-   ```
-   cnpg_pg_replication_lag{cluster="prod"} 5.2
-   pg_stat_statements: SELECT * FROM orders WHERE user_id = $1 (avg: 450ms)
-   ```
-
-2. **Vaanyze Plugin analyzes:**
-   ```
-   🔍 Detected: Full table scan on orders (450ms avg, 10k rows)
-   📊 Analysis: Missing index on user_id, causing sequential scan
-   💡 Recommendation: CREATE INDEX idx_orders_user_id ON orders(user_id)
-   📈 Expected improvement: 450ms → 2ms (99.5% faster)
-   💰 Cost savings: $120/month (reduced CPU usage)
-   ✅ Auto-applied (safe mode) at 2025-12-16 14:30:00
-   ```
-
-3. **Result:** Both tools confirm improvement
-   - CNPG metrics: Query time drops to 2ms
-   - Vaanyze reports: Optimization successful, monitoring for regression
+1. **Your Cluster spec includes** CPU/RAM requests/limits and an opt-in annotation.
+2. **CNPG calls Vaanyze** via CNPG-I `MutateCluster`.
+3. **Vaanyze returns a JSONPatch** that adds tuned values under `.spec.postgresql.parameters` without overwriting existing keys.
 
 ## ✅ What's Working
 
@@ -208,8 +190,7 @@ This will:
 2. Install CNPG operator
 3. Build and load plugin image
 4. Deploy plugin
-5. Create test database
-6. Verify plugin is working
+5. Verify plugin is reachable and ready
 
 ## 🔍 Troubleshooting
 

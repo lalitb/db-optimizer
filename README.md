@@ -5,12 +5,12 @@ A fast, intelligent platform that analyzes your PostgreSQL databases and provide
 ## 🌟 What's New
 
 ### ☸️ NEW: CloudNativePG Plugin (Beta v0.1.0)
-- **Kubernetes-Native**: Deploy as a CNPG operator plugin
-- **gRPC Integration**: Native CNPG-I protocol support
-- **Health Checks**: Automatic liveness/readiness probes
-- **Multi-Cluster**: Manage optimization across all CNPG clusters
-- **Container-Ready**: Production Docker images with eBPF support
-- **CI/CD**: Automated testing and deployment workflows
+- **Kubernetes-Native**: Deploy as a CloudNativePG (CNPG) plugin
+- **CNPG-I gRPC**: Implements CNPG-I `Operator` service endpoints
+- **Safe Tuning**: Returns JSONPatch to add tuned `.spec.postgresql.parameters` (opt-in, non-overwriting)
+- **Health Checks**: `/health` and `/ready` endpoints for Kubernetes probes
+- **Container-Ready**: Dedicated `Dockerfile.cnpg`
+- **CI/CD**: CNPG-focused workflow (build/test + Docker + optional Kind readiness)
 
 ### 🎯 AI-Powered Web Dashboard (Phase 5)
 - **Fleet Management**: Monitor all your databases in one beautiful interface
@@ -190,7 +190,7 @@ sudo setcap cap_bpf,cap_perfmon=eip ./target/release/pg-query-advisor
 
 ### CloudNativePG Plugin (Kubernetes)
 
-Deploy Vaanyze as a native CloudNativePG operator plugin for autonomous optimization:
+Deploy Vaanyze as a native CloudNativePG operator plugin for PostgreSQL configuration tuning:
 
 ```bash
 # 1. Install CloudNativePG operator (if not already installed)
@@ -199,22 +199,21 @@ kubectl apply -f https://raw.githubusercontent.com/cloudnative-pg/cloudnative-pg
 # 2. Deploy Vaanyze CNPG plugin
 kubectl apply -f k8s/cnpg-plugin.yaml
 
-# 3. The plugin automatically discovers and optimizes CNPG clusters
+# 3. Inspect plugin logs
 kubectl logs -n cnpg-system -l app=vaanyze-cnpg-plugin --tail=50
 ```
 
 **What it does:**
-- ✅ Discovers all PostgreSQL clusters managed by CNPG operator
-- ✅ Provides AI-powered optimization recommendations
-- ✅ Auto-applies safe changes (CREATE INDEX CONCURRENTLY)
-- ✅ Integrates with Prometheus for metrics
-- ✅ Reports health status via Kubernetes probes
-- ✅ Works alongside CNPG's built-in monitoring (complementary, not duplicate)
+- ✅ Implements the CNPG-I gRPC plugin interface (Operator → Plugin calls)
+- ✅ Adds tuned PostgreSQL parameters under `.spec.postgresql.parameters` via JSONPatch
+- ✅ Safe-by-default: opt-in (`vaanyze.io/enable-tuning: "true"`) and **never overwrites** existing parameter keys
+- ✅ Reports health via Kubernetes probes (`/health`, `/ready`)
+- ✅ Designed to work alongside CNPG’s built-in monitoring (complementary)
 
 **How it's different from CNPG monitoring:**
 - **CNPG provides:** Metrics (WAL stats, replication lag, query counts) → "What's happening?"
-- **Vaanyze provides:** AI optimization (missing indexes, query rewrites) → "How to fix it?"
-- **Together:** CNPG alerts on slow queries → Vaanyze creates indexes automatically
+- **Vaanyze provides:** Safe config tuning policy → "What should I set/change?"
+- **Together:** CNPG alerts show symptoms → Vaanyze can propose safe parameter adjustments
 
 See [CNPG_QUICK_START.md](CNPG_QUICK_START.md) for detailed setup instructions.
 

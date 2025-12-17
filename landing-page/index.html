@@ -257,8 +257,8 @@
                     The Only Performance Plugin for <span class="gradient-text">CloudNativePG</span>
                 </h2>
                 <p class="text-xl text-gray-700 max-w-3xl mx-auto">
-                    Seamlessly integrate autonomous PostgreSQL optimization into your Kubernetes clusters.
-                    Deploy once, optimize everywhere.
+                    Seamlessly integrate safe PostgreSQL configuration tuning into your Kubernetes clusters.
+                    Opt-in per cluster, with guardrails.
                 </p>
             </div>
 
@@ -271,8 +271,8 @@
                             <div>
                                 <h3 class="text-lg font-bold mb-2 text-gray-900">Kubernetes-Native Deployment</h3>
                                 <p class="text-gray-700 text-sm">
-                                    Deploy as a DaemonSet. Auto-discovers CloudNativePG clusters.
-                                    Integrates with CNPG-I plugin interface for lifecycle management.
+                                    Deploy as a single Kubernetes Deployment.
+                                    Integrates with the CNPG-I plugin interface (gRPC) to safely mutate Cluster specs.
                                 </p>
                             </div>
                         </div>
@@ -284,8 +284,8 @@
                             <div>
                                 <h3 class="text-lg font-bold mb-2 text-gray-900">Zero Configuration Required</h3>
                                 <p class="text-gray-700 text-sm">
-                                    Automatically monitors all PostgreSQL clusters in your namespace.
-                                    Health scores, recommendations, and auto-optimization work out of the box.
+                                    No DB credentials required for the tuning MVP.
+                                    Opt in with annotations and Vaanyze returns a safe JSONPatch for PostgreSQL parameters.
                                 </p>
                             </div>
                         </div>
@@ -310,8 +310,9 @@
                             <div>
                                 <h3 class="text-lg font-bold mb-2 text-gray-900">Minimal Resource Overhead</h3>
                                 <p class="text-gray-700 text-sm">
-                                    <100MB memory, <100m CPU per database. eBPF instrumentation adds <2% overhead.
-                                        Production-ready for high-traffic workloads. </p>
+                                    Small footprint and runs alongside your CNPG operator.
+                                    Exposes liveness/readiness probes for safe rollouts.
+                                </p>
                             </div>
                         </div>
                     </div>
@@ -326,10 +327,10 @@
                             <div class="w-3 h-3 rounded-full bg-green-500"></div>
                             <div class="ml-2 text-gray-500 text-xs">kubectl apply -f vaanyze-plugin.yaml</div>
                         </div>
-                        <pre class="text-sm text-gray-300 leading-relaxed"><code><span class="text-purple-400">apiVersion:</span> apps/v1
-<span class="text-purple-400">kind:</span> DaemonSet
+                                                <pre class="text-sm text-gray-300 leading-relaxed"><code><span class="text-purple-400">apiVersion:</span> apps/v1
+<span class="text-purple-400">kind:</span> Deployment
 <span class="text-purple-400">metadata:</span>
-  <span class="text-blue-400">name:</span> vaanyze-plugin
+    <span class="text-blue-400">name:</span> vaanyze-cnpg-plugin
   <span class="text-blue-400">namespace:</span> cnpg-system
 <span class="text-purple-400">spec:</span>
   <span class="text-purple-400">template:</span>
@@ -337,15 +338,12 @@
       <span class="text-purple-400">containers:</span>
       - <span class="text-blue-400">name:</span> plugin
         <span class="text-blue-400">image:</span> vaanyze/cnpg-plugin:latest
-        <span class="text-blue-400">env:</span>
-        - <span class="text-blue-400">name:</span> VAANYZE_API_KEY
-          <span class="text-blue-400">valueFrom:</span>
-            <span class="text-blue-400">secretKeyRef:</span>
-              <span class="text-blue-400">name:</span> vaanyze-credentials
-              <span class="text-blue-400">key:</span> api-key
+                <span class="text-blue-400">args:</span> ["cnpg-plugin", "--port", "8080"]
         <span class="text-blue-400">ports:</span>
-        - <span class="text-blue-400">containerPort:</span> 50051
-          <span class="text-blue-400">name:</span> grpc</code></pre>
+                - <span class="text-blue-400">containerPort:</span> 8080
+                    <span class="text-blue-400">name:</span> grpc
+                - <span class="text-blue-400">containerPort:</span> 8081
+                    <span class="text-blue-400">name:</span> health</code></pre>
                     </div>
 
                     <div class="mt-6 p-4 bg-purple-100 rounded-lg border border-purple-300">
@@ -1531,7 +1529,7 @@ vaanyze ask "Why is my users table slow?" \
                         DigitalOcean, self-hosted instances<br>
                         <strong>Deployment:</strong> VM, Docker, Kubernetes (AKS, EKS, GKE)<br>
                         <strong>OS:</strong> Linux 4.15+ (Ubuntu 18.04+, RHEL 8+, Amazon Linux 2)<br><br>
-                        <em>💡 Kubernetes DaemonSet mode (fleet optimization) coming Q2 2025</em>
+                        <em>💡 Kubernetes DaemonSet mode (fleet optimization) planned</em>
                     </p>
                 </div>
 
@@ -1561,19 +1559,19 @@ vaanyze ask "Why is my users table slow?" \
                 <div class="bg-white p-6 rounded-xl shadow-md">
                     <h3 class="text-xl font-bold mb-3">How does the CloudNativePG plugin work?</h3>
                     <p class="text-gray-700 mb-3">
-                        The Vaanyze CNPG plugin deploys as a Kubernetes operator that integrates with CloudNativePG using the
-                        <strong>CNPG-I plugin interface</strong>. It automatically:
+                        The Vaanyze CNPG plugin deploys as a Kubernetes Deployment and integrates with CloudNativePG using the
+                        <strong>CNPG-I plugin interface</strong>. In the current tuning MVP it:
                     </p>
                     <ul class="text-gray-700 list-disc ml-6 space-y-1">
-                        <li><strong>Discovers</strong> all PostgreSQL clusters managed by CNPG operator</li>
-                        <li><strong>Analyzes</strong> query patterns using eBPF + pg_stat_statements</li>
-                        <li><strong>Recommends</strong> indexes, config changes, and query optimizations</li>
-                        <li><strong>Auto-applies</strong> safe changes (CREATE INDEX CONCURRENTLY)</li>
-                        <li><strong>Integrates</strong> with Prometheus for metrics and Grafana for dashboards</li>
+                        <li><strong>Mutates</strong> CNPG Cluster specs via <code class="bg-gray-100 px-2 py-1 rounded text-sm">MutateCluster</code> (gRPC)</li>
+                        <li><strong>Adds</strong> tuned PostgreSQL parameters under <code class="bg-gray-100 px-2 py-1 rounded text-sm">spec.postgresql.parameters</code></li>
+                        <li><strong>Requires opt-in</strong> via annotations (safe-by-default)</li>
+                        <li><strong>Never overwrites</strong> user-provided parameter keys</li>
+                        <li><strong>Works with</strong> CNPG monitoring (Prometheus/Grafana) as a complementary layer</li>
                     </ul>
                     <p class="text-gray-700 mt-3">
                         Deploy once with <code class="bg-gray-100 px-2 py-1 rounded text-sm">kubectl apply -f k8s/cnpg-plugin.yaml</code>
-                        and start optimizing all clusters automatically. See
+                        and enable tuning per cluster via annotations. See
                         <a href="https://github.com/vaanyze/db-optimizer/blob/main/CNPG_QUICK_START.md" class="text-purple-600 hover:underline">CNPG_QUICK_START.md</a>
                         for setup instructions.
                     </p>

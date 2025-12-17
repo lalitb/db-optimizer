@@ -4,14 +4,16 @@ This guide details how to deploy and configure the Vaanyze plugin for CloudNativ
 
 ## Overview
 
-The Vaanyze CNPG plugin integrates directly with the CloudNativePG operator to provide autonomous database optimization for PostgreSQL clusters running in Kubernetes.
+The Vaanyze CNPG plugin integrates with the CloudNativePG operator using the **CNPG-I gRPC plugin interface**.
+
+Current MVP scope: the plugin safely injects **PostgreSQL configuration tuning** into a CNPG `Cluster` by returning a **JSONPatch** from the CNPG-I `MutateCluster` RPC (opt-in, non-overwriting).
 
 ### Architecture
 
 1. **CNPG Operator**: Manages PostgreSQL clusters.
-2. **Vaanyze Plugin**: Runs as a separate deployment (gRPC server).
-3. **Communication**: The Operator calls the Plugin via gRPC for lifecycle events (e.g., `Evaluate`).
-4. **Optimization**: The Plugin connects to the database, analyzes performance, and reports health scores.
+2. **Vaanyze Plugin**: Runs as a separate deployment (gRPC server on port 8080, health HTTP on 8081).
+3. **Communication**: The Operator calls the Plugin via CNPG-I gRPC (`GetCapabilities`, `MutateCluster`, `SetStatusInCluster`).
+4. **Optimization**: The Plugin reads the CNPG `Cluster` definition and returns a JSONPatch that adds tuned keys under `.spec.postgresql.parameters`.
 
 ## Prerequisites
 
@@ -40,7 +42,9 @@ kubectl apply -f k8s/cnpg-plugin.yaml
 This creates:
 - `Deployment`: The plugin application
 - `Service`: Exposes the gRPC interface
-- `ServiceAccount` & `RBAC`: Permissions to read Secrets (for DB access)
+- `ServiceAccount` & `RBAC`: Permissions to read CNPG Cluster resources (and optionally Secrets for future extensions)
+
+Note: the Service exposes **gRPC on port 80** (targeting container port 8080). Health endpoints are served on container port **8081** and are used by Kubernetes probes.
 
 ### 3. Configure CloudNativePG to Use the Plugin
 
@@ -59,7 +63,11 @@ plugins:
 
 ### 4. Enable Plugin on a Cluster
 
-Add the plugin annotation to your PostgreSQL Cluster manifest:
+Enable the plugin on a specific CNPG `Cluster` via annotations.
+
+Minimum:
+- `cnpg.io/plugins: "vaanyze"` (tells CNPG to call the plugin)
+- `vaanyze.io/enable-tuning: "true"` (opt-in gate; plugin does nothing without it)
 
 ```yaml
 apiVersion: postgresql.cnpg.io/v1
@@ -67,18 +75,25 @@ kind: Cluster
 metadata:
   name: my-cluster
   annotations:
-    cnpg.io/plugins: vaanyze
+    cnpg.io/plugins: "vaanyze"
+    vaanyze.io/enable-tuning: "true"
 spec:
   # ... rest of spec
+
+For a complete example, see [examples/cnpg/cluster-vaanyze-tuning.yaml](../examples/cnpg/cluster-vaanyze-tuning.yaml).
 ```
 
 ## How It Works
 
-1. **Lifecycle Hook**: When the Operator reconciles the Cluster, it calls the `LifecycleHook` method of the Vaanyze plugin.
-2. **Connection**: The plugin reads the `Cluster` definition, extracts the name and namespace.
-3. **Authentication**: It fetches the `<cluster-name>-superuser` Secret to get the `postgres` password.
-4. **Analysis**: It connects to the primary instance (`<cluster-name>-rw`) and runs the Vaanyze analysis engine.
-5. **Reporting**: It logs the health score and potential optimizations.
+1. **Capabilities**: CNPG calls `GetCapabilities` to determine supported operations.
+2. **Mutation**: On reconcile, CNPG calls `MutateCluster` with the Cluster JSON definition.
+3. **Opt-in gate**: If `vaanyze.io/enable-tuning` is not `"true"`, the plugin returns no patch.
+4. **Patch generation**: If opted in, the plugin generates a JSONPatch that:
+  - Adds `.spec.postgresql.parameters` if missing
+  - Adds tuned parameters **only when the key is absent** (never overwrites user-provided values)
+5. **Status**: CNPG may call `SetStatusInCluster`, and the plugin returns a status blob (e.g., version + whether tuning was applied).
+
+Important: In the current MVP, the plugin does **not** require DB credentials and does **not** connect to PostgreSQL during `MutateCluster`. It relies on the Cluster definition and conservative defaults.
 
 ## Troubleshooting
 
@@ -87,7 +102,14 @@ spec:
 kubectl logs -n cnpg-system -l app=vaanyze-cnpg-plugin
 ```
 
+**Check Health Endpoints (port-forward):**
+```bash
+kubectl port-forward -n cnpg-system deployment/vaanyze-cnpg-plugin 8081:8081
+curl -sSf http://localhost:8081/health
+curl -sSf http://localhost:8081/ready
+```
+
 **Common Issues:**
-- **Permission Denied**: Ensure the ServiceAccount has `get` access to `secrets` in the target namespace.
-- **Connection Failed**: Verify the plugin can resolve the `<cluster-name>-rw` service DNS.
-- **gRPC Errors**: Ensure the Operator can reach the plugin Service on port 80.
+- **Plugin not invoked**: Ensure the CNPG operator is configured with the plugin endpoint, and the Cluster has `cnpg.io/plugins: "vaanyze"`.
+- **No changes applied**: Ensure `vaanyze.io/enable-tuning: "true"` is set on the Cluster.
+- **gRPC errors**: Ensure the operator can reach `vaanyze-cnpg-plugin.cnpg-system.svc:80`.
