@@ -1824,7 +1824,7 @@ async fn run_cnpg_plugin_mode(opts: CnpgPluginOptions) -> Result<()> {
 
     println!("{}", "Vaanyze CloudNativePG Plugin".bright_cyan().bold());
     println!("{}", "Starting gRPC server...".bright_black());
-    
+
     // Run the CNPG plugin server
     pg_query_advisor::cnpg_plugin::run_cnpg_plugin(opts.port, opts.config).await?;
 

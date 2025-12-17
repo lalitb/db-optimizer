@@ -323,7 +323,7 @@ pub async fn start_grpc_server(
     // Start health check HTTP server on port+1 for Kubernetes probes
     let health_addr: SocketAddr = format!("0.0.0.0:{}", port + 1).parse()?;
     let health_service = service.clone();
-    
+
     let health_router = Router::new()
         .route("/health", get(move || async move { "OK" }))
         .route(
@@ -348,7 +348,7 @@ pub async fn start_grpc_server(
         let listener = tokio::net::TcpListener::bind(health_addr)
             .await
             .map_err(|e| anyhow::anyhow!("Failed to bind health server: {}", e))?;
-        
+
         axum::serve(listener, health_router)
             .await
             .map_err(|e| anyhow::anyhow!("Health server error: {}", e))
