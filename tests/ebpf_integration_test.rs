@@ -197,7 +197,7 @@ mod common_tests {
 /// Linux-specific tests that require eBPF
 #[cfg(target_os = "linux")]
 mod linux_tests {
-    use pg_query_advisor::ebpf::{CgroupCollector, EbpfManager, ContainerRuntime};
+    use pg_query_advisor::ebpf::{CgroupCollector, ContainerRuntime, EbpfManager};
     use pg_query_advisor::EbpfConfig;
 
     /// Test that eBPF manager initializes correctly
@@ -211,10 +211,10 @@ mod linux_tests {
         println!("Mode: {}", stats.mode);
         // stats.mode is now a String, not an enum
         assert!(
-            stats.mode == "Privileged" 
-            || stats.mode == "Mock" 
-            || stats.mode == "Disabled"
-            || stats.mode == "Client"
+            stats.mode == "Privileged"
+                || stats.mode == "Mock"
+                || stats.mode == "Disabled"
+                || stats.mode == "Client"
         );
     }
 
@@ -227,7 +227,7 @@ mod linux_tests {
         // Detect runtime using static method
         let runtime = collector.container_runtime();
         println!("Detected runtime: {:?}", runtime);
-        
+
         // Check if containerized
         let is_container = collector.is_containerized();
         println!("Running in container: {}", is_container);
@@ -236,8 +236,14 @@ mod linux_tests {
         let metrics = collector.collect().await;
         println!("Container metrics:");
         println!("  CPU limit: {:.2} cores", metrics.cpu.cpu_limit_cores());
-        println!("  Memory limit: {} MB", metrics.memory.limit_bytes / 1024 / 1024);
-        println!("  Memory usage: {} MB", metrics.memory.usage_bytes / 1024 / 1024);
+        println!(
+            "  Memory limit: {} MB",
+            metrics.memory.limit_bytes / 1024 / 1024
+        );
+        println!(
+            "  Memory usage: {} MB",
+            metrics.memory.usage_bytes / 1024 / 1024
+        );
     }
 
     /// Test eBPF program loader
@@ -245,7 +251,7 @@ mod linux_tests {
     #[ignore = "Requires Linux with eBPF support and CAP_BPF"]
     async fn test_program_loader() {
         use pg_query_advisor::ebpf::program_loader::EbpfLoader;
-        
+
         let loader = EbpfLoader::new();
 
         // Detect capabilities first
