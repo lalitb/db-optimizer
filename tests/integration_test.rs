@@ -555,7 +555,10 @@ async fn test_connection_monitoring_integration() {
         );
     }
 
-    assert!(!connections.is_empty(), "Should have at least one connection");
+    assert!(
+        !connections.is_empty(),
+        "Should have at least one connection"
+    );
 
     // Verify connection data structure
     for conn in &connections {
