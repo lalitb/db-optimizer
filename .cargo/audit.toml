@@ -9,6 +9,5 @@ ignore = [
     "RUSTSEC-2023-0071",
 ]
 
-# Allow unmaintained crates (treated as warnings, not errors)
-[advisories.unmaintained]
-warn = true
+# Show informational warnings (including unmaintained crates) but don't fail the build
+informational_warnings = ["unmaintained"]
