@@ -7,56 +7,66 @@ use anyhow::Result;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 
-use crate::models::{Recommendation, ApplyResult, QueryStats};
-use crate::config::{PersistenceBackend, QueryTextStorage};
-use crate::privacy::redact_sql_for_display;
+use crate::config::PersistenceBackend;
+use crate::models::{ApplyResult, QueryStats, Recommendation};
 
 /// Trait for persistence backends
 #[async_trait]
 pub trait PersistenceStore: Send + Sync {
     /// Initialize the persistence store (create tables, run migrations, etc.)
     async fn initialize(&self) -> Result<()>;
-    
+
     /// Store a query sample
     async fn store_query_sample(&self, sample: &QuerySample) -> Result<()>;
-    
+
     /// Store a recommendation
     async fn store_recommendation(&self, rec: &RecommendationRecord) -> Result<()>;
-    
+
     /// Update recommendation status
-    async fn update_recommendation_status(&self, id: &str, status: RecommendationStatus) -> Result<()>;
-    
+    async fn update_recommendation_status(
+        &self,
+        id: &str,
+        status: RecommendationStatus,
+    ) -> Result<()>;
+
     /// Store a change event (proposed, applied, verified, rolled back)
     async fn store_change_event(&self, event: &ChangeEvent) -> Result<()>;
-    
+
     /// Store a baseline snapshot
     async fn store_baseline(&self, baseline: &BaselineSnapshot) -> Result<()>;
-    
+
     /// Get query samples for a specific query ID
     async fn get_query_samples(&self, query_id: i64, limit: usize) -> Result<Vec<QuerySample>>;
-    
+
     /// Get recommendations by status
-    async fn get_recommendations_by_status(&self, status: RecommendationStatus) -> Result<Vec<RecommendationRecord>>;
-    
+    async fn get_recommendations_by_status(
+        &self,
+        status: RecommendationStatus,
+    ) -> Result<Vec<RecommendationRecord>>;
+
     /// Get change history for a recommendation
     async fn get_change_history(&self, recommendation_id: &str) -> Result<Vec<ChangeEvent>>;
-    
+
     /// Get baseline snapshots for a recommendation
-    async fn get_baselines(&self, recommendation_id: &str) -> Result<(Option<BaselineSnapshot>, Option<BaselineSnapshot>)>;
-    
+    async fn get_baselines(
+        &self,
+        recommendation_id: &str,
+    ) -> Result<(Option<BaselineSnapshot>, Option<BaselineSnapshot>)>;
+
     /// Get top wins (successful recommendations) with highest impact
     async fn get_top_wins(&self, limit: usize) -> Result<Vec<WinSummary>>;
-    
+
     /// Clean up old records based on retention policy
     async fn cleanup_old_records(&self, retention_days: u32) -> Result<u64>;
 }
 
 /// Factory for creating persistence stores
-pub async fn create_store(backend: PersistenceBackend, config: &crate::config::PersistenceConfig) -> Result<Box<dyn PersistenceStore>> {
+pub async fn create_store(
+    backend: PersistenceBackend,
+    config: &crate::config::PersistenceConfig,
+) -> Result<Box<dyn PersistenceStore>> {
     match backend {
-        PersistenceBackend::None => {
-            Ok(Box::new(NullStore))
-        }
+        PersistenceBackend::None => Ok(Box::new(NullStore)),
         PersistenceBackend::Sqlite => {
             let store = sqlite::SqliteStore::new(&config.sqlite_path).await?;
             store.initialize().await?;
@@ -80,7 +90,7 @@ pub struct QuerySample {
     pub p99_exec_time_ms: f64,
     pub calls_per_min: f64,
     pub total_calls: i64,
-    
+
     // eBPF metrics (optional)
     pub cpu_time_us: Option<u64>,
     pub io_wait_time_us: Option<u64>,
@@ -90,21 +100,15 @@ pub struct QuerySample {
 
 impl QuerySample {
     /// Create from QueryStats
-    pub fn from_query_stats(stats: &QueryStats, storage: QueryTextStorage) -> Self {
-        let query_text = match storage {
-            QueryTextStorage::None => "<omitted>".to_string(),
-            QueryTextStorage::Redacted => redact_sql_for_display(&stats.query, 2000),
-            QueryTextStorage::Full => stats.query.clone(),
-        };
-
+    pub fn from_query_stats(stats: &QueryStats) -> Self {
         Self {
             captured_at: Utc::now(),
             query_id: stats.queryid.unwrap_or(0),
-            query_text,
+            query_text: stats.query.clone(),
             mean_exec_time_ms: stats.mean_exec_time_ms,
             p95_exec_time_ms: stats.mean_exec_time_ms * 1.5, // Approximation
             p99_exec_time_ms: stats.mean_exec_time_ms * 2.0, // Approximation
-            calls_per_min: stats.calls as f64 / 60.0, // Rough estimate
+            calls_per_min: stats.calls as f64 / 60.0,        // Rough estimate
             total_calls: stats.calls,
             cpu_time_us: None,
             io_wait_time_us: None,
@@ -167,7 +171,7 @@ impl RecommendationStatus {
             Self::Rejected => "REJECTED",
         }
     }
-    
+
     pub fn from_str(s: &str) -> Option<Self> {
         match s.to_uppercase().as_str() {
             "PENDING" => Some(Self::Pending),
@@ -217,7 +221,7 @@ impl ChangeEvent {
             metadata: serde_json::json!({}),
         }
     }
-    
+
     pub fn with_metadata(mut self, metadata: serde_json::Value) -> Self {
         self.metadata = metadata;
         self
@@ -254,7 +258,7 @@ impl BaselineSnapshot {
             BaselineType::PreApply => serde_json::to_value(&result.baseline).unwrap_or_default(),
             BaselineType::PostApply => serde_json::to_value(&result.post_apply).unwrap_or_default(),
         };
-        
+
         Self {
             recommendation_id: result.recommendation_id.clone(),
             baseline_type,
@@ -280,16 +284,50 @@ struct NullStore;
 
 #[async_trait]
 impl PersistenceStore for NullStore {
-    async fn initialize(&self) -> Result<()> { Ok(()) }
-    async fn store_query_sample(&self, _sample: &QuerySample) -> Result<()> { Ok(()) }
-    async fn store_recommendation(&self, _rec: &RecommendationRecord) -> Result<()> { Ok(()) }
-    async fn update_recommendation_status(&self, _id: &str, _status: RecommendationStatus) -> Result<()> { Ok(()) }
-    async fn store_change_event(&self, _event: &ChangeEvent) -> Result<()> { Ok(()) }
-    async fn store_baseline(&self, _baseline: &BaselineSnapshot) -> Result<()> { Ok(()) }
-    async fn get_query_samples(&self, _query_id: i64, _limit: usize) -> Result<Vec<QuerySample>> { Ok(vec![]) }
-    async fn get_recommendations_by_status(&self, _status: RecommendationStatus) -> Result<Vec<RecommendationRecord>> { Ok(vec![]) }
-    async fn get_change_history(&self, _recommendation_id: &str) -> Result<Vec<ChangeEvent>> { Ok(vec![]) }
-    async fn get_baselines(&self, _recommendation_id: &str) -> Result<(Option<BaselineSnapshot>, Option<BaselineSnapshot>)> { Ok((None, None)) }
-    async fn get_top_wins(&self, _limit: usize) -> Result<Vec<WinSummary>> { Ok(vec![]) }
-    async fn cleanup_old_records(&self, _retention_days: u32) -> Result<u64> { Ok(0) }
+    async fn initialize(&self) -> Result<()> {
+        Ok(())
+    }
+    async fn store_query_sample(&self, _sample: &QuerySample) -> Result<()> {
+        Ok(())
+    }
+    async fn store_recommendation(&self, _rec: &RecommendationRecord) -> Result<()> {
+        Ok(())
+    }
+    async fn update_recommendation_status(
+        &self,
+        _id: &str,
+        _status: RecommendationStatus,
+    ) -> Result<()> {
+        Ok(())
+    }
+    async fn store_change_event(&self, _event: &ChangeEvent) -> Result<()> {
+        Ok(())
+    }
+    async fn store_baseline(&self, _baseline: &BaselineSnapshot) -> Result<()> {
+        Ok(())
+    }
+    async fn get_query_samples(&self, _query_id: i64, _limit: usize) -> Result<Vec<QuerySample>> {
+        Ok(vec![])
+    }
+    async fn get_recommendations_by_status(
+        &self,
+        _status: RecommendationStatus,
+    ) -> Result<Vec<RecommendationRecord>> {
+        Ok(vec![])
+    }
+    async fn get_change_history(&self, _recommendation_id: &str) -> Result<Vec<ChangeEvent>> {
+        Ok(vec![])
+    }
+    async fn get_baselines(
+        &self,
+        _recommendation_id: &str,
+    ) -> Result<(Option<BaselineSnapshot>, Option<BaselineSnapshot>)> {
+        Ok((None, None))
+    }
+    async fn get_top_wins(&self, _limit: usize) -> Result<Vec<WinSummary>> {
+        Ok(vec![])
+    }
+    async fn cleanup_old_records(&self, _retention_days: u32) -> Result<u64> {
+        Ok(0)
+    }
 }

@@ -21,6 +21,8 @@ struct SafetyValidator;
 #[derive(Clone)]
 struct MemoryValidator;
 #[derive(Clone)]
+struct ConnectionValidator;
+
 impl ConfigValidator {
     pub fn new() -> Self {
         Self {
@@ -157,9 +159,7 @@ pub struct PgConfig {
     pub log_checkpoints: bool,
 }
 
-/// Safety validator - checks for dangerous settings
-struct SafetyValidator;
-
+// SafetyValidator implementation
 impl SafetyValidator {
     fn validate(&self, config: &PgConfig) -> Vec<ValidationIssue> {
         let mut issues = Vec::new();
@@ -246,9 +246,7 @@ impl SafetyValidator {
     }
 }
 
-/// Memory validator - checks memory configuration
-struct MemoryValidator;
-
+// MemoryValidator implementation
 impl MemoryValidator {
     fn validate(&self, config: &PgConfig, system: &SystemInfo) -> Vec<ValidationIssue> {
         let mut issues = Vec::new();
@@ -316,9 +314,7 @@ impl MemoryValidator {
     }
 }
 
-/// Connection validator - checks connection configuration
-struct ConnectionValidator;
-
+// ConnectionValidator implementation
 impl ConnectionValidator {
     fn validate_config(&self, config: &PgConfig) -> Vec<ValidationIssue> {
         let mut issues = Vec::new();

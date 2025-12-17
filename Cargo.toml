@@ -5,19 +5,7 @@ edition = "2021"
 authors = ["Your Name <you@example.com>"]
 description = "PostgreSQL query health advisor - find performance issues and cost savings"
 
-[features]
-# Keep the default build lean and customer-safe.
-default = []
-
-# CloudNativePG plugin (unfinished; requires tonic + generated protos).
-cnpg = ["dep:tonic", "dep:prost", "dep:tokio-stream", "dep:kube", "dep:k8s-openapi"]
-
 [dependencies]
-tonic = { version = "0.10", optional = true }
-prost = { version = "0.12", optional = true }
-tokio-stream = { version = "0.1", optional = true }
-kube = { version = "0.87", features = ["runtime", "derive"], optional = true }
-k8s-openapi = { version = "0.20", features = ["v1_27"], optional = true }
 rand = "0.8"
 # Database - updated to fix RUSTSEC-2024-0363
 sqlx = { version = "0.8", features = ["postgres", "sqlite", "runtime-tokio-native-tls", "chrono"] }
@@ -67,9 +55,6 @@ libc = "0.2"
 # String utilities
 regex = "1"
 
-[build-dependencies]
-tonic-build = "0.10"
-
 # System information
 num_cpus = "1"
 
@@ -89,8 +74,11 @@ sqlparser = "0.39"
 uuid = { version = "1.6", features = ["v4", "serde"] }
 
 # gRPC support for CNPG plugin
-tonic = "0.11"
-prost = "0.12"
+tonic = { version = "0.11", optional = true }
+prost = { version = "0.12", optional = true }
+tokio-stream = { version = "0.1", optional = true }
+kube = { version = "0.96", optional = true, features = ["client", "rustls-tls"] }
+k8s-openapi = { version = "0.23", optional = true, features = ["latest"] }
 
 [dev-dependencies]
 tokio-test = "0.4"
@@ -99,3 +87,4 @@ tempfile = "3.8"
 [features]
 default = []
 ebpf = ["aya", "aya-log"]
+cnpg = ["dep:tonic", "dep:prost", "dep:tokio-stream", "dep:kube", "dep:k8s-openapi"]

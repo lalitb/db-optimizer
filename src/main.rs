@@ -1,18 +1,19 @@
+use anyhow::Result;
 use clap::{Parser, Subcommand};
 use colored::*;
 use sqlx::postgres::PgPoolOptions;
 use sqlx::Row;
 use std::path::PathBuf;
-use anyhow::Result;
 use tokio::signal;
 use tokio::time::{interval, Duration};
 
 use pg_query_advisor::{
-    DatabaseCollector, RecommendationEngine, OutputFormatter, AnalysisReport, Severity,
-    AutoApplyOrchestrator, AutoApplyConfig, RiskLevel, AnalysisConfig, ThresholdConfig,
     agent::{AgentState, AnalysisResults},
+    ai::{AiConfig, LlmProvider},
     analyzer::HealthCalculator,
-    query_rewriter::cli::{RewriterCli, InputSource, OutputFormat as RewriterOutputFormat},
+    query_rewriter::cli::{InputSource, OutputFormat as RewriterOutputFormat, RewriterCli},
+    AnalysisConfig, AnalysisReport, AutoApplyConfig, AutoApplyOrchestrator, DatabaseCollector,
+    OutputFormatter, PricingConfig, RecommendationEngine, RiskLevel, Severity, ThresholdConfig,
 };
 
 #[derive(Parser)]
@@ -31,37 +32,51 @@ struct Cli {
 enum Commands {
     /// Analyze database queries and generate recommendations (default)
     Analyze(AnalyzeOptions),
-    
+
     /// Run as background agent with continuous monitoring
     Agent(AgentOptions),
-    
+
     /// Rewrite and optimize SQL queries
     RewriteSql(RewriteSqlOptions),
-    
+
     /// Start HTTP API server
     Serve(ServeOptions),
-    
+
     /// Tune PostgreSQL configuration (generate optimal settings)
     ConfigTune(ConfigTuneOptions),
-    
+
     /// Validate current PostgreSQL configuration
     ConfigValidate(ConfigValidateOptions),
 
-    /// Start the CloudNativePG integration plugin server
-    #[cfg(feature = "cnpg")]
-    CnpgPlugin(CnpgPluginOptions),
+    /// Ask a natural language question about the database state
+    Ask(AskOptions),
 }
 
 #[derive(Parser)]
-#[cfg(feature = "cnpg")]
-struct CnpgPluginOptions {
-    /// Port to listen on
-    #[arg(long, default_value = "8080")]
-    port: u16,
+struct AskOptions {
+    /// The question to ask
+    #[arg(index = 1)]
+    question: String,
 
-    /// Path to configuration file
-    #[arg(long, short)]
-    config: Option<PathBuf>,
+    /// PostgreSQL connection string (or set DATABASE_URL env var)
+    #[arg(short, long, env = "DATABASE_URL")]
+    database_url: String,
+
+    /// AI provider (openai, anthropic, ollama)
+    #[arg(long, default_value = "openai")]
+    provider: String,
+
+    /// AI API key (or set OPENAI_API_KEY/ANTHROPIC_API_KEY env var)
+    #[arg(long)]
+    api_key: Option<String>,
+
+    /// Model to use
+    #[arg(long)]
+    model: Option<String>,
+
+    /// Base URL for Ollama (default: http://localhost:11434)
+    #[arg(long)]
+    base_url: Option<String>,
 }
 
 #[derive(Parser)]
@@ -139,6 +154,27 @@ struct AnalyzeOptions {
     /// Slack webhook URL for notifications (or set SLACK_WEBHOOK env var)
     #[arg(long, env = "SLACK_WEBHOOK")]
     slack_webhook: Option<String>,
+
+    // ===== AI Arguments =====
+    /// Enable AI-powered recommendations
+    #[arg(long)]
+    ai: bool,
+
+    /// AI provider (openai, anthropic, ollama)
+    #[arg(long, default_value = "openai")]
+    ai_provider: String,
+
+    /// AI model to use (e.g., gpt-4o-mini, claude-3-haiku-20240307, llama3.2)
+    #[arg(long)]
+    ai_model: Option<String>,
+
+    /// AI API key (or set OPENAI_API_KEY/ANTHROPIC_API_KEY env var)
+    #[arg(long)]
+    ai_api_key: Option<String>,
+
+    /// Ollama base URL (default: http://localhost:11434)
+    #[arg(long)]
+    ai_base_url: Option<String>,
 }
 
 #[derive(Parser)]
@@ -206,6 +242,27 @@ struct AgentOptions {
     /// Slack webhook URL for notifications
     #[arg(long, env = "SLACK_WEBHOOK")]
     slack_webhook: Option<String>,
+
+    // ===== AI Arguments =====
+    /// Enable AI-powered recommendations
+    #[arg(long)]
+    ai: bool,
+
+    /// AI provider (openai, anthropic, ollama)
+    #[arg(long, default_value = "openai")]
+    ai_provider: String,
+
+    /// AI model to use
+    #[arg(long)]
+    ai_model: Option<String>,
+
+    /// AI API key
+    #[arg(long)]
+    ai_api_key: Option<String>,
+
+    /// Ollama base URL
+    #[arg(long)]
+    ai_base_url: Option<String>,
 }
 
 #[derive(Parser)]
@@ -213,7 +270,15 @@ struct ServeOptions {
     /// Port to listen on
     #[arg(short, long, default_value = "8080")]
     port: u16,
-    
+
+    /// Enable eBPF-based lock contention tracking (requires Linux 5.8+ and CAP_BPF)
+    #[arg(long)]
+    enable_ebpf: bool,
+
+    /// PostgreSQL process ID to monitor with eBPF (required if --enable-ebpf is set)
+    #[arg(long)]
+    postgres_pid: Option<i32>,
+
     /// Enable verbose logging
     #[arg(short, long)]
     verbose: bool,
@@ -224,31 +289,31 @@ struct ConfigTuneOptions {
     /// PostgreSQL connection string (optional, for workload detection)
     #[arg(short, long, env = "DATABASE_URL")]
     database_url: Option<String>,
-    
+
     /// Workload type (auto-detect if not specified and database provided)
     #[arg(short, long, value_enum)]
     workload: Option<WorkloadTypeArg>,
-    
+
     /// System RAM in GB (auto-detect if not specified)
     #[arg(long)]
     ram_gb: Option<f64>,
-    
+
     /// CPU count (auto-detect if not specified)
     #[arg(long)]
     cpus: Option<u32>,
-    
+
     /// Disk type
     #[arg(long, value_enum)]
     disk_type: Option<DiskTypeArg>,
-    
+
     /// Output format
     #[arg(short = 'f', long, value_enum, default_value = "terminal")]
     format: OutputFormat,
-    
+
     /// Output file (defaults to stdout)
     #[arg(short, long)]
     output: Option<PathBuf>,
-    
+
     /// Show before/after comparison (requires database connection)
     #[arg(long)]
     show_current: bool,
@@ -259,11 +324,11 @@ struct ConfigValidateOptions {
     /// PostgreSQL connection string
     #[arg(short, long, env = "DATABASE_URL")]
     database_url: String,
-    
+
     /// Output format
     #[arg(short = 'f', long, value_enum, default_value = "terminal")]
     format: OutputFormat,
-    
+
     /// Output file (defaults to stdout)
     #[arg(short, long)]
     output: Option<PathBuf>,
@@ -362,31 +427,16 @@ impl From<MaxRiskLevel> for RiskLevel {
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
-    
+
     // Handle subcommands or default to analyze
     match cli.command {
-        Some(Commands::Analyze(opts)) => {
-            run_analyze_mode(opts).await
-        }
-        Some(Commands::Agent(opts)) => {
-            run_agent_mode(opts).await
-        }
-        Some(Commands::RewriteSql(opts)) => {
-            run_rewrite_sql_mode(opts)
-        }
-        Some(Commands::Serve(opts)) => {
-            run_serve_mode(opts).await
-        }
-        Some(Commands::ConfigTune(opts)) => {
-            run_config_tune_mode(opts).await
-        }
-        Some(Commands::ConfigValidate(opts)) => {
-            run_config_validate_mode(opts).await
-        }
-        #[cfg(feature = "cnpg")]
-        Some(Commands::CnpgPlugin(opts)) => {
-            run_cnpg_plugin(opts).await
-        }
+        Some(Commands::Analyze(opts)) => run_analyze_mode(opts).await,
+        Some(Commands::Agent(opts)) => run_agent_mode(opts).await,
+        Some(Commands::RewriteSql(opts)) => run_rewrite_sql_mode(opts),
+        Some(Commands::Serve(opts)) => run_serve_mode(opts).await,
+        Some(Commands::ConfigTune(opts)) => run_config_tune_mode(opts).await,
+        Some(Commands::ConfigValidate(opts)) => run_config_validate_mode(opts).await,
+        Some(Commands::Ask(opts)) => run_ask_mode(opts).await,
         None => {
             // Default behavior - run analyze with flattened options
             if let Some(opts) = cli.analyze_opts {
@@ -409,24 +459,100 @@ fn run_rewrite_sql_mode(opts: RewriteSqlOptions) -> Result<()> {
     } else {
         InputSource::Stdin
     };
-    
+
     // Create CLI and read input
     let cli = RewriterCli::new();
     let sql = cli.read_input(&input_source)?;
-    
+
     // Rewrite and format
     let output = cli.rewrite_and_format(&sql, opts.format.into(), opts.explain)?;
-    
+
     // Write output
     if let Some(output_path) = opts.output {
         std::fs::write(&output_path, &output)?;
-        println!("{} Report saved to: {}", 
-            "✓".bright_green(), 
-            output_path.display().to_string().bright_white());
+        println!(
+            "{} Report saved to: {}",
+            "✓".bright_green(),
+            output_path.display().to_string().bright_white()
+        );
     } else {
         print!("{}", output);
     }
-    
+
+    Ok(())
+}
+
+/// Run ask mode (natural language query)
+async fn run_ask_mode(opts: AskOptions) -> Result<()> {
+    use pg_query_advisor::ai::AiAdvisor;
+
+    // Build AI config from options
+    let provider: LlmProvider = opts.provider.parse()?;
+    let ai_config = AiConfig {
+        enabled: true,
+        provider,
+        api_key: opts.api_key,
+        model: opts.model,
+        base_url: opts.base_url,
+        ..Default::default()
+    };
+
+    let advisor = AiAdvisor::new(ai_config)?;
+
+    let pool = PgPoolOptions::new()
+        .max_connections(5)
+        .connect(&opts.database_url)
+        .await?;
+
+    let collector = DatabaseCollector::new(pool);
+
+    println!("{}", "Gathering database context...".dimmed());
+
+    // Collect context
+    let query_stats = collector.collect_query_stats(10).await.unwrap_or_default();
+    let conn_stats = collector.collect_connection_stats().await?;
+    let db_metrics = collector
+        .collect_database_metrics()
+        .await
+        .unwrap_or_default();
+
+    // Build context string
+    let mut context = String::new();
+    context.push_str(&format!(
+        "Active Connections: {}/{}\n",
+        conn_stats.total_connections, conn_stats.max_connections
+    ));
+    context.push_str(&format!(
+        "Idle in Transaction: {}\n",
+        conn_stats.idle_in_transaction_count
+    ));
+    context.push_str(&format!(
+        "Buffer Cache Hit Ratio: {:.2}%\n",
+        db_metrics.buffer_cache_hit_ratio
+    ));
+    context.push_str(&format!("Deadlocks: {}\n", db_metrics.deadlocks));
+
+    if !query_stats.is_empty() {
+        context.push_str("\nTop Slow Queries:\n");
+        for (i, q) in query_stats.iter().take(5).enumerate() {
+            let snippet: String = q.query.chars().take(100).collect();
+            context.push_str(&format!(
+                "{}. [{:.0}ms, {} calls] {}\n",
+                i + 1,
+                q.mean_exec_time_ms,
+                q.calls,
+                snippet
+            ));
+        }
+    }
+
+    println!("{}", "Analyzing with AI...".dimmed());
+
+    let answer = advisor.ask(&opts.question, &context).await?;
+
+    println!("\n{}", "AI Analysis:".bold().green());
+    println!("{}", answer);
+
     Ok(())
 }
 
@@ -442,11 +568,11 @@ async fn run_analyze_mode(cli: AnalyzeOptions) -> Result<()> {
             .with_env_filter("pg_query_advisor=info")
             .init();
     }
-    
+
     // One-shot mode (original behavior)
     println!("{}", "PostgreSQL Query Health Advisor".bright_cyan().bold());
     println!("{}\n", "Analyzing your database...".bright_black());
-    
+
     // Connect to database
     print!("Connecting to database... ");
     let pool = PgPoolOptions::new()
@@ -454,28 +580,37 @@ async fn run_analyze_mode(cli: AnalyzeOptions) -> Result<()> {
         .connect(&cli.database_url)
         .await?;
     println!("{}", "✓".bright_green());
-    
+
     // Check if pg_stat_statements is enabled
     print!("Checking pg_stat_statements extension... ");
     let collector = DatabaseCollector::new(pool.clone());
     if !collector.check_pg_stat_statements().await? {
-        eprintln!("\n{}", "ERROR: pg_stat_statements extension is not enabled!".bright_red().bold());
+        eprintln!(
+            "\n{}",
+            "ERROR: pg_stat_statements extension is not enabled!"
+                .bright_red()
+                .bold()
+        );
         eprintln!("\nTo enable it, run as superuser:");
         eprintln!("  CREATE EXTENSION pg_stat_statements;");
         eprintln!("\nThen restart your application to collect query statistics.");
         std::process::exit(1);
     }
     println!("{}", "✓".bright_green());
-    
+
     // Collect data
     print!("Collecting query statistics... ");
     let queries = collector.collect_query_stats(cli.query_limit).await?;
-    println!("{} (analyzed {} queries)", "✓".bright_green(), queries.len());
-    
+    println!(
+        "{} (analyzed {} queries)",
+        "✓".bright_green(),
+        queries.len()
+    );
+
     print!("Collecting table information... ");
     let tables = collector.collect_table_info().await?;
     println!("{} ({} tables)", "✓".bright_green(), tables.len());
-    
+
     print!("Collecting index information... ");
     let indexes = collector.collect_index_info().await?;
     println!("{} ({} indexes)", "✓".bright_green(), indexes.len());
@@ -490,7 +625,7 @@ async fn run_analyze_mode(cli: AnalyzeOptions) -> Result<()> {
 
     // Analyze and generate recommendations
     print!("Analyzing queries and generating recommendations... ");
-    
+
     let analysis_config = AnalysisConfig {
         query_limit: cli.query_limit,
         cost_per_hour_usd: cli.cost_per_hour,
@@ -503,40 +638,67 @@ async fn run_analyze_mode(cli: AnalyzeOptions) -> Result<()> {
         thresholds: ThresholdConfig::default(),
     };
 
-    let engine = RecommendationEngine::new()
-        .with_analysis_config(analysis_config)
-        .with_cost_per_hour(cli.cost_per_hour);
+    let pricing_config = PricingConfig {
+        cost_per_vcpu_hour: cli.cost_per_hour,
+        ..Default::default()
+    };
 
-    let mut recommendations = engine.generate_recommendations(
-        &queries,
-        &tables,
-        &indexes,
-        connection_stats.as_ref(),
-        connections.as_deref(),
-    );
-    
+    // Build AI config if enabled
+    let ai_config = if cli.ai {
+        let provider: LlmProvider = cli.ai_provider.parse().unwrap_or(LlmProvider::OpenAi);
+        Some(AiConfig {
+            enabled: true,
+            provider,
+            api_key: cli.ai_api_key,
+            model: cli.ai_model,
+            base_url: cli.ai_base_url,
+            ..Default::default()
+        })
+    } else {
+        None
+    };
+
+    let mut engine = RecommendationEngine::new()
+        .with_analysis_config(analysis_config)
+        .with_pricing_config(pricing_config);
+
+    if let Some(ai_cfg) = ai_config {
+        engine = engine.with_ai_config(ai_cfg);
+    }
+
+    let mut recommendations = engine
+        .generate_recommendations_with_ai(
+            &queries,
+            &tables,
+            &indexes,
+            connection_stats.as_ref(),
+            connections.as_deref(),
+        )
+        .await;
+
     // Filter by minimum severity
-    recommendations.retain(|rec| {
-        match cli.min_severity {
-            MinSeverity::Low => true,
-            MinSeverity::Medium => rec.severity >= Severity::Medium,
-            MinSeverity::High => rec.severity >= Severity::High,
-            MinSeverity::Critical => rec.severity == Severity::Critical,
-        }
+    recommendations.retain(|rec| match cli.min_severity {
+        MinSeverity::Low => true,
+        MinSeverity::Medium => rec.severity >= Severity::Medium,
+        MinSeverity::High => rec.severity >= Severity::High,
+        MinSeverity::Critical => rec.severity == Severity::Critical,
     });
-    
+
     println!("{}", "✓".bright_green());
-    
+
     // Auto-apply mode
     if cli.auto_apply {
         println!("\n{}", "🤖 AUTO-APPLY MODE".bright_cyan().bold());
-        
+
         if cli.dry_run {
-            println!("{}", "   (DRY-RUN: Simulating without executing)".bright_yellow());
+            println!(
+                "{}",
+                "   (DRY-RUN: Simulating without executing)".bright_yellow()
+            );
         }
-        
+
         println!("{}", "━".repeat(70).bright_blue());
-        
+
         // Build auto-apply configuration
         let config = AutoApplyConfig {
             enabled: true,
@@ -550,20 +712,25 @@ async fn run_analyze_mode(cli: AnalyzeOptions) -> Result<()> {
             require_manual_approval: vec![], // Could be configurable
             slack_webhook: cli.slack_webhook.clone(),
         };
-        
+
         // Create orchestrator and process recommendations
         let mut orchestrator = AutoApplyOrchestrator::new(pool.clone(), config);
         let apply_results = orchestrator.process_all(&recommendations).await;
-        
+
         // Display results
         display_auto_apply_results(&apply_results);
-        
+
         println!("{}", "━".repeat(70).bright_blue());
     }
-    
+
     // Create report
     let total_db_size_mb: f64 = tables.iter().map(|t| t.total_size_mb).sum();
-    let health_score = HealthCalculator::calculate(&tables, &indexes, connection_stats.as_ref(), total_db_size_mb);
+    let health_score = HealthCalculator::calculate(
+        &tables,
+        &indexes,
+        connection_stats.as_ref(),
+        total_db_size_mb,
+    );
 
     let report = AnalysisReport {
         database_name: db_name,
@@ -577,48 +744,59 @@ async fn run_analyze_mode(cli: AnalyzeOptions) -> Result<()> {
         connection_stats,
         health_score,
     };
-    
+
     // Output report
     let output_text = match cli.format {
         OutputFormat::Terminal => OutputFormatter::format_terminal(&report),
         OutputFormat::Json => OutputFormatter::format_json(&report)?,
         OutputFormat::Markdown => OutputFormatter::format_markdown(&report),
     };
-    
+
     if let Some(output_path) = cli.output {
         std::fs::write(&output_path, output_text)?;
-        println!("\n{} Report saved to: {}", 
-            "✓".bright_green(), 
-            output_path.display().to_string().bright_white());
+        println!(
+            "\n{} Report saved to: {}",
+            "✓".bright_green(),
+            output_path.display().to_string().bright_white()
+        );
     } else {
         println!("{}", output_text);
     }
-    
+
     // Exit with error code if critical issues found
     if report.summary.critical_issues > 0 {
         std::process::exit(1);
     }
-    
+
     Ok(())
 }
 
 fn display_auto_apply_results(results: &[pg_query_advisor::ApplyResult]) {
     use pg_query_advisor::ApplyStatus;
-    
+
     let mut successful = 0;
     let mut rolled_back = 0;
     let mut failed = 0;
     let mut skipped = 0;
     let mut pending = 0;
     let mut _total_savings = 0.0;
-    
+
     for (i, result) in results.iter().enumerate() {
-        println!("\n[{}/{}] {}", i + 1, results.len(), result.recommendation_id.bright_white());
-        
+        println!(
+            "\n[{}/{}] {}",
+            i + 1,
+            results.len(),
+            result.recommendation_id.bright_white()
+        );
+
         match result.status {
             ApplyStatus::Success => {
                 successful += 1;
-                println!("   {} {}", "✅".bright_green(), "SUCCESS".bright_green().bold());
+                println!(
+                    "   {} {}",
+                    "✅".bright_green(),
+                    "SUCCESS".bright_green().bold()
+                );
                 if let Some(improvement) = result.actual_improvement_pct {
                     println!("   Improvement: {:.1}%", improvement);
                     _total_savings += result.baseline.table_size_mb.unwrap_or(0.0);
@@ -648,41 +826,73 @@ fn display_auto_apply_results(results: &[pg_query_advisor::ApplyResult]) {
             }
             ApplyStatus::PendingApproval => {
                 pending += 1;
-                println!("   {} {}", "🔔".bright_yellow(), "PENDING APPROVAL".bright_yellow().bold());
+                println!(
+                    "   {} {}",
+                    "🔔".bright_yellow(),
+                    "PENDING APPROVAL".bright_yellow().bold()
+                );
                 println!("   Requires manual approval before execution");
             }
             ApplyStatus::Simulated => {
-                println!("   {} {}", "🔍".bright_blue(), "SIMULATED".bright_blue().bold());
+                println!(
+                    "   {} {}",
+                    "🔍".bright_blue(),
+                    "SIMULATED".bright_blue().bold()
+                );
                 println!("   (Dry-run mode - no changes made)");
             }
             ApplyStatus::InProgress => {
-                println!("   {} {}", "⏳".bright_yellow(), "IN PROGRESS".bright_yellow());
+                println!(
+                    "   {} {}",
+                    "⏳".bright_yellow(),
+                    "IN PROGRESS".bright_yellow()
+                );
             }
         }
-        
+
         println!("   Duration: {:.1}s", result.duration_secs);
     }
-    
+
     // Summary
     println!("\n{}", "SUMMARY".bright_cyan().bold());
     println!("{}", "━".repeat(70).bright_blue());
-    
+
     if successful > 0 {
-        println!("  {} Successful: {}", "✅".bright_green(), successful.to_string().bright_green().bold());
+        println!(
+            "  {} Successful: {}",
+            "✅".bright_green(),
+            successful.to_string().bright_green().bold()
+        );
     }
     if rolled_back > 0 {
-        println!("  {} Rolled back: {}", "⚠️ ".yellow(), rolled_back.to_string().yellow().bold());
+        println!(
+            "  {} Rolled back: {}",
+            "⚠️ ".yellow(),
+            rolled_back.to_string().yellow().bold()
+        );
     }
     if failed > 0 {
-        println!("  {} Failed: {}", "❌".bright_red(), failed.to_string().bright_red().bold());
+        println!(
+            "  {} Failed: {}",
+            "❌".bright_red(),
+            failed.to_string().bright_red().bold()
+        );
     }
     if skipped > 0 {
-        println!("  {} Skipped: {}", "⏭️ ".bright_black(), skipped.to_string().bright_black());
+        println!(
+            "  {} Skipped: {}",
+            "⏭️ ".bright_black(),
+            skipped.to_string().bright_black()
+        );
     }
     if pending > 0 {
-        println!("  {} Pending approval: {}", "🔔".bright_yellow(), pending.to_string().bright_yellow().bold());
+        println!(
+            "  {} Pending approval: {}",
+            "🔔".bright_yellow(),
+            pending.to_string().bright_yellow().bold()
+        );
     }
-    
+
     if successful > 0 {
         println!("\n  {} Your database is now faster!", "🚀".bright_cyan());
     }
@@ -700,15 +910,37 @@ async fn run_agent_mode(opts: AgentOptions) -> Result<()> {
             .with_env_filter("pg_query_advisor=info")
             .init();
     }
-    println!("{}", "🤖 PostgreSQL Query Health Advisor - Agent Mode".bright_cyan().bold());
+    println!(
+        "{}",
+        "🤖 PostgreSQL Query Health Advisor - Agent Mode"
+            .bright_cyan()
+            .bold()
+    );
     println!("{}", "━".repeat(70).bright_blue());
     println!("   Monitoring interval: {} minutes", opts.interval_minutes);
-    println!("   Database: {}", opts.database_url.split('@').last().unwrap_or("***"));
-    println!("   Auto-apply: {}", if opts.auto_apply { "enabled".bright_green() } else { "disabled".bright_black() });
-    println!("   Dry-run: {}", if opts.dry_run { "yes".bright_yellow() } else { "no".bright_white() });
+    println!(
+        "   Database: {}",
+        opts.database_url.split('@').next_back().unwrap_or("***")
+    );
+    println!(
+        "   Auto-apply: {}",
+        if opts.auto_apply {
+            "enabled".bright_green()
+        } else {
+            "disabled".bright_black()
+        }
+    );
+    println!(
+        "   Dry-run: {}",
+        if opts.dry_run {
+            "yes".bright_yellow()
+        } else {
+            "no".bright_white()
+        }
+    );
     println!("{}", "━".repeat(70).bright_blue());
     println!();
-    
+
     // Expand tilde in state file path
     let state_file = if opts.state_file.starts_with("~/") {
         let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
@@ -716,11 +948,14 @@ async fn run_agent_mode(opts: AgentOptions) -> Result<()> {
     } else {
         opts.state_file.clone()
     };
-    
+
     // Load or create state
     let mut state = AgentState::load(&state_file)?;
-    println!("📊 Loaded state: {} optimizations applied previously\n", state.total_optimizations);
-    
+    println!(
+        "📊 Loaded state: {} optimizations applied previously\n",
+        state.total_optimizations
+    );
+
     // Display recent events from previous runs
     use pg_query_advisor::events::EventStore;
     let event_store_path = PathBuf::from(".vaanyze/events.json");
@@ -737,33 +972,34 @@ async fn run_agent_mode(opts: AgentOptions) -> Result<()> {
                 } else {
                     format!("{}d ago", time_ago.num_days())
                 };
-                println!("   {} - {} ({})", 
-                    event.event_type_str(), 
-                    event.summary(), 
+                println!(
+                    "   {} - {} ({})",
+                    event.event_type_str(),
+                    event.summary(),
                     time_str.bright_black()
                 );
             }
             println!();
         }
     }
-    
+
     // Create interval timer
     let mut tick_interval = interval(Duration::from_secs(opts.interval_minutes * 60));
-    
+
     println!("✅ Agent started successfully");
     println!("   Press Ctrl+C to stop\n");
-    
+
     // Main monitoring loop
     loop {
         tokio::select! {
             _ = tick_interval.tick() => {
                 println!("{}", "━".repeat(70).bright_blue());
                 println!("🔍 Running analysis cycle... ({})", chrono::Utc::now().format("%Y-%m-%d %H:%M:%S"));
-                
+
                 match run_analysis_cycle(&opts, &mut state).await {
                     Ok(results) => {
                         display_cycle_results(&results);
-                        
+
                         // Save state
                         if let Err(e) = state.save(&state_file) {
                             eprintln!("⚠️  Failed to save state: {}", e);
@@ -775,19 +1011,19 @@ async fn run_agent_mode(opts: AgentOptions) -> Result<()> {
                     }
                 }
             }
-            
+
             _ = signal::ctrl_c() => {
                 println!("\n\n{}", "🛑 Shutdown signal received".bright_yellow().bold());
                 println!("   Saving state and exiting...");
-                
+
                 if let Err(e) = state.save(&state_file) {
                     eprintln!("⚠️  Failed to save final state: {}", e);
                 }
-                
+
                 println!("\n{}", "Agent Statistics:".bright_cyan().bold());
                 println!("   Total optimizations applied: {}", state.total_optimizations);
                 println!("   Uptime: {:.1} hours", state.uptime_hours());
-                
+
                 // Display recent events
                 use pg_query_advisor::events::EventStore;
                 let event_store_path = PathBuf::from(".vaanyze/events.json");
@@ -804,33 +1040,36 @@ async fn run_agent_mode(opts: AgentOptions) -> Result<()> {
                             } else {
                                 format!("{}d ago", time_ago.num_days())
                             };
-                            println!("   {} - {} ({})", 
-                                event.event_type_str(), 
-                                event.summary(), 
+                            println!("   {} - {} ({})",
+                                event.event_type_str(),
+                                event.summary(),
                                 time_str.bright_black()
                             );
                         }
                     }
                 }
-                
+
                 println!("\n✅ Agent stopped gracefully");
-                
+
                 break;
             }
         }
     }
-    
+
     Ok(())
 }
 
 /// Run a single analysis cycle
-async fn run_analysis_cycle(opts: &AgentOptions, state: &mut AgentState) -> Result<AnalysisResults> {
+async fn run_analysis_cycle(
+    opts: &AgentOptions,
+    state: &mut AgentState,
+) -> Result<AnalysisResults> {
     // Connect to database
     let pool = PgPoolOptions::new()
         .max_connections(5)
         .connect(&opts.database_url)
         .await?;
-    
+
     // Collect data
     let collector = DatabaseCollector::new(pool.clone());
     let queries = collector.collect_query_stats(opts.query_limit).await?;
@@ -852,9 +1091,14 @@ async fn run_analysis_cycle(opts: &AgentOptions, state: &mut AgentState) -> Resu
         thresholds: ThresholdConfig::default(),
     };
 
+    let pricing_config = PricingConfig {
+        cost_per_vcpu_hour: opts.cost_per_hour,
+        ..Default::default()
+    };
+
     let engine = RecommendationEngine::new()
         .with_analysis_config(analysis_config)
-        .with_cost_per_hour(opts.cost_per_hour);
+        .with_pricing_config(pricing_config);
 
     let mut recommendations = engine.generate_recommendations(
         &queries,
@@ -863,41 +1107,44 @@ async fn run_analysis_cycle(opts: &AgentOptions, state: &mut AgentState) -> Resu
         connection_stats.as_ref(),
         connections.as_deref(),
     );
-    
+
     // Filter by severity
-    recommendations.retain(|rec| {
-        match opts.min_severity {
-            MinSeverity::Low => true,
-            MinSeverity::Medium => rec.severity >= Severity::Medium,
-            MinSeverity::High => rec.severity >= Severity::High,
-            MinSeverity::Critical => rec.severity == Severity::Critical,
-        }
+    recommendations.retain(|rec| match opts.min_severity {
+        MinSeverity::Low => true,
+        MinSeverity::Medium => rec.severity >= Severity::Medium,
+        MinSeverity::High => rec.severity >= Severity::High,
+        MinSeverity::Critical => rec.severity == Severity::Critical,
     });
-    
+
     // Filter out already-applied recommendations
     recommendations.retain(|rec| !state.is_applied(&rec.id));
-    
+
     // Calculate health score
     let total_db_size_mb: f64 = tables.iter().map(|t| t.total_size_mb).sum();
-    let health_score = HealthCalculator::calculate(&tables, &indexes, connection_stats.as_ref(), total_db_size_mb);
-    
+    let health_score = HealthCalculator::calculate(
+        &tables,
+        &indexes,
+        connection_stats.as_ref(),
+        total_db_size_mb,
+    );
+
     let mut results = AnalysisResults {
         new_recommendations: recommendations.len(),
         health_score: Some(health_score),
         ..Default::default()
     };
-    
+
     if recommendations.is_empty() {
         state.update_last_run();
         return Ok(results);
     }
-    
+
     // Calculate total potential savings
     results.total_savings_usd = recommendations
         .iter()
         .filter_map(|r| r.estimated_cost_savings_usd_monthly)
         .sum();
-    
+
     // Auto-apply if enabled
     if opts.auto_apply {
         let config = AutoApplyConfig {
@@ -912,14 +1159,14 @@ async fn run_analysis_cycle(opts: &AgentOptions, state: &mut AgentState) -> Resu
             require_manual_approval: vec![],
             slack_webhook: opts.slack_webhook.clone(),
         };
-        
+
         let mut orchestrator = AutoApplyOrchestrator::new(pool.clone(), config);
         let apply_results = orchestrator.process_all(&recommendations).await;
-        
+
         // Track results
         for result in &apply_results {
             use pg_query_advisor::ApplyStatus;
-            
+
             match result.status {
                 ApplyStatus::Success => {
                     results.applied_count += 1;
@@ -937,7 +1184,7 @@ async fn run_analysis_cycle(opts: &AgentOptions, state: &mut AgentState) -> Resu
     } else {
         results.skipped_count = recommendations.len();
     }
-    
+
     state.update_last_run();
     Ok(results)
 }
@@ -955,25 +1202,37 @@ fn display_cycle_results(results: &AnalysisResults) {
         };
         println!("   🏥 Health Score: {}", score_display);
     }
-    
+
     if results.is_empty() {
         println!("   ✅ No new optimization opportunities found");
         return;
     }
-    
-    println!("   📊 Found {} new optimization opportunities", results.new_recommendations);
-    
+
+    println!(
+        "   📊 Found {} new optimization opportunities",
+        results.new_recommendations
+    );
+
     if results.applied_count > 0 {
-        println!("   ✅ Applied: {}", results.applied_count.to_string().bright_green().bold());
+        println!(
+            "   ✅ Applied: {}",
+            results.applied_count.to_string().bright_green().bold()
+        );
     }
     if results.failed_count > 0 {
-        println!("   ❌ Failed: {}", results.failed_count.to_string().bright_red());
+        println!(
+            "   ❌ Failed: {}",
+            results.failed_count.to_string().bright_red()
+        );
     }
     if results.skipped_count > 0 {
         println!("   ⏭️  Skipped: {}", results.skipped_count);
     }
     if results.total_savings_usd > 0.0 {
-        println!("   💰 Potential savings: ${:.0}/month", results.total_savings_usd);
+        println!(
+            "   💰 Potential savings: ${:.0}/month",
+            results.total_savings_usd
+        );
     }
 }
 
@@ -989,22 +1248,54 @@ async fn run_serve_mode(opts: ServeOptions) -> Result<()> {
             .with_env_filter("pg_query_advisor=info")
             .init();
     }
-    
-    println!("{}", "🌐 PostgreSQL Query Health Advisor - HTTP API Server".bright_cyan().bold());
+
+    println!(
+        "{}",
+        "🌐 PostgreSQL Query Health Advisor - HTTP API Server"
+            .bright_cyan()
+            .bold()
+    );
     println!("{}", "━".repeat(70).bright_blue());
     println!("   Port: {}", opts.port);
-    println!("   API Base: {}", format!("http://localhost:{}/api/v1", opts.port).bright_cyan());
+    println!(
+        "   API Base: {}",
+        format!("http://localhost:{}/api/v1", opts.port).bright_cyan()
+    );
     println!();
     println!("   Endpoints:");
-    println!("     {}  {}  - Interactive documentation", "GET".bright_green(), "/".bright_white());
-    println!("     {}  {}  - Health check", "GET".bright_green(), "/api/v1/health".bright_white());
-    println!("     {}  {}  - Lock contention", "GET".bright_green(), "/api/v1/locks/contention".bright_white());
-    println!("     {}  {}  - Query rewriter", "POST".bright_yellow(), "/api/v1/queries/rewrite".bright_white());
-    println!("     {}  {}  - Prometheus metrics", "GET".bright_green(), "/api/v1/stats/metrics".bright_white());
-    println!("     {} See http://localhost:{} for full API docs", "📚".bright_blue(), opts.port);
+    println!(
+        "     {}  {}  - Interactive documentation",
+        "GET".bright_green(),
+        "/".bright_white()
+    );
+    println!(
+        "     {}  {}  - Health check",
+        "GET".bright_green(),
+        "/api/v1/health".bright_white()
+    );
+    println!(
+        "     {}  {}  - Lock contention",
+        "GET".bright_green(),
+        "/api/v1/locks/contention".bright_white()
+    );
+    println!(
+        "     {}  {}  - Query rewriter",
+        "POST".bright_yellow(),
+        "/api/v1/queries/rewrite".bright_white()
+    );
+    println!(
+        "     {}  {}  - Prometheus metrics",
+        "GET".bright_green(),
+        "/api/v1/stats/metrics".bright_white()
+    );
+    println!(
+        "     {} See http://localhost:{} for full API docs",
+        "📚".bright_blue(),
+        opts.port
+    );
     println!("{}", "━".repeat(70).bright_blue());
     println!();
-    
+
     // Create minimal HTTP config
     let http_config = pg_query_advisor::HttpServerConfig {
         enabled: true,
@@ -1013,34 +1304,83 @@ async fn run_serve_mode(opts: ServeOptions) -> Result<()> {
         auth_token: None,
         enable_cors: true,
     };
-    
+
     // Create empty persistence (will add proper integration later)
     use std::sync::Arc;
     use tokio::sync::RwLock;
-    let persistence: Arc<RwLock<Box<dyn pg_query_advisor::persistence::PersistenceStore>>> = 
-        Arc::new(RwLock::new(Box::new(pg_query_advisor::persistence::sqlite::SqliteStore::new(":memory:").await?)));
-    
+    let persistence: Arc<RwLock<Box<dyn pg_query_advisor::persistence::PersistenceStore>>> =
+        Arc::new(RwLock::new(Box::new(
+            pg_query_advisor::persistence::sqlite::SqliteStore::new(":memory:").await?,
+        )));
+
     println!("✅ Server starting...");
-    println!("   Access API at: {}", format!("http://localhost:{}/api/v1", opts.port).bright_cyan());
-    println!("   View docs at: {}", format!("http://localhost:{}", opts.port).bright_cyan().underline());
+    println!(
+        "   Access API at: {}",
+        format!("http://localhost:{}/api/v1", opts.port).bright_cyan()
+    );
+    println!(
+        "   View docs at: {}",
+        format!("http://localhost:{}", opts.port)
+            .bright_cyan()
+            .underline()
+    );
     println!("   Press Ctrl+C to stop\n");
-    
-    // Start new HTTP API server (no eBPF manager, no db_pool for now)
-    pg_query_advisor::http::serve(http_config, persistence, None, None).await
+
+    // Initialize eBPF manager if enabled
+    let ebpf_manager = if opts.enable_ebpf {
+        #[cfg(target_os = "linux")]
+        {
+            println!("{}  Initializing eBPF lock tracer...", "🔒".bright_purple());
+            let ebpf_config = pg_query_advisor::EbpfConfig {
+                enabled: true,
+                collect_lock_metrics: true,
+                ..Default::default()
+            };
+            match pg_query_advisor::ebpf::EbpfManager::new(ebpf_config).start() {
+                Ok(manager) => {
+                    println!("   {} eBPF lock tracer started", "✓".bright_green());
+                    Some(Arc::new(manager))
+                }
+                Err(e) => {
+                    eprintln!("   {} Failed to start eBPF: {}", "✗".bright_red(), e);
+                    eprintln!(
+                        "   Continuing without eBPF (lock metrics will use pg_stat_activity)"
+                    );
+                    None
+                }
+            }
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+            eprintln!("   {} eBPF is only supported on Linux", "⚠".bright_yellow());
+            None
+        }
+    } else {
+        None
+    };
+
+    // Start new HTTP API server
+    pg_query_advisor::http::serve(http_config, persistence, ebpf_manager, None).await
 }
 
 /// Run config tune mode
 async fn run_config_tune_mode(opts: ConfigTuneOptions) -> Result<()> {
-    use pg_query_advisor::config_tuner::{ConfigTuner, WorkloadDetector, models::{SystemInfo, WorkloadType, DiskType}};
-    
-    println!("{}", "⚙️  PostgreSQL Configuration Tuner".bright_cyan().bold());
+    use pg_query_advisor::config_tuner::{
+        models::{DiskType, SystemInfo, WorkloadType},
+        ConfigTuner, WorkloadDetector,
+    };
+
+    println!(
+        "{}",
+        "⚙️  PostgreSQL Configuration Tuner".bright_cyan().bold()
+    );
     println!("{}\n", "Generating optimal configuration...".bright_black());
-    
+
     // Detect or use provided system info
     print!("Detecting system information... ");
     let mut system_info = SystemInfo::detect()?;
     println!("{}", "✓".bright_green());
-    
+
     // Override with user-provided values
     if let Some(ram_gb) = opts.ram_gb {
         system_info.total_ram_kb = (ram_gb * 1024.0 * 1024.0) as u64;
@@ -1055,14 +1395,14 @@ async fn run_config_tune_mode(opts: ConfigTuneOptions) -> Result<()> {
             DiskTypeArg::Nvme => DiskType::SAN, // Use SAN for NVMe-class storage
         };
     }
-    
+
     println!("   RAM: {:.1} GB", system_info.ram_gb());
     println!("   CPUs: {}", system_info.cpu_count);
     println!("   Disk: {:?}", system_info.disk_type);
     println!("   OS: {:?}", system_info.os_type);
     println!("   PostgreSQL: {:.1}", system_info.pg_version);
     println!();
-    
+
     // Determine workload type
     let (workload, detected) = if let Some(workload_arg) = opts.workload {
         let wl = match workload_arg {
@@ -1079,22 +1419,30 @@ async fn run_config_tune_mode(opts: ConfigTuneOptions) -> Result<()> {
             .max_connections(5)
             .connect(db_url)
             .await?;
-        
+
         let detector = WorkloadDetector::new();
         let detected_workload = detector.detect(&pool).await?;
         println!("{}", "✓".bright_green());
         (detected_workload, true)
     } else {
-        println!("{}", "⚠️  No workload specified and no database connection, using Mixed".yellow());
+        println!(
+            "{}",
+            "⚠️  No workload specified and no database connection, using Mixed".yellow()
+        );
         (WorkloadType::Mixed, false)
     };
-    
-    println!("Workload type: {} {}", 
+
+    println!(
+        "Workload type: {} {}",
         format!("{:?}", workload).bright_white().bold(),
-        if detected { "(auto-detected)".bright_black() } else { "(manual)".bright_black() }
+        if detected {
+            "(auto-detected)".bright_black()
+        } else {
+            "(manual)".bright_black()
+        }
     );
     println!();
-    
+
     // Show current config if requested
     if opts.show_current {
         if let Some(db_url) = &opts.database_url {
@@ -1104,12 +1452,12 @@ async fn run_config_tune_mode(opts: ConfigTuneOptions) -> Result<()> {
                 .connect(db_url)
                 .await?;
             println!("{}", "✓".bright_green());
-            
+
             // Query key params
             let row = sqlx::query("SELECT name, setting, unit FROM pg_settings WHERE name IN ('shared_buffers', 'effective_cache_size', 'work_mem', 'max_connections')")
                 .fetch_all(&pool)
                 .await?;
-            
+
             println!("\n{}", "Current Configuration:".bright_cyan().bold());
             println!("{}", "━".repeat(50).bright_blue());
             for r in row {
@@ -1121,18 +1469,21 @@ async fn run_config_tune_mode(opts: ConfigTuneOptions) -> Result<()> {
             println!();
         }
     }
-    
+
     // Calculate optimal configuration
     print!("Calculating optimal parameters... ");
     let tuner = ConfigTuner::new();
     let optimal_config = tuner.calculate_optimal_config(&system_info, workload);
     println!("{}", "✓".bright_green());
-    
+
     // Format output
     let output_text = match opts.format {
         OutputFormat::Terminal => {
             let mut output = String::new();
-            output.push_str(&format!("\n{}\n", "Recommended Configuration:".bright_cyan().bold()));
+            output.push_str(&format!(
+                "\n{}\n",
+                "Recommended Configuration:".bright_cyan().bold()
+            ));
             output.push_str(&format!("{}\n\n", "━".repeat(70).bright_blue()));
             output.push_str(&format!("{}\n", optimal_config.to_postgresql_conf()));
             output.push_str(&format!("\n{}\n", "━".repeat(70).bright_blue()));
@@ -1143,42 +1494,49 @@ async fn run_config_tune_mode(opts: ConfigTuneOptions) -> Result<()> {
             output.push_str("   4. Monitor performance after changes\n");
             output
         }
-        OutputFormat::Json => {
-            serde_json::to_string_pretty(&optimal_config)?
-        }
+        OutputFormat::Json => serde_json::to_string_pretty(&optimal_config)?,
         OutputFormat::Markdown => {
             let mut output = String::new();
             output.push_str("# PostgreSQL Configuration Recommendations\n\n");
             output.push_str(&format!("**Workload Type:** {:?}\n", workload));
-            output.push_str(&format!("**System:** {:.1} GB RAM, {} CPUs, {:?} disk\n\n", 
-                system_info.ram_gb(), system_info.cpu_count, system_info.disk_type));
+            output.push_str(&format!(
+                "**System:** {:.1} GB RAM, {} CPUs, {:?} disk\n\n",
+                system_info.ram_gb(),
+                system_info.cpu_count,
+                system_info.disk_type
+            ));
             output.push_str("## Recommended Settings\n\n```ini\n");
             output.push_str(&optimal_config.to_postgresql_conf());
             output.push_str("\n```\n");
             output
         }
     };
-    
+
     // Output
     if let Some(output_path) = opts.output {
         std::fs::write(&output_path, &output_text)?;
-        println!("\n{} Configuration saved to: {}", 
-            "✓".bright_green(), 
-            output_path.display().to_string().bright_white());
+        println!(
+            "\n{} Configuration saved to: {}",
+            "✓".bright_green(),
+            output_path.display().to_string().bright_white()
+        );
     } else {
         print!("{}", output_text);
     }
-    
+
     Ok(())
 }
 
 /// Run config validate mode
 async fn run_config_validate_mode(opts: ConfigValidateOptions) -> Result<()> {
     use pg_query_advisor::config_tuner::ConfigValidator;
-    
-    println!("{}", "🔍 PostgreSQL Configuration Validator".bright_cyan().bold());
+
+    println!(
+        "{}",
+        "🔍 PostgreSQL Configuration Validator".bright_cyan().bold()
+    );
     println!("{}\n", "Analyzing current configuration...".bright_black());
-    
+
     // Connect to database
     print!("Connecting to database... ");
     let pool = PgPoolOptions::new()
@@ -1186,36 +1544,54 @@ async fn run_config_validate_mode(opts: ConfigValidateOptions) -> Result<()> {
         .connect(&opts.database_url)
         .await?;
     println!("{}", "✓".bright_green());
-    
+
     // Run validation
     print!("Running configuration checks... ");
     let validator = ConfigValidator::new();
     let report = validator.validate(&pool).await?;
     println!("{}", "✓".bright_green());
     println!();
-    
+
     // Format output
     let output_text = match opts.format {
         OutputFormat::Terminal => {
             let mut output = String::new();
-            
+
             // Header
             if report.is_healthy() {
-                output.push_str(&format!("{} {}\n", "✅".bright_green(), "Configuration looks good!".bright_green().bold()));
+                output.push_str(&format!(
+                    "{} {}\n",
+                    "✅".bright_green(),
+                    "Configuration looks good!".bright_green().bold()
+                ));
             } else {
-                output.push_str(&format!("{} {}\n", "⚠️ ".yellow(), "Configuration issues detected".yellow().bold()));
+                output.push_str(&format!(
+                    "{} {}\n",
+                    "⚠️ ".yellow(),
+                    "Configuration issues detected".yellow().bold()
+                ));
             }
             output.push_str(&format!("{}\n\n", "━".repeat(70).bright_blue()));
-            
+
             // Critical Issues
-            let critical_issues: Vec<_> = report.issues.iter()
-                .filter(|i| i.severity == pg_query_advisor::config_tuner::models::ValidationSeverity::Critical)
+            let critical_issues: Vec<_> = report
+                .issues
+                .iter()
+                .filter(|i| {
+                    i.severity
+                        == pg_query_advisor::config_tuner::models::ValidationSeverity::Critical
+                })
                 .collect();
-            
+
             if !critical_issues.is_empty() {
-                output.push_str(&format!("{} ({}):\n", "Critical".bright_red().bold(), critical_issues.len()));
+                output.push_str(&format!(
+                    "{} ({}):\n",
+                    "Critical".bright_red().bold(),
+                    critical_issues.len()
+                ));
                 for issue in critical_issues {
-                    output.push_str(&format!("   {} [{}] {}: {}\n",
+                    output.push_str(&format!(
+                        "   {} [{}] {}: {}\n",
                         "❌".bright_red(),
                         issue.category,
                         issue.title,
@@ -1224,22 +1600,36 @@ async fn run_config_validate_mode(opts: ConfigValidateOptions) -> Result<()> {
                     if !issue.recommendation.is_empty() {
                         output.push_str(&format!("      → {}\n", issue.recommendation));
                     }
-                    if let (Some(current), Some(recommended)) = (&issue.current_value, &issue.recommended_value) {
-                        output.push_str(&format!("      Current: {}, Recommended: {}\n", current, recommended));
+                    if let (Some(current), Some(recommended)) =
+                        (&issue.current_value, &issue.recommended_value)
+                    {
+                        output.push_str(&format!(
+                            "      Current: {}, Recommended: {}\n",
+                            current, recommended
+                        ));
                     }
                 }
-                output.push_str("\n");
+                output.push('\n');
             }
-            
+
             // High Issues
-            let high_issues: Vec<_> = report.issues.iter()
-                .filter(|i| i.severity == pg_query_advisor::config_tuner::models::ValidationSeverity::High)
+            let high_issues: Vec<_> = report
+                .issues
+                .iter()
+                .filter(|i| {
+                    i.severity == pg_query_advisor::config_tuner::models::ValidationSeverity::High
+                })
                 .collect();
-            
+
             if !high_issues.is_empty() {
-                output.push_str(&format!("{} ({}):\n", "High".bright_red(), high_issues.len()));
+                output.push_str(&format!(
+                    "{} ({}):\n",
+                    "High".bright_red(),
+                    high_issues.len()
+                ));
                 for issue in high_issues {
-                    output.push_str(&format!("   {} [{}] {}: {}\n",
+                    output.push_str(&format!(
+                        "   {} [{}] {}: {}\n",
                         "⚠️ ".bright_red(),
                         issue.category,
                         issue.title,
@@ -1248,22 +1638,36 @@ async fn run_config_validate_mode(opts: ConfigValidateOptions) -> Result<()> {
                     if !issue.recommendation.is_empty() {
                         output.push_str(&format!("      → {}\n", issue.recommendation));
                     }
-                    if let (Some(current), Some(recommended)) = (&issue.current_value, &issue.recommended_value) {
-                        output.push_str(&format!("      Current: {}, Recommended: {}\n", current, recommended));
+                    if let (Some(current), Some(recommended)) =
+                        (&issue.current_value, &issue.recommended_value)
+                    {
+                        output.push_str(&format!(
+                            "      Current: {}, Recommended: {}\n",
+                            current, recommended
+                        ));
                     }
                 }
-                output.push_str("\n");
+                output.push('\n');
             }
-            
+
             // Medium Issues
-            let medium_issues: Vec<_> = report.issues.iter()
-                .filter(|i| i.severity == pg_query_advisor::config_tuner::models::ValidationSeverity::Medium)
+            let medium_issues: Vec<_> = report
+                .issues
+                .iter()
+                .filter(|i| {
+                    i.severity == pg_query_advisor::config_tuner::models::ValidationSeverity::Medium
+                })
                 .collect();
-            
+
             if !medium_issues.is_empty() {
-                output.push_str(&format!("{} ({}):\n", "Medium".yellow(), medium_issues.len()));
+                output.push_str(&format!(
+                    "{} ({}):\n",
+                    "Medium".yellow(),
+                    medium_issues.len()
+                ));
                 for issue in medium_issues {
-                    output.push_str(&format!("   {} [{}] {}: {}\n",
+                    output.push_str(&format!(
+                        "   {} [{}] {}: {}\n",
                         "⚠️ ".yellow(),
                         issue.category,
                         issue.title,
@@ -1272,22 +1676,36 @@ async fn run_config_validate_mode(opts: ConfigValidateOptions) -> Result<()> {
                     if !issue.recommendation.is_empty() {
                         output.push_str(&format!("      → {}\n", issue.recommendation));
                     }
-                    if let (Some(current), Some(recommended)) = (&issue.current_value, &issue.recommended_value) {
-                        output.push_str(&format!("      Current: {}, Recommended: {}\n", current, recommended));
+                    if let (Some(current), Some(recommended)) =
+                        (&issue.current_value, &issue.recommended_value)
+                    {
+                        output.push_str(&format!(
+                            "      Current: {}, Recommended: {}\n",
+                            current, recommended
+                        ));
                     }
                 }
-                output.push_str("\n");
+                output.push('\n');
             }
-            
-            // Low Issues  
-            let low_issues: Vec<_> = report.issues.iter()
-                .filter(|i| i.severity == pg_query_advisor::config_tuner::models::ValidationSeverity::Low)
+
+            // Low Issues
+            let low_issues: Vec<_> = report
+                .issues
+                .iter()
+                .filter(|i| {
+                    i.severity == pg_query_advisor::config_tuner::models::ValidationSeverity::Low
+                })
                 .collect();
-            
+
             if !low_issues.is_empty() {
-                output.push_str(&format!("{} ({}):\n", "Low".bright_black(), low_issues.len()));
+                output.push_str(&format!(
+                    "{} ({}):\n",
+                    "Low".bright_black(),
+                    low_issues.len()
+                ));
                 for issue in low_issues {
-                    output.push_str(&format!("   {} [{}] {}: {}\n",
+                    output.push_str(&format!(
+                        "   {} [{}] {}: {}\n",
                         "ℹ️ ".bright_black(),
                         issue.category,
                         issue.title,
@@ -1297,28 +1715,26 @@ async fn run_config_validate_mode(opts: ConfigValidateOptions) -> Result<()> {
                         output.push_str(&format!("      → {}\n", issue.recommendation));
                     }
                 }
-                output.push_str("\n");
+                output.push('\n');
             }
-            
+
             // Summary
             output.push_str(&format!("{}\n", "━".repeat(70).bright_blue()));
             output.push_str(&format!("Summary: {}\n", report.summary()));
-            
+
             output
         }
-        OutputFormat::Json => {
-            serde_json::to_string_pretty(&report)?
-        }
+        OutputFormat::Json => serde_json::to_string_pretty(&report)?,
         OutputFormat::Markdown => {
             let mut output = String::new();
             output.push_str("# PostgreSQL Configuration Validation Report\n\n");
-            
+
             if report.is_healthy() {
                 output.push_str("✅ **Status:** Healthy\n\n");
             } else {
                 output.push_str("⚠️ **Status:** Issues Detected\n\n");
             }
-            
+
             // Group issues by severity
             for severity in [
                 pg_query_advisor::config_tuner::models::ValidationSeverity::Critical,
@@ -1326,50 +1742,56 @@ async fn run_config_validate_mode(opts: ConfigValidateOptions) -> Result<()> {
                 pg_query_advisor::config_tuner::models::ValidationSeverity::Medium,
                 pg_query_advisor::config_tuner::models::ValidationSeverity::Low,
             ] {
-                let issues: Vec<_> = report.issues.iter()
+                let issues: Vec<_> = report
+                    .issues
+                    .iter()
                     .filter(|i| i.severity == severity)
                     .collect();
-                
+
                 if !issues.is_empty() {
                     output.push_str(&format!("## {} Issues ({})\n\n", severity, issues.len()));
                     for issue in issues {
-                        output.push_str(&format!("- **[{}] {}:** {}\n", 
-                            issue.category, issue.title, issue.description));
+                        output.push_str(&format!(
+                            "- **[{}] {}:** {}\n",
+                            issue.category, issue.title, issue.description
+                        ));
                         if !issue.recommendation.is_empty() {
-                            output.push_str(&format!("  - Recommendation: {}\n", issue.recommendation));
+                            output.push_str(&format!(
+                                "  - Recommendation: {}\n",
+                                issue.recommendation
+                            ));
                         }
-                        if let (Some(current), Some(recommended)) = (&issue.current_value, &issue.recommended_value) {
+                        if let (Some(current), Some(recommended)) =
+                            (&issue.current_value, &issue.recommended_value)
+                        {
                             output.push_str(&format!("  - Current: `{}`\n", current));
                             output.push_str(&format!("  - Recommended: `{}`\n", recommended));
                         }
                     }
-                    output.push_str("\n");
+                    output.push('\n');
                 }
             }
-            
+
             output
         }
     };
-    
+
     // Output
     if let Some(output_path) = opts.output {
         std::fs::write(&output_path, &output_text)?;
-        println!("\n{} Report saved to: {}", 
-            "✓".bright_green(), 
-            output_path.display().to_string().bright_white());
+        println!(
+            "\n{} Report saved to: {}",
+            "✓".bright_green(),
+            output_path.display().to_string().bright_white()
+        );
     } else {
         print!("{}", output_text);
     }
-    
+
     // Exit with error if not healthy
     if !report.is_healthy() {
         std::process::exit(1);
     }
-    
-    Ok(())
-}
 
-#[cfg(feature = "cnpg")]
-async fn run_cnpg_plugin(opts: CnpgPluginOptions) -> Result<()> {
-    pg_query_advisor::cnpg_plugin::run_cnpg_plugin(opts.port, opts.config).await
+    Ok(())
 }
