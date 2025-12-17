@@ -13,6 +13,7 @@ use tonic::{Request, Response, Status};
 use tracing::{debug, error, info};
 
 /// Vaanyze CNPG Plugin service implementation
+#[derive(Clone)]
 pub struct VaanyzeOperatorService {
     config: PluginConfig,
     state: Arc<Mutex<AgentState>>,
@@ -299,8 +300,11 @@ pub async fn start_grpc_server(
     config: PluginConfig,
     state: Arc<Mutex<AgentState>>,
 ) -> anyhow::Result<()> {
-    let addr: std::net::SocketAddr = format!("0.0.0.0:{}", port).parse()?;
-    let service = VaanyzeOperatorService::new(config, state);
+    use axum::{routing::get, Router};
+    use std::net::SocketAddr;
+
+    let addr: SocketAddr = format!("0.0.0.0:{}", port).parse()?;
+    let service = VaanyzeOperatorService::new(config.clone(), state.clone());
 
     info!(
         "Vaanyze CNPG Plugin v{} starting on {}",
@@ -308,7 +312,7 @@ pub async fn start_grpc_server(
         addr
     );
     info!(
-        "Capabilities: {:?}",
+        "Capabilities: {} enabled",
         service
             .detect_capabilities()
             .iter()
@@ -316,21 +320,69 @@ pub async fn start_grpc_server(
             .count()
     );
 
-    // In production, this would start the actual tonic server:
+    // Start health check HTTP server on port+1 for Kubernetes probes
+    let health_addr: SocketAddr = format!("0.0.0.0:{}", port + 1).parse()?;
+    let health_service = service.clone();
+    
+    let health_router = Router::new()
+        .route("/health", get(move || async move { "OK" }))
+        .route(
+            "/ready",
+            get(move || async move {
+                // Check if we can still process requests
+                let caps = health_service.detect_capabilities();
+                if caps.iter().any(|c| c.enabled) {
+                    "Ready"
+                } else {
+                    "Not Ready"
+                }
+            }),
+        );
+
+    info!("Health check endpoints on http://{}", health_addr);
+    info!("  - GET /health - Liveness probe");
+    info!("  - GET /ready - Readiness probe");
+
+    // Spawn health check server
+    let health_server = tokio::spawn(async move {
+        let listener = tokio::net::TcpListener::bind(health_addr)
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to bind health server: {}", e))?;
+        
+        axum::serve(listener, health_router)
+            .await
+            .map_err(|e| anyhow::anyhow!("Health server error: {}", e))
+    });
+
+    // Note: In a real implementation with tonic-build, this would be:
+    // use crate::cnpg_plugin::proto::operator_server::OperatorServer;
     // tonic::transport::Server::builder()
     //     .add_service(OperatorServer::new(service))
-    //     .serve(addr)
+    //     .serve_with_shutdown(addr, async {
+    //         tokio::signal::ctrl_c().await.ok();
+    //     })
     //     .await?;
+    //
+    // For now, we'll keep the server "running" by waiting on the health server
 
-    // For now, keep the service alive
-    let _ = service;
-
-    // Signal ready
     info!("gRPC server ready on {}", addr);
+    info!("NOTE: Full gRPC implementation requires tonic-build proto compilation");
+    info!("      This version responds to health checks only");
+    info!("Press Ctrl+C to stop");
 
-    // Keep running (in real impl, server.serve() blocks)
-    tokio::signal::ctrl_c().await?;
-    info!("Shutting down gRPC server");
+    // Wait for health server or Ctrl+C
+    tokio::select! {
+        result = health_server => {
+            match result {
+                Ok(Ok(())) => info!("Health server stopped"),
+                Ok(Err(e)) => error!("Health server error: {}", e),
+                Err(e) => error!("Health server task error: {}", e),
+            }
+        }
+        _ = tokio::signal::ctrl_c() => {
+            info!("Shutting down gRPC server");
+        }
+    }
 
     Ok(())
 }

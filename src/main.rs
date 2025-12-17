@@ -50,6 +50,10 @@ enum Commands {
 
     /// Ask a natural language question about the database state
     Ask(AskOptions),
+
+    /// Run as CloudNativePG plugin (gRPC server)
+    #[cfg(feature = "cnpg")]
+    CnpgPlugin(CnpgPluginOptions),
 }
 
 #[derive(Parser)]
@@ -77,6 +81,22 @@ struct AskOptions {
     /// Base URL for Ollama (default: http://localhost:11434)
     #[arg(long)]
     base_url: Option<String>,
+}
+
+#[cfg(feature = "cnpg")]
+#[derive(Parser)]
+struct CnpgPluginOptions {
+    /// gRPC port to listen on
+    #[arg(short, long, default_value = "8080")]
+    port: u16,
+
+    /// Configuration file path
+    #[arg(short, long)]
+    config: Option<PathBuf>,
+
+    /// Enable verbose logging
+    #[arg(short, long)]
+    verbose: bool,
 }
 
 #[derive(Parser)]
@@ -437,6 +457,8 @@ async fn main() -> Result<()> {
         Some(Commands::ConfigTune(opts)) => run_config_tune_mode(opts).await,
         Some(Commands::ConfigValidate(opts)) => run_config_validate_mode(opts).await,
         Some(Commands::Ask(opts)) => run_ask_mode(opts).await,
+        #[cfg(feature = "cnpg")]
+        Some(Commands::CnpgPlugin(opts)) => run_cnpg_plugin_mode(opts).await,
         None => {
             // Default behavior - run analyze with flattened options
             if let Some(opts) = cli.analyze_opts {
@@ -1794,6 +1816,29 @@ async fn run_config_validate_mode(opts: ConfigValidateOptions) -> Result<()> {
     if !report.is_healthy() {
         std::process::exit(1);
     }
+
+    Ok(())
+}
+
+/// Run CNPG plugin mode (gRPC server)
+#[cfg(feature = "cnpg")]
+async fn run_cnpg_plugin_mode(opts: CnpgPluginOptions) -> Result<()> {
+    // Setup logging
+    if opts.verbose {
+        tracing_subscriber::fmt()
+            .with_env_filter("pg_query_advisor=debug,cnpg_plugin=debug")
+            .init();
+    } else {
+        tracing_subscriber::fmt()
+            .with_env_filter("pg_query_advisor=info,cnpg_plugin=info")
+            .init();
+    }
+
+    println!("{}", "Vaanyze CloudNativePG Plugin".bright_cyan().bold());
+    println!("{}", "Starting gRPC server...".bright_black());
+    
+    // Run the CNPG plugin server
+    pg_query_advisor::cnpg_plugin::run_cnpg_plugin(opts.port, opts.config).await?;
 
     Ok(())
 }

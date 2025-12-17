@@ -59,8 +59,9 @@ COPY --from=builder /build/target/release/pg-query-advisor /app/pg-query-advisor
 
 # Expose ports
 # 8080: CNPG Plugin gRPC
+# 8081: Health check endpoint
 # 3000: HTTP API (if enabled)
-EXPOSE 8080 3000
+EXPOSE 8080 8081 3000
 
 ENTRYPOINT ["/app/pg-query-advisor"]
-CMD ["cnpg-plugin"]
+CMD ["cnpg-plugin", "--port", "8080"]

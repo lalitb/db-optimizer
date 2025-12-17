@@ -20,12 +20,33 @@ spec:
       - name: plugin
         image: vaanyze/cnpg-plugin:latest
         imagePullPolicy: IfNotPresent
+        args: ["cnpg-plugin", "--port", "8080"]
         ports:
         - containerPort: 8080
           name: grpc
+          protocol: TCP
+        - containerPort: 8081
+          name: health
+          protocol: TCP
         env:
         - name: RUST_LOG
           value: "info"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: health
+          initialDelaySeconds: 10
+          periodSeconds: 30
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: health
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
         resources:
           limits:
             memory: "512Mi"
