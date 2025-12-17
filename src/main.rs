@@ -1336,8 +1336,10 @@ async fn run_serve_mode(opts: ServeOptions) -> Result<()> {
                 collect_lock_metrics: true,
                 ..Default::default()
             };
-            match pg_query_advisor::ebpf::EbpfManager::new(ebpf_config).start() {
-                Ok(manager) => {
+            let target = pg_query_advisor::ebpf::EbpfTarget::BinaryPath("postgres".to_string());
+            let mut manager = pg_query_advisor::ebpf::EbpfManager::new(ebpf_config);
+            match manager.start(target).await {
+                Ok(()) => {
                     println!("   {} eBPF lock tracer started", "✓".bright_green());
                     Some(Arc::new(manager))
                 }
