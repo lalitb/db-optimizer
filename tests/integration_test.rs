@@ -60,6 +60,7 @@ async fn test_basic_workflow() {
         total_tables: tables.len(),
         total_indexes: indexes.len(),
         connection_stats: None,
+        health_score: 100,
     };
     
     // Test output formatters
@@ -79,8 +80,9 @@ async fn test_basic_workflow() {
 #[test]
 fn test_analyzer_logic() {
     use pg_query_advisor::{QueryAnalyzer, QueryStats};
+    use pg_query_advisor::config::AnalysisConfig;
     
-    let analyzer = QueryAnalyzer::new();
+    let analyzer = QueryAnalyzer::new(AnalysisConfig::default());
     
     // Test slow query detection
     let slow_query = QueryStats {
@@ -184,7 +186,7 @@ async fn test_auto_apply_dry_run() {
         slack_webhook: None,
     };
     
-    let orchestrator = AutoApplyOrchestrator::new(pool, config);
+    let mut orchestrator = AutoApplyOrchestrator::new(pool, config);
     let result = orchestrator.process_recommendation(&recommendation).await
         .expect("Failed to process recommendation");
     
@@ -234,7 +236,7 @@ async fn test_auto_apply_safety_filter() {
         .await
         .expect("Failed to connect");
     
-    let orchestrator = AutoApplyOrchestrator::new(pool, config);
+    let mut orchestrator = AutoApplyOrchestrator::new(pool, config);
     let result = orchestrator.process_recommendation(&recommendation).await
         .expect("Failed to process");
     
@@ -282,7 +284,7 @@ async fn test_auto_apply_savings_threshold() {
         .await
         .expect("Failed to connect");
     
-    let orchestrator = AutoApplyOrchestrator::new(pool, config);
+    let mut orchestrator = AutoApplyOrchestrator::new(pool, config);
     let result = orchestrator.process_recommendation(&recommendation).await
         .expect("Failed to process");
     

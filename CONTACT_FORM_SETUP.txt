@@ -1,0 +1,89 @@
+# Contact Form Setup Guide
+
+## ✅ What's Been Added
+
+Your landing page now has a comprehensive contact form with:
+- **Name** field
+- **Email** field  
+- **Company** field
+- **Message** textarea (for use case details)
+- **Newsletter opt-in** checkbox
+- **Success/Error messaging**
+- **Loading states**
+
+## 🔧 Setup Instructions (5 minutes)
+
+### Step 1: Get Your Free Web3Forms Access Key
+
+1. Go to https://web3forms.com
+2. Click "Get Started Free"
+3. Enter your email address (where you want to receive form submissions)
+4. You'll receive an **Access Key** via email
+
+### Step 2: Add Your Access Key to the Landing Page
+
+1. Open `/Users/lalitb/personal/db-optimizer/landing-page/index.html`
+2. Find line ~1433 (search for `YOUR_ACCESS_KEY_HERE`)
+3. Replace `YOUR_ACCESS_KEY_HERE` with your actual access key
+
+```html
+<!-- BEFORE -->
+<input type="hidden" name="access_key" value="YOUR_ACCESS_KEY_HERE">
+
+<!-- AFTER (example) -->
+<input type="hidden" name="access_key" value="a1b2c3d4-e5f6-7890-abcd-ef1234567890">
+```
+
+### Step 3: Test the Form
+
+1. Open `landing-page/index.html` in your browser
+2. Scroll to the "Request Beta Access" section
+3. Fill out the form with test data
+4. Click "Request Beta Access"
+5. You should see: ✅ "Thank you! We'll be in touch within 24 hours."
+6. Check your email - you'll receive the form submission!
+
+## 📧 What You'll Receive
+
+When someone fills out the form, you'll get an email with:
+
+```
+Subject: New Vaanyze Beta Access Request
+
+Name: John Doe
+Email: john@company.com
+Company: Acme Inc.
+Message: We have 50 PostgreSQL databases on CloudNativePG...
+Newsletter: yes
+```
+
+## 🎨 Form Features
+
+### Fields Collected:
+- **Full Name** (required)
+- **Work Email** (required)
+- **Company Name** (required)
+- **Use Case Details** (required) - Helps you qualify leads
+- **Newsletter Opt-in** (optional)
+
+### User Experience:
+- **Loading state**: Button shows "Sending..." while submitting
+- **Success message**: Green confirmation with checkmark
+- **Error handling**: Red error message with fallback email
+- **Form reset**: Clears after successful submission
+- **Responsive**: Works on mobile and desktop
+
+## 🔒 Privacy & Security
+
+- **No database**: Form data goes directly to your email
+- **No tracking**: Web3Forms doesn't store submissions
+- **GDPR compliant**: No cookies, no tracking scripts
+- **Free tier**: 250 submissions/month
+
+## 🚀 Next Steps
+
+1. Sign up at https://web3forms.com
+2. Get your access key
+3. Replace `YOUR_ACCESS_KEY_HERE` in index.html
+4. Test the form
+5. Start receiving leads!

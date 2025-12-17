@@ -5,6 +5,7 @@ use anyhow::Result;
 use sqlx::{PgPool, Row};
 
 /// Workload detector
+#[derive(Clone)]
 pub struct WorkloadDetector {
     // Thresholds for workload classification
     oltp_max_avg_duration_ms: f64,

@@ -8,7 +8,8 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 
 use crate::models::{Recommendation, ApplyResult, QueryStats};
-use crate::config::PersistenceBackend;
+use crate::config::{PersistenceBackend, QueryTextStorage};
+use crate::privacy::redact_sql_for_display;
 
 /// Trait for persistence backends
 #[async_trait]
@@ -89,11 +90,17 @@ pub struct QuerySample {
 
 impl QuerySample {
     /// Create from QueryStats
-    pub fn from_query_stats(stats: &QueryStats) -> Self {
+    pub fn from_query_stats(stats: &QueryStats, storage: QueryTextStorage) -> Self {
+        let query_text = match storage {
+            QueryTextStorage::None => "<omitted>".to_string(),
+            QueryTextStorage::Redacted => redact_sql_for_display(&stats.query, 2000),
+            QueryTextStorage::Full => stats.query.clone(),
+        };
+
         Self {
             captured_at: Utc::now(),
             query_id: stats.queryid.unwrap_or(0),
-            query_text: stats.query.clone(),
+            query_text,
             mean_exec_time_ms: stats.mean_exec_time_ms,
             p95_exec_time_ms: stats.mean_exec_time_ms * 1.5, // Approximation
             p99_exec_time_ms: stats.mean_exec_time_ms * 2.0, // Approximation

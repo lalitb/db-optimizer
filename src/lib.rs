@@ -16,7 +16,9 @@ pub mod ebpf;
 pub mod config_tuner;
 pub mod azure;
 pub mod events;
+#[cfg(feature = "cnpg")]
 pub mod cnpg_plugin;
+pub mod privacy;
 
 pub use models::*;
 pub use collector::DatabaseCollector;
@@ -38,6 +40,8 @@ pub use config::{
     AutoApplyConfigExtended,
     PersistenceConfig,
     PersistenceBackend,
+    PrivacyConfig,
+    QueryTextStorage,
     HttpServerConfig,
     NotificationConfig,
     SuccessCriterion,

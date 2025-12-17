@@ -1,0 +1,66 @@
+# Multi-stage Dockerfile for db-optimizer with CNPG support
+# Production-ready build with minimal runtime footprint
+
+# Stage 1: Builder
+FROM rust:1.75-slim as builder
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y \
+    pkg-config \
+    libssl-dev \
+    libsqlite3-dev \
+    clang \
+    llvm \
+    libelf-dev \
+    linux-headers-generic \
+    protobuf-compiler \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /build
+
+# Copy dependency manifests first for better caching
+COPY Cargo.toml Cargo.lock ./
+
+# Create dummy main.rs to cache dependencies
+RUN mkdir -p src && \
+    echo "fn main() {}" > src/main.rs && \
+    cargo build --release --features cnpg && \
+    rm -rf src
+
+# Copy actual source code
+COPY src ./src
+COPY bpf ./bpf
+COPY build.rs ./
+
+# Build the actual application with CNPG feature
+RUN cargo build --release --features cnpg && \
+    strip /build/target/release/pg-query-advisor
+
+# Stage 2: Runtime
+FROM debian:bookworm-slim
+
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y \
+    ca-certificates \
+    libssl3 \
+    libsqlite3-0 \
+    postgresql-client \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create non-root user
+RUN useradd -m -u 1000 dbopt && \
+    mkdir -p /data /config && \
+    chown -R dbopt:dbopt /data /config
+
+USER dbopt
+WORKDIR /app
+
+COPY --from=builder /build/target/release/pg-query-advisor /app/pg-query-advisor
+
+# Expose ports
+# 8080: CNPG Plugin gRPC
+# 3000: HTTP API (if enabled)
+EXPOSE 8080 3000
+
+ENTRYPOINT ["/app/pg-query-advisor"]
+CMD ["cnpg-plugin"]

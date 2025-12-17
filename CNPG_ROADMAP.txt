@@ -1,0 +1,407 @@
+# Vaanyze CloudNativePG Plugin - Complete Roadmap
+
+## Executive Summary
+
+You now have THREE deployment modes for Vaanyze:
+1. **CLI Mode** - Ad-hoc analysis for developers
+2. **Agent Mode** - Continuous monitoring for standalone deployments  
+3. **CNPG Plugin Mode** - Kubernetes-native integration (NEW!)
+
+The CNPG plugin is your **enterprise wedge** into the Kubernetes database market.
+
+---
+
+## Phase 1: Make It Work (Week 1-2)
+
+### Step 1: Fix Compilation
+The plugin code is written but won't compile yet because we need:
+
+```toml
+# Add to Cargo.toml
+[dependencies]
+tonic = "0.10"
+prost = "0.12"
+tokio-stream = "0.1"
+
+[build-dependencies]
+tonic-build = "0.10"
+```
+
+### Step 2: Get CNPG-I Protocol Definition
+```bash
+# Clone the CNPG-I repository
+git clone https://github.com/cloudnative-pg/cnpg-i.git
+cp cnpg-i/proto/cnpg-i.proto src/cnpg_plugin/proto/
+```
+
+### Step 3: Generate gRPC Code
+Create `build.rs` in project root:
+```rust
+fn main() {
+    tonic_build::configure()
+        .build_server(true)
+        .compile(
+            &["src/cnpg_plugin/proto/cnpg-i.proto"],
+            &["src/cnpg_plugin/proto"],
+        )
+        .unwrap();
+}
+```
+
+### Step 4: Update proto.rs
+Replace placeholder code with:
+```rust
+pub mod cnpg_i {
+    tonic::include_proto!("cnpg_i");
+}
+```
+
+---
+
+## Phase 2: Build Docker Image (Week 3)
+
+### Dockerfile
+```dockerfile
+FROM rust:1.75 as builder
+WORKDIR /app
+COPY . .
+RUN cargo build --release --bin vaanyze-cnpg-plugin
+
+FROM debian:bookworm-slim
+RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
+COPY --from=builder /app/target/release/vaanyze-cnpg-plugin /usr/local/bin/
+ENTRYPOINT ["vaanyze-cnpg-plugin"]
+```
+
+### Build Commands
+```bash
+docker build -t vaanyze/cnpg-plugin:v0.1.0 .
+docker push vaanyze/cnpg-plugin:v0.1.0
+```
+
+---
+
+## Phase 3: Kubernetes Deployment (Week 4)
+
+### manifests/namespace.yaml
+```yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: vaanyze-system
+```
+
+### manifests/secret.yaml
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: vaanyze-credentials
+  namespace: vaanyze-system
+type: Opaque
+stringData:
+  api-key: "YOUR_API_KEY_HERE"
+```
+
+### manifests/daemonset.yaml
+```yaml
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: vaanyze-plugin
+  namespace: vaanyze-system
+spec:
+  selector:
+    matchLabels:
+      app: vaanyze-plugin
+  template:
+    metadata:
+      labels:
+        app: vaanyze-plugin
+    spec:
+      serviceAccountName: vaanyze-plugin
+      containers:
+      - name: plugin
+        image: vaanyze/cnpg-plugin:v0.1.0
+        ports:
+        - containerPort: 50051
+          name: grpc
+        env:
+        - name: VAANYZE_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: vaanyze-credentials
+              key: api-key
+        - name: RUST_LOG
+          value: "info"
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+```
+
+### manifests/rbac.yaml
+```yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: vaanyze-plugin
+  namespace: vaanyze-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: vaanyze-plugin
+rules:
+- apiGroups: ["postgresql.cnpg.io"]
+  resources: ["clusters"]
+  verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: vaanyze-plugin
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: vaanyze-plugin
+subjects:
+- kind: ServiceAccount
+  name: vaanyze-plugin
+  namespace: vaanyze-system
+```
+
+### manifests/service.yaml
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: vaanyze-plugin
+  namespace: vaanyze-system
+spec:
+  selector:
+    app: vaanyze-plugin
+  ports:
+  - port: 50051
+    targetPort: 50051
+    name: grpc
+  type: ClusterIP
+```
+
+---
+
+## Phase 4: Integration with CloudNativePG (Week 5)
+
+### Example CNPG Cluster with Vaanyze
+```yaml
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: production-db
+  namespace: default
+spec:
+  instances: 3
+  
+  # PostgreSQL configuration
+  postgresql:
+    parameters:
+      shared_preload_libraries: "pg_stat_statements"
+      pg_stat_statements.track: "all"
+  
+  # Storage
+  storage:
+    size: 100Gi
+    storageClass: fast-ssd
+  
+  # Monitoring
+  monitoring:
+    enablePodMonitor: true
+  
+  # Vaanyze Plugin Integration (Future CNPG feature)
+  # plugins:
+  #   - name: vaanyze-optimizer
+  #     endpoint: "vaanyze-plugin.vaanyze-system.svc:50051"
+  #     config:
+  #       enableAutoOptimize: "true"
+  #       healthThreshold: "70"
+```
+
+---
+
+## Phase 5: Testing (Week 6)
+
+### Local Testing with Kind
+```bash
+# Create local Kubernetes cluster
+kind create cluster --name vaanyze-test
+
+# Install CloudNativePG operator
+kubectl apply -f \
+  https://raw.githubusercontent.com/cloudnative-pg/cloudnative-pg/main/releases/cnpg-1.22.0.yaml
+
+# Deploy Vaanyze plugin
+kubectl apply -f manifests/
+
+# Create test PostgreSQL cluster
+kubectl apply -f examples/test-cluster.yaml
+
+# Check plugin logs
+kubectl logs -n vaanyze-system -l app=vaanyze-plugin -f
+```
+
+### Verification
+```bash
+# Check if plugin is receiving requests
+kubectl logs -n vaanyze-system -l app=vaanyze-plugin | grep "Received lifecycle request"
+
+# Check health scores
+kubectl logs -n vaanyze-system -l app=vaanyze-plugin | grep "health score"
+
+# Verify CNPG cluster status
+kubectl cnpg status production-db
+```
+
+---
+
+## Phase 6: Community Launch (Month 2)
+
+### Week 1: Documentation
+- [ ] Write comprehensive README for the plugin
+- [ ] Create installation guide
+- [ ] Document configuration options
+- [ ] Add troubleshooting section
+
+### Week 2: Community Engagement
+- [ ] Join CloudNativePG Slack (#general channel)
+- [ ] Introduce yourself and the plugin
+- [ ] Share early access with 3-5 community members
+- [ ] Gather feedback
+
+### Week 3: Official Submission
+- [ ] Submit PR to add Vaanyze to CNPG third-party plugins list
+- [ ] Write blog post: "Autonomous PostgreSQL Optimization for CloudNativePG"
+- [ ] Submit to cloudnative-pg.io blog
+- [ ] Post on Hacker News
+
+### Week 4: Amplification
+- [ ] Present at CloudNativePG community meeting
+- [ ] Post on Reddit r/kubernetes
+- [ ] Share on LinkedIn
+- [ ] Tweet about the launch
+
+---
+
+## Phase 7: Production Readiness (Month 3)
+
+### Features to Add
+1. **Cloud Reporting**
+   ```rust
+   async fn report_to_cloud(&self, cluster: &str, score: u8) -> Result<()> {
+       let client = reqwest::Client::new();
+       client.post("https://api.vaanyze.io/v1/health")
+           .json(&json!({
+               "cluster": cluster,
+               "score": score,
+               "timestamp": Utc::now()
+           }))
+           .send()
+           .await?;
+       Ok(())
+   }
+   ```
+
+2. **Auto-Optimization**
+   ```rust
+   if score < self.config.health_threshold && self.config.enable_auto_optimize {
+       let recommendations = self.generate_recommendations(&pool).await?;
+       for rec in recommendations {
+           self.apply_with_verification(rec).await?;
+       }
+   }
+   ```
+
+3. **Metrics Export**
+   ```rust
+   // Prometheus metrics
+   lazy_static! {
+       static ref HEALTH_SCORE: IntGauge = register_int_gauge!(
+           "vaanyze_health_score",
+           "Database health score (0-100)"
+       ).unwrap();
+   }
+   ```
+
+---
+
+## Success Metrics
+
+### Technical Metrics
+- Plugin successfully deploys on 10+ CloudNativePG clusters
+- Health scores calculated every 5 minutes
+- <1% CPU usage per database
+- <100MB memory per instance
+
+### Business Metrics
+- 20 GitHub stars in first month
+- 5 beta customers using the plugin
+- Listed in official CNPG third-party plugins
+- 1 blog post on cloudnative-pg.io
+
+### Community Metrics
+- 50+ Slack channel members
+- 10+ community contributions (issues, PRs)
+- 1 community meeting presentation
+- 3+ case studies/testimonials
+
+---
+
+## Revenue Model
+
+### Pricing
+- **Free Tier**: Plugin is open-source, basic health monitoring
+- **Pro Tier** ($79/cluster/month): AI Query Advisor, auto-optimization
+- **Enterprise** ($299/cluster/month): Fleet management, custom SLAs
+
+### Target Revenue (Year 1)
+- Month 6: 20 clusters × $79 = $1,580/month
+- Month 12: 100 clusters × $79 = $7,900/month
+- ARR: ~$95,000
+
+---
+
+## Risk Mitigation
+
+### Technical Risks
+- **CNPG-I API changes**: Pin to specific version, monitor releases
+- **Performance impact**: Extensive benchmarking, resource limits
+- **Security**: Minimal permissions, audit logging
+
+### Business Risks
+- **Low adoption**: Focus on community building, content marketing
+- **Competition**: Be first to market, build moat with AI features
+- **CNPG changes direction**: Maintain standalone agent mode
+
+---
+
+## Next Immediate Actions
+
+1. **Today**: Join CloudNativePG Slack
+2. **This Week**: Fix compilation, get CNPG-I proto file
+3. **Next Week**: Build Docker image, test locally
+4. **Week 3**: Deploy to test cluster, gather metrics
+5. **Week 4**: Write blog post, submit to community
+
+---
+
+## The Big Picture
+
+This plugin transforms Vaanyze from "another database tool" to:
+
+**"The only autonomous PostgreSQL optimizer built specifically for CloudNativePG"**
+
+With 18.8K stars and thousands of production users, CloudNativePG is your distribution channel. Every new CNPG adoption is a potential Vaanyze customer.
+
+**This is your wedge into the Kubernetes database market.**

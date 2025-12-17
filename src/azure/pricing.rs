@@ -149,6 +149,17 @@ impl PricingCalculator {
                 ));
             }
         }
+
+        // If CPU or memory is very high, recommend upsizing (and prefer Memory Optimized if memory is also high).
+        if cpu_utilization > 85.0 || memory_utilization > 85.0 {
+            let new_cores = (current_sku.cores * 2).min(64);
+            let tier = if memory_utilization > 80.0 {
+                "MemoryOptimized"
+            } else {
+                &current_sku.tier
+            };
+            return Some(AzureSku::new(tier, "Gen5", new_cores));
+        }
         
         // If CPU is high but memory is fine, check if General Purpose is sufficient
         if cpu_utilization > 80.0 && memory_utilization < 50.0 && current_sku.tier == "MemoryOptimized" {
@@ -165,16 +176,6 @@ impl PricingCalculator {
                 "MemoryOptimized",
                 "Gen5",
                 current_sku.cores,
-            ));
-        }
-        
-        // If all metrics are high, recommend upsizing
-        if cpu_utilization > 85.0 || memory_utilization > 85.0 {
-            let new_cores = (current_sku.cores * 2).min(64);
-            return Some(AzureSku::new(
-                &current_sku.tier,
-                &current_sku.compute,
-                new_cores,
             ));
         }
         

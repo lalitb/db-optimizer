@@ -46,6 +46,22 @@ enum Commands {
     
     /// Validate current PostgreSQL configuration
     ConfigValidate(ConfigValidateOptions),
+
+    /// Start the CloudNativePG integration plugin server
+    #[cfg(feature = "cnpg")]
+    CnpgPlugin(CnpgPluginOptions),
+}
+
+#[derive(Parser)]
+#[cfg(feature = "cnpg")]
+struct CnpgPluginOptions {
+    /// Port to listen on
+    #[arg(long, default_value = "8080")]
+    port: u16,
+
+    /// Path to configuration file
+    #[arg(long, short)]
+    config: Option<PathBuf>,
 }
 
 #[derive(Parser)]
@@ -366,6 +382,10 @@ async fn main() -> Result<()> {
         }
         Some(Commands::ConfigValidate(opts)) => {
             run_config_validate_mode(opts).await
+        }
+        #[cfg(feature = "cnpg")]
+        Some(Commands::CnpgPlugin(opts)) => {
+            run_cnpg_plugin(opts).await
         }
         None => {
             // Default behavior - run analyze with flattened options
@@ -1347,4 +1367,9 @@ async fn run_config_validate_mode(opts: ConfigValidateOptions) -> Result<()> {
     }
     
     Ok(())
+}
+
+#[cfg(feature = "cnpg")]
+async fn run_cnpg_plugin(opts: CnpgPluginOptions) -> Result<()> {
+    pg_query_advisor::cnpg_plugin::run_cnpg_plugin(opts.port, opts.config).await
 }

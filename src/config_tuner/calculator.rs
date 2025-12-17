@@ -5,6 +5,7 @@ use super::models::{
 };
 
 /// Configuration calculator using PGTune algorithms
+#[derive(Clone)]
 pub struct ConfigCalculator;
 
 impl ConfigCalculator {

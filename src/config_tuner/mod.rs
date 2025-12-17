@@ -18,6 +18,7 @@ use anyhow::Result;
 use sqlx::PgPool;
 
 /// Main configuration tuning interface
+#[derive(Clone)]
 pub struct ConfigTuner {
     calculator: ConfigCalculator,
     validator: ConfigValidator,

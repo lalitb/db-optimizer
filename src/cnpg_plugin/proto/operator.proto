@@ -1,0 +1,147 @@
+syntax = "proto3";
+package cnpgi.operator.v1;
+option go_package = "github.com/cloudnative-pg/cnpg-i/pkg/operator";
+
+service Operator {
+  // GetCapabilities gets the capabilities of the WAL service
+  rpc GetCapabilities(OperatorCapabilitiesRequest) returns (OperatorCapabilitiesResult) {}
+
+  // ValidateCreate improves the behavior of the validating webhook that
+  // is called on creation of the Cluster resources
+  rpc ValidateClusterCreate(OperatorValidateClusterCreateRequest) returns (OperatorValidateClusterCreateResult) {}
+
+  // ValidateClusterChange improves the behavior of the validating webhook of
+  // is called on updates of the Cluster resources
+  rpc ValidateClusterChange(OperatorValidateClusterChangeRequest) returns (OperatorValidateClusterChangeResult) {}
+
+  // MutateCluster fills in the defaults inside a Cluster resource
+  rpc MutateCluster(OperatorMutateClusterRequest) returns (OperatorMutateClusterResult) {}
+
+  // SetStatusInCluster is invoked at the end of the reconciliation loop and it is used to set the plugin status
+  // inside the .status.plugins[pluginName] map key
+  rpc SetStatusInCluster(SetStatusInClusterRequest) returns (SetStatusInClusterResponse) {}
+
+  // Deregister is invoked when the plugin is removed from the cluster definition. It is expected that the plugin
+  // executes its cleanup logic when this method is invoked.
+  rpc Deregister(DeregisterRequest) returns (DeregisterResponse) {}
+}
+
+message OperatorCapabilitiesRequest {
+  // Intentionally empty.
+}
+
+message OperatorCapabilitiesResult {
+  // All the capabilities that the controller service supports. This
+  // field is OPTIONAL.
+  repeated OperatorCapability capabilities = 1;
+}
+
+message OperatorValidateClusterCreateRequest {
+  // This field is REQUIRED. Value of this field is the JSON
+  // serialization of the Cluster that is being created
+  bytes definition = 1;
+}
+
+message OperatorValidateClusterCreateResult {
+  // This field is OPTIONAL. Value of this field is a set
+  // of validation errors
+  repeated ValidationError validation_errors = 1;
+}
+
+message OperatorValidateClusterChangeRequest {
+  // This field is REQUIRED. Value of this field is the JSON
+  // serialization of the current Cluster definition
+  bytes old_cluster = 1;
+
+  // This field is REQUIRED. Value of this field is the JSON
+  // serialization of the updated Cluster definition
+  bytes new_cluster = 2;
+}
+
+message OperatorValidateClusterChangeResult {
+  // This field is OPTIONAL. Value of this field is a set
+  // of validation errors
+  repeated ValidationError validation_errors = 1;
+}
+
+message OperatorMutateClusterRequest {
+  // This field is REQUIRED. Value of this field is the JSON
+  // serialization of the Cluster that should receive the
+  // default values
+  bytes definition = 1;
+}
+
+message OperatorMutateClusterResult {
+  // This field is OPTIONAL. Value of this field is a JSONPatch
+  // to be applied on the passed Cluster definition
+  bytes json_patch = 1;
+}
+
+message DeregisterRequest {
+  // This field is REQUIRED. Value of this field is the JSON
+  // serialization of the Cluster that should receive the
+  // default values
+  bytes definition = 1;
+}
+
+message DeregisterResponse {
+}
+
+message ValidationError {
+  // This field is REQUIRED. Value of this field is 
+  repeated string path_components = 1;
+
+  // This field is REQUIRED. Value of this field is 
+  // the value that caused a validation error
+  string value = 2;
+
+  // This field is REQUIRED. Value of this field is a
+  // description of the validation error
+  string message = 3;
+}
+
+message OperatorCapability {
+  message RPC {
+    enum Type {
+      TYPE_UNSPECIFIED = 0;
+
+      // TYPE_VALIDATE_CLUSTER_CREATE indicates that the Plugin is able to
+      // reply to the ValidateClusterCreate RPC request
+      TYPE_VALIDATE_CLUSTER_CREATE = 1;
+
+      // TYPE_VALIDATE_CLUSTER_CHANGE indicates that the Plugin is able to
+      // reply to the ValidateClusterChange RPC request
+      TYPE_VALIDATE_CLUSTER_CHANGE = 2;
+
+      // TYPE_MUTATE_CLUSTER indicates that the Plugin is able to
+      // reply to the MutateCluster RPC request
+      TYPE_MUTATE_CLUSTER = 3;
+
+      // TYPE_SET_STATUS_IN_CLUSTER indicates that the Plugin is able to
+      // reply to the SetStatusInCluster RPC request
+      TYPE_SET_STATUS_IN_CLUSTER = 5;
+
+      // TYPE_DEREGISTER indicates that the Plugin is able to execute the cleanup logic once it is removed from
+      // the cluster definition
+      TYPE_DEREGISTER = 6;
+    }
+
+    Type type = 1;
+  }
+
+  oneof type {
+    RPC rpc = 1;
+  }
+}
+
+message SetStatusInClusterRequest {
+  // This field is REQUIRED. Value of this field is the JSON
+  // serialization of the current Cluster definition
+  bytes cluster = 1;
+}
+
+message SetStatusInClusterResponse {
+  // This field is OPTIONAL. No value means no-op, otherwise the passed json is set inside the
+  // .status.plugins[pluginName] key
+  bytes json_status = 1;
+}

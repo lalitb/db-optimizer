@@ -1,5 +1,6 @@
 use crate::models::*;
 use crate::config::AnalysisConfig;
+use crate::privacy::redact_sql_for_display;
 use regex::Regex;
 use std::collections::HashMap;
 use sqlparser::dialect::PostgreSqlDialect;
@@ -514,7 +515,14 @@ impl ConnectionAnalyzer {
         let example_queries: Vec<String> = long_idle
             .iter()
             .take(3)
-            .map(|c| format!("  PID {}: {} ({}s)", c.pid, truncate_query(&c.query, 80), c.state_duration_secs().unwrap_or(0)))
+            .map(|c| {
+                format!(
+                    "  PID {}: {} ({}s)",
+                    c.pid,
+                    redact_sql_for_display(&c.query, 80),
+                    c.state_duration_secs().unwrap_or(0)
+                )
+            })
             .collect();
 
         Some(Recommendation {
@@ -570,7 +578,9 @@ impl ConnectionAnalyzer {
             ),
 
             affected_table: None,
-            affected_query: Some(format!("Example: {}", long_idle.first().map(|c| &c.query).unwrap_or(&String::from("N/A")))),
+            affected_query: long_idle
+                .first()
+                .map(|c| format!("Example (redacted): {}", redact_sql_for_display(&c.query, 200))),
         })
     }
 
@@ -608,7 +618,14 @@ impl ConnectionAnalyzer {
         let example_queries: Vec<String> = long_locked
             .iter()
             .take(3)
-            .map(|c| format!("  PID {}: {} (waiting {}s)", c.pid, truncate_query(&c.query, 80), c.query_duration_secs().unwrap_or(0)))
+            .map(|c| {
+                format!(
+                    "  PID {}: {} (waiting {}s)",
+                    c.pid,
+                    redact_sql_for_display(&c.query, 80),
+                    c.query_duration_secs().unwrap_or(0)
+                )
+            })
             .collect();
 
         Some(Recommendation {
@@ -668,7 +685,9 @@ impl ConnectionAnalyzer {
             ),
 
             affected_table: None,
-            affected_query: Some(format!("Example: {}", long_locked.first().map(|c| &c.query).unwrap_or(&String::from("N/A")))),
+            affected_query: long_locked
+                .first()
+                .map(|c| format!("Example (redacted): {}", redact_sql_for_display(&c.query, 200))),
         })
     }
 }

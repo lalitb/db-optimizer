@@ -34,6 +34,10 @@ pub struct Config {
     /// Persistence configuration
     #[serde(default)]
     pub persistence: PersistenceConfig,
+
+    /// Privacy controls (safe-by-default)
+    #[serde(default)]
+    pub privacy: PrivacyConfig,
     
     /// HTTP server configuration
     #[serde(default)]
@@ -60,6 +64,7 @@ impl Config {
             ebpf: EbpfConfig::default(),
             auto_apply: AutoApplyConfigExtended::default(),
             persistence: PersistenceConfig::default(),
+            privacy: PrivacyConfig::default(),
             http_server: HttpServerConfig::default(),
             notifications: NotificationConfig::default(),
             guardrails: GuardrailsConfig::default(),
@@ -177,6 +182,9 @@ impl Config {
         if self.ebpf.enabled && self.ebpf.sampling_interval_ms == 0 {
             bail!("eBPF sampling_interval_ms must be positive when enabled");
         }
+
+        // Privacy: require explicit opt-in for full query text.
+        // (No additional validation; safe defaults enforced via defaults.)
         
         // Validate auto-apply thresholds
         if self.auto_apply.base.min_savings_threshold < 0.0 {
@@ -234,6 +242,44 @@ impl Config {
             // Handle ranges that cross midnight
             current_hour >= start || current_hour <= end
         }
+    }
+}
+
+// ============================================================================
+// PRIVACY CONFIG
+// ============================================================================
+
+/// Controls how query text is stored and displayed.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PrivacyConfig {
+    /// How query text should be stored in persistence/output.
+    #[serde(default)]
+    pub query_text_storage: QueryTextStorage,
+}
+
+impl Default for PrivacyConfig {
+    fn default() -> Self {
+        Self {
+            // Safe default: store/display redacted SQL.
+            query_text_storage: QueryTextStorage::Redacted,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum QueryTextStorage {
+    /// Do not store query text (use placeholders).
+    None,
+    /// Store query text with literal redaction.
+    Redacted,
+    /// Store full query text (not recommended for customer defaults).
+    Full,
+}
+
+impl Default for QueryTextStorage {
+    fn default() -> Self {
+        Self::Redacted
     }
 }
 
@@ -824,12 +870,14 @@ mod tests {
                 query_limit: 100,
                 cost_per_hour_usd: 0.07,
                 min_severity: crate::models::Severity::Low,
+                thresholds: ThresholdConfig::default(),
             },
             safety: SafetyConfig::default(),
             maintenance_window: MaintenanceWindow::default(),
             ebpf: EbpfConfig::default(),
             auto_apply: AutoApplyConfigExtended::default(),
             persistence: PersistenceConfig::default(),
+            privacy: PrivacyConfig::default(),
             http_server: HttpServerConfig::default(),
             notifications: NotificationConfig::default(),
             guardrails: GuardrailsConfig::default(),
@@ -857,6 +905,7 @@ mod tests {
             ebpf: EbpfConfig::default(),
             auto_apply: AutoApplyConfigExtended::default(),
             persistence: PersistenceConfig::default(),
+            privacy: PrivacyConfig::default(),
             http_server: HttpServerConfig::default(),
             notifications: NotificationConfig::default(),
             guardrails: GuardrailsConfig::default(),
@@ -893,6 +942,7 @@ mod tests {
             ebpf: EbpfConfig::default(),
             auto_apply: AutoApplyConfigExtended::default(),
             persistence: PersistenceConfig::default(),
+            privacy: PrivacyConfig::default(),
             http_server: HttpServerConfig::default(),
             notifications: NotificationConfig::default(),
             guardrails: GuardrailsConfig::default(),

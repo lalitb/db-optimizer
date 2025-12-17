@@ -1,0 +1,80 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vaanyze-cnpg-plugin
+  namespace: cnpg-system
+  labels:
+    app: vaanyze-cnpg-plugin
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: vaanyze-cnpg-plugin
+  template:
+    metadata:
+      labels:
+        app: vaanyze-cnpg-plugin
+    spec:
+      serviceAccountName: vaanyze-cnpg-plugin
+      containers:
+      - name: plugin
+        image: vaanyze/cnpg-plugin:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8080
+          name: grpc
+        env:
+        - name: RUST_LOG
+          value: "info"
+        resources:
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vaanyze-cnpg-plugin
+  namespace: cnpg-system
+spec:
+  selector:
+    app: vaanyze-cnpg-plugin
+  ports:
+  - port: 80
+    targetPort: 8080
+    protocol: TCP
+    name: grpc
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: vaanyze-cnpg-plugin
+  namespace: cnpg-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: vaanyze-cnpg-plugin
+rules:
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["postgresql.cnpg.io"]
+  resources: ["clusters"]
+  verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: vaanyze-cnpg-plugin
+subjects:
+- kind: ServiceAccount
+  name: vaanyze-cnpg-plugin
+  namespace: cnpg-system
+roleRef:
+  kind: ClusterRole
+  name: vaanyze-cnpg-plugin
+  apiGroup: rbac.authorization.k8s.io

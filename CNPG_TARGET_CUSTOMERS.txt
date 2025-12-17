@@ -1,0 +1,215 @@
+# CloudNativePG Adopters - Target Customer Analysis
+
+## Tier 1: Immediate Targets (High-Value, High-Fit)
+
+### Managed Service Providers
+**Why they're perfect**: Manage PostgreSQL for multiple clients, need automation at scale
+
+1. **Enix** (France)
+   - Contact: @rdegez
+   - Use case: PostgreSQL for customer platforms on public/private clouds
+   - Opportunity: White-label Vaanyze for their managed services
+   - Pitch: "Automate optimization across all customer databases"
+
+2. **OptimaData** (Netherlands)
+   - Contact: @edco-wallet
+   - Use case: Multiple CNPG projects
+   - Opportunity: Add Vaanyze to their "Postgres on Kubernetes" offering
+   - Pitch: "Enhance your blog post with autonomous optimization"
+
+3. **TrueFullstaq** (Cloud Native Consultancy)
+   - Contact: @leppek
+   - Use case: Managed PostgreSQL offerings
+   - Opportunity: Embed Vaanyze in their managed service
+   - Pitch: "Production-ready foundation + autonomous optimization"
+
+4. **Linux Polska**
+   - Contact: @maaciekk
+   - Use case: Healthcare & finance (mission-critical)
+   - Opportunity: Add Vaanyze to SourceMation stack
+   - Pitch: "Gold standard databases deserve gold standard optimization"
+
+5. **Sophotech**
+   - Contact: @archy-rock3t-cloud
+   - Use case: Mission-critical systems
+   - Opportunity: Battle-tested reliability + Vaanyze performance
+   - Pitch: "True cloud-native resilience includes performance optimization"
+
+### Platform Companies
+**Why they're perfect**: Building PostgreSQL products, can embed Vaanyze
+
+6. **Tembo** (PostgreSQL Extensions Platform)
+   - Contact: @tembo-io
+   - Use case: Tembo Cloud with extensions
+   - Opportunity: Add Vaanyze as a premium extension
+   - Pitch: "The performance extension every database needs"
+
+7. **ParadeDB** (Elasticsearch alternative on Postgres)
+   - Contact: @philippemnoel
+   - Use case: Logical replication to customer infrastructure
+   - Opportunity: Optimize both ParadeDB and customer databases
+   - Pitch: "Elasticsearch performance + PostgreSQL reliability + Vaanyze optimization"
+
+8. **Xata** (PostgreSQL Platform)
+   - Contact: @tsg
+   - Use case: Database branching, storage/compute separation
+   - Opportunity: Optimize the compute layer
+   - Pitch: "Instant branching + instant optimization"
+
+9. **pgEdge** (Distributed Postgres)
+   - Contact: @mmols
+   - Use case: Multi-region active-active deployments
+   - Opportunity: Optimize across distributed clusters
+   - Pitch: "Distributed Postgres + distributed optimization"
+
+## Tier 2: High-Volume Targets (Many Databases)
+
+### SaaS Companies with Large Fleets
+
+10. **Mirakl** (Marketplace Platform) ⭐ TOP PRIORITY
+    - Contact: @ThomasBoussekey
+    - Scale: **300+ clusters, 8TB data**
+    - Use case: Default hosting solution
+    - Opportunity: Massive cost savings at scale
+    - Pitch: "Optimize 300 clusters with one plugin. Save $50K+/year"
+
+11. **Telnyx** (Communications Platform)
+    - Contact: @aryklein
+    - Use case: Multi-site distributed replicas
+    - Opportunity: Optimize across all sites
+    - Pitch: "High availability + high performance"
+
+12. **REWE International** (Retail Giant)
+    - Contact: @rewemkris
+    - Use case: Worldwide stores, warehouses, online shops
+    - Opportunity: PostgreSQL-as-a-Service enhancement
+    - Pitch: "Enterprise-grade optimization for enterprise-scale databases"
+
+13. **Brella** (Event Management)
+    - Contact: @vitobotta
+    - Use case: Moved from Cloud SQL to CNPG for cost savings
+    - Opportunity: Further cost optimization
+    - Pitch: "You saved money moving to CNPG. Save more with Vaanyze"
+
+## Tier 3: Enterprise Validation (Credibility)
+
+### Fortune 500 / Major Enterprises
+
+14. **Microsoft Azure**
+    - Contact: @KenKilty
+    - Use case: AKS with EDB
+    - Opportunity: Azure Marketplace listing partnership
+    - Pitch: "The missing piece for Azure PostgreSQL on AKS"
+
+15. **Google Cloud**
+    - Contact: @mastersingh24
+    - Use case: GKE with EDB Community 360
+    - Opportunity: GCP Marketplace listing
+    - Pitch: "Complete the GKE PostgreSQL story"
+
+16. **IBM**
+    - Contact: @pgodowski
+    - Use case: Cloud Pak on OpenShift
+    - Opportunity: Embedded in Cloud Pak
+    - Pitch: "Enterprise-grade platform needs enterprise-grade optimization"
+
+17. **GEICO Tech**
+    - Contact: @ardentperf
+    - Use case: Cloud and on-premises
+    - Opportunity: Hybrid cloud optimization
+    - Pitch: "Consumer-centric insurance needs performance-centric databases"
+
+18. **Novo Nordisk** (Pharma)
+    - Contact: scni@novonordisk.com (@CasperGN)
+    - Use case: Grafana backing, Developer Portal
+    - Opportunity: Observability platform optimization
+    - Pitch: "Optimize the database behind your observability"
+
+## Outreach Strategy
+
+### Week 1: MSPs (Enix, OptimaData, TrueFullstaq)
+**Email template:**
+```
+Subject: Autonomous PostgreSQL Optimization for Your Managed Services
+
+Hi [Name],
+
+I noticed you're using CloudNativePG to manage PostgreSQL for your clients.
+
+We built Vaanyze - the first performance optimization plugin for CloudNativePG. 
+It uses eBPF to analyze queries at the kernel level and autonomously applies 
+optimizations with statistical verification.
+
+Would you be interested in a 15-minute demo? We're offering early access to 
+MSPs who want to enhance their PostgreSQL offerings.
+
+Best,
+[Your name]
+```
+
+### Week 2: Platform Companies (Tembo, ParadeDB, Xata)
+**Email template:**
+```
+Subject: Embed Autonomous Optimization in Your PostgreSQL Platform
+
+Hi [Name],
+
+Congrats on [specific achievement from their GitHub/blog].
+
+We built Vaanyze - a CNPG plugin that adds autonomous performance optimization 
+to PostgreSQL. It could be a great fit as a premium feature in [their platform].
+
+Interested in exploring an integration partnership?
+
+Best,
+[Your name]
+```
+
+### Week 3: High-Volume (Mirakl, Telnyx, REWE)
+**Email template:**
+```
+Subject: Optimize [X] PostgreSQL Clusters with One Plugin
+
+Hi [Name],
+
+Managing [X] CloudNativePG clusters is impressive. But are you optimizing 
+the queries running on them?
+
+Vaanyze is the first performance plugin for CNPG. It:
+- Auto-discovers all your clusters
+- Analyzes queries with eBPF (kernel-level)
+- Applies optimizations autonomously
+- Typical result: 30% cost reduction, 50% performance improvement
+
+Would you be open to a pilot with 10 clusters?
+
+Best,
+[Your name]
+```
+
+## Success Metrics
+
+### Month 1:
+- 5 MSP conversations
+- 2 beta agreements
+- 1 case study in progress
+
+### Month 3:
+- 3 MSP partnerships (reseller agreements)
+- 2 platform integrations (Tembo, ParadeDB)
+- 1 enterprise pilot (Mirakl or Telnyx)
+
+### Month 6:
+- 10 MSPs using Vaanyze (200 databases)
+- 3 platforms with embedded Vaanyze
+- 5 direct enterprise customers
+
+**Revenue Target: $50K MRR**
+
+## Next Immediate Actions
+
+1. **Join CNPG Slack today**
+2. **Draft outreach emails** (use templates above)
+3. **Create MSP partnership deck** (white-label offering)
+4. **Build demo environment** (show optimization on CNPG cluster)
+5. **Reach out to Enix first** (French company, active in community)

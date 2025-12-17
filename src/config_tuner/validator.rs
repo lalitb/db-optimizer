@@ -5,12 +5,18 @@ use anyhow::Result;
 use sqlx::{PgPool, Row};
 
 /// Configuration validator
+#[derive(Clone)]
 pub struct ConfigValidator {
     safety: SafetyValidator,
     memory: MemoryValidator,
     connection: ConnectionValidator,
 }
 
+#[derive(Clone)]
+struct SafetyValidator;
+#[derive(Clone)]
+struct MemoryValidator;
+#[derive(Clone)]
 impl ConfigValidator {
     pub fn new() -> Self {
         Self {

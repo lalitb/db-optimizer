@@ -149,6 +149,14 @@ persistence:
   # Retention period for query samples in days
   retention_days: 30
 
+# Privacy configuration
+privacy:
+  # Controls how query text is stored in persistence/reporting.
+  # - none: store "<omitted>" (no query text)
+  # - redacted: redact literals/ids and truncate (recommended default)
+  # - full: store raw query text (use only with explicit approval)
+  query_text_storage: redacted
+
 # HTTP server configuration
 http_server:
   enabled: false  # Set to true to enable HTTP API

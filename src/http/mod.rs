@@ -9,17 +9,61 @@ use crate::config::HttpServerConfig;
 use crate::ebpf::EbpfManager;
 use crate::persistence::PersistenceStore;
 use axum::{
+    extract::State,
+    http::{header, Request, StatusCode},
+    middleware::{from_fn_with_state, Next},
     routing::{get, post},
+    response::IntoResponse,
     Router,
 };
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use tower_http::cors::{CorsLayer, Any};
+use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
 use tracing::info;
 
+use crate::http::error::ApiErrorResponse;
+
 pub use error::{ApiError, ApiResult};
 pub use models::{ApiResponse, HealthStatus};
+
+async fn require_bearer_auth(
+    State(state): State<AppState>,
+    req: Request<axum::body::Body>,
+    next: Next,
+) -> axum::response::Response {
+    let expected = match state.config.auth_token.as_deref() {
+        Some(t) if !t.is_empty() => t,
+        _ => return next.run(req).await,
+    };
+
+    let bearer = req
+        .headers()
+        .get(header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer "))
+        .map(str::trim);
+
+    let alt = req
+        .headers()
+        .get("x-dbo-token")
+        .and_then(|v| v.to_str().ok())
+        .map(str::trim);
+
+    let provided = bearer.or(alt);
+
+    if provided == Some(expected) {
+        return next.run(req).await;
+    }
+
+    let body = axum::Json(ApiErrorResponse {
+        error: "Unauthorized".to_string(),
+        code: "UNAUTHORIZED".to_string(),
+        details: Some("Provide Authorization: Bearer <token>".to_string()),
+    });
+
+    (StatusCode::UNAUTHORIZED, body).into_response()
+}
 
 /// Shared application state
 #[derive(Clone)]
@@ -57,6 +101,13 @@ pub fn create_router(state: AppState) -> Router {
         .route("/recommendations/:id/reject", post(handlers::recommendations::reject));
     
     let api_v1 = api_v1.with_state(state.clone());
+
+    // Optional auth: if a token is configured, require it for all /api/v1 routes.
+    let api_v1 = if state.config.auth_token.as_deref().unwrap_or("").is_empty() {
+        api_v1
+    } else {
+        api_v1.layer(from_fn_with_state(state.clone(), require_bearer_auth))
+    };
     
     // Add config tuning routes if database pool is available
     let api_v1 = if let Some(pool) = &state.db_pool {
@@ -75,15 +126,16 @@ pub fn create_router(state: AppState) -> Router {
         api_v1
     };
 
-    Router::new()
+    let router = Router::new()
         .route("/", get(handlers::root))
         .nest("/api/v1", api_v1)
-        .layer(TraceLayer::new_for_http())
-        .layer(if state.config.enable_cors {
-            CorsLayer::permissive()
-        } else {
-            CorsLayer::new().allow_origin(Any)
-        })
+        .layer(TraceLayer::new_for_http());
+
+    if state.config.enable_cors {
+        router.layer(CorsLayer::permissive())
+    } else {
+        router
+    }
 }
 
 /// Start the HTTP server
