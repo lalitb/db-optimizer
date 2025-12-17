@@ -441,6 +441,6 @@ mod tests {
         // Mixed should have moderate confidence
         let mixed_confidence =
             detector.get_confidence(&WorkloadType::Mixed, &query_stats, &conn_stats);
-        assert!(mixed_confidence >= 0.60 && mixed_confidence < 0.70);
+        assert!((0.60..0.70).contains(&mixed_confidence));
     }
 }

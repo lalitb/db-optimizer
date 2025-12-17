@@ -226,18 +226,13 @@ pub enum IssueType {
 }
 
 /// Severity levels
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Default)]
 pub enum Severity {
+    #[default]
     Low,
     Medium,
     High,
     Critical,
-}
-
-impl Default for Severity {
-    fn default() -> Self {
-        Self::Low
-    }
 }
 
 impl Severity {
@@ -602,7 +597,7 @@ mod connection_models_tests {
         // Should be approximately 60 seconds (allow 1 second tolerance for test execution time)
         let duration_val = duration.unwrap();
         assert!(
-            duration_val >= 59 && duration_val <= 61,
+            (59..=61).contains(&duration_val),
             "Expected ~60 seconds, got {}",
             duration_val
         );
@@ -632,7 +627,7 @@ mod connection_models_tests {
         assert!(duration.is_some());
         let duration_val = duration.unwrap();
         assert!(
-            duration_val >= 119 && duration_val <= 121,
+            (119..=121).contains(&duration_val),
             "Expected ~120 seconds, got {}",
             duration_val
         );

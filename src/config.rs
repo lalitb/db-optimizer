@@ -700,23 +700,18 @@ impl Default for PersistenceConfig {
     }
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum PersistenceBackend {
     /// No persistence
     None,
 
     /// SQLite embedded database
+    #[default]
     Sqlite,
 
     /// PostgreSQL database
     Postgres,
-}
-
-impl Default for PersistenceBackend {
-    fn default() -> Self {
-        Self::Sqlite
-    }
 }
 
 fn default_sqlite_path() -> String {
@@ -928,7 +923,7 @@ mod tests {
     #[test]
     fn test_guardrails_defaults() {
         let guardrails = GuardrailsConfig::default();
-        assert_eq!(guardrails.enabled, true);
+        assert!(guardrails.enabled);
         assert_eq!(guardrails.memory_threshold_percent, 90);
         assert_eq!(guardrails.cpu_threshold_percent, 85);
         assert_eq!(guardrails.disk_threshold_percent, 95);

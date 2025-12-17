@@ -139,8 +139,10 @@ fn test_analyzer_logic() {
 fn test_cost_estimation() {
     use pg_query_advisor::{CostEstimator, PricingConfig};
 
-    let mut config = PricingConfig::default();
-    config.cost_per_vcpu_hour = 0.10;
+    let config = PricingConfig {
+        cost_per_vcpu_hour: 0.10,
+        ..Default::default()
+    };
     let estimator = CostEstimator::new(config);
 
     let mut rec = Recommendation {
@@ -553,7 +555,7 @@ async fn test_connection_monitoring_integration() {
         );
     }
 
-    assert!(connections.len() > 0, "Should have at least one connection");
+    assert!(!connections.is_empty(), "Should have at least one connection");
 
     // Verify connection data structure
     for conn in &connections {

@@ -311,7 +311,7 @@ async fn test_partial_index_for_skewed_data() {
     println!("   Cardinality: {:.4}", stats.cardinality_ratio);
     println!(
         "   Most Common Freq: {:.2}%",
-        stats.most_common_freqs.get(0).unwrap_or(&0.0) * 100.0
+        stats.most_common_freqs.first().unwrap_or(&0.0) * 100.0
     );
     println!("   WHERE Clause: {:?}", rec.where_clause);
     println!("   DDL: {}", rec.ddl);

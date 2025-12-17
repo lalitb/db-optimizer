@@ -687,6 +687,11 @@ impl Default for ConnectionAnalyzer {
 }
 
 #[cfg(test)]
+mod tests {
+    // Placeholder for non-connection tests if needed
+}
+
+#[cfg(test)]
 mod connection_analyzer_tests {
     use super::*;
     use std::collections::HashMap;

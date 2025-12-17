@@ -26,9 +26,10 @@ use tokio::sync::{mpsc, RwLock};
 use tracing::{debug, error, info};
 
 /// Mode of operation for the eBPF manager
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub enum EbpfMode {
     /// Disabled - no eBPF collection
+    #[default]
     Disabled,
     /// Connect to privileged daemon via Unix socket
     Client { socket_path: PathBuf },
@@ -36,12 +37,6 @@ pub enum EbpfMode {
     Privileged,
     /// Use mock data for testing
     Mock,
-}
-
-impl Default for EbpfMode {
-    fn default() -> Self {
-        Self::Disabled
-    }
 }
 
 /// Manages eBPF programs and event processing
