@@ -4,18 +4,24 @@ on:
   push:
     branches: [ main, develop ]
     paths:
+      - 'build.rs'
       - 'src/cnpg_plugin/**'
+      - 'src/config_tuner/**'
       - 'Dockerfile.cnpg'
       - 'k8s/cnpg-plugin.yaml'
       - 'Cargo.toml'
+      - 'Cargo.lock'
       - '.github/workflows/cnpg-ci.yml'
   pull_request:
     branches: [ main, develop ]
     paths:
+      - 'build.rs'
       - 'src/cnpg_plugin/**'
+      - 'src/config_tuner/**'
       - 'Dockerfile.cnpg'
       - 'k8s/cnpg-plugin.yaml'
       - 'Cargo.toml'
+      - 'Cargo.lock'
 
 env:
   CARGO_TERM_COLOR: always
