@@ -10,6 +10,14 @@ pub struct PluginConfig {
     pub health_threshold: u8,
     pub check_interval_seconds: u64,
     pub auto_apply_config: AutoApplyConfig,
+
+    /// Default RAM to assume (GB) when cluster resources cannot be inferred
+    #[serde(default = "PluginConfig::default_ram_gb")]
+    pub default_ram_gb: u64,
+
+    /// Default CPU cores to assume when cluster resources cannot be inferred
+    #[serde(default = "PluginConfig::default_cpus")]
+    pub default_cpus: u32,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -29,7 +37,19 @@ impl Default for PluginConfig {
             health_threshold: 70,
             check_interval_seconds: 300, // 5 minutes
             auto_apply_config: AutoApplyConfig::default(),
+            default_ram_gb: Self::default_ram_gb(),
+            default_cpus: Self::default_cpus(),
         }
+    }
+}
+
+impl PluginConfig {
+    fn default_ram_gb() -> u64 {
+        8
+    }
+
+    fn default_cpus() -> u32 {
+        2
     }
 }
 

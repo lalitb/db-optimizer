@@ -1,297 +1,426 @@
 use crate::agent::AgentState;
-use crate::analyzer::HealthCalculator;
+use crate::cnpg_plugin::cnpgi::operator_v1;
 use crate::cnpg_plugin::config::PluginConfig;
-use crate::cnpg_plugin::proto::{
-    CapabilityType, GetCapabilitiesRequest, GetCapabilitiesResponse, OperationType,
-    OperatorLifecycleRequest, OperatorLifecycleResponse, OperatorService, PluginCapability,
+use crate::config_tuner::{
+    models::{DiskType, OsType, SystemInfo, WorkloadType},
+    ConfigTuner,
 };
-use crate::collector::DatabaseCollector;
-use sqlx::postgres::PgPoolOptions;
-use std::sync::Arc;
+use serde_json::Value;
+use std::collections::BTreeMap;
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
 use tokio::sync::Mutex;
 use tonic::{Request, Response, Status};
 use tracing::{debug, error, info};
 
-/// Vaanyze CNPG Plugin service implementation
+/// Vaanyze CNPG Operator plugin implementation (CNPG-I `Operator` service)
 #[derive(Clone)]
 pub struct VaanyzeOperatorService {
     config: PluginConfig,
     state: Arc<Mutex<AgentState>>,
-    /// eBPF manager for kernel-level metrics (when available)
-    #[cfg(target_os = "linux")]
-    ebpf_enabled: bool,
+    grpc_ready: Arc<AtomicBool>,
 }
 
 impl VaanyzeOperatorService {
-    pub fn new(config: PluginConfig, state: Arc<Mutex<AgentState>>) -> Self {
+    pub fn new(
+        config: PluginConfig,
+        state: Arc<Mutex<AgentState>>,
+        grpc_ready: Arc<AtomicBool>,
+    ) -> Self {
         Self {
             config,
             state,
-            #[cfg(target_os = "linux")]
-            ebpf_enabled: true,
+            grpc_ready,
         }
     }
 
-    /// Analyze a PostgreSQL cluster
-    async fn analyze_cluster(&self, connection_string: &str) -> anyhow::Result<ClusterAnalysis> {
-        debug!(
-            "Connecting to cluster: {}",
-            mask_connection_string(connection_string)
-        );
-
-        // Connect to database
-        let pool = PgPoolOptions::new()
-            .max_connections(5)
-            .acquire_timeout(std::time::Duration::from_secs(10))
-            .connect(connection_string)
-            .await?;
-
-        // Collect metrics
-        let collector = DatabaseCollector::new(pool);
-        let tables = collector.collect_table_info().await?;
-        let indexes = collector.collect_index_info().await?;
-        let connection_stats = collector.collect_connection_stats().await.ok();
-
-        // Calculate health score
-        let total_db_size_mb: f64 = tables.iter().map(|t| t.total_size_mb).sum();
-        let health_score = HealthCalculator::calculate(
-            &tables,
-            &indexes,
-            connection_stats.as_ref(),
-            total_db_size_mb,
-        );
-
-        // Generate recommendations
-        let mut recommendations = Vec::new();
-
-        // Check for large tables that might need optimization
-        for table in &tables {
-            if table.total_size_mb > 1000.0 && table.index_size_mb < table.table_size_mb * 0.1 {
-                recommendations.push(format!(
-                    "Table {} is large ({:.1}MB) with relatively small index coverage - consider analyzing query patterns",
-                    table.table_name, table.total_size_mb
-                ));
-            }
-        }
-
-        // Check for unused indexes
-        for index in &indexes {
-            if index.index_scans == 0 && index.index_size_mb > 10.0 {
-                recommendations.push(format!(
-                    "Index {} is unused and consuming {:.1}MB - consider dropping",
-                    index.index_name, index.index_size_mb
-                ));
-            }
-        }
-
-        // Check connection stats
-        if let Some(stats) = &connection_stats {
-            if stats.idle_in_transaction_count > 5 {
-                recommendations.push(format!(
-                    "{} idle-in-transaction connections detected - check for uncommitted transactions",
-                    stats.idle_in_transaction_count
-                ));
-            }
-        }
-
-        Ok(ClusterAnalysis {
-            health_score,
-            recommendations,
-            table_count: tables.len(),
-            index_count: indexes.len(),
-            total_size_mb: total_db_size_mb,
-        })
+    fn is_opted_in(cluster: &Value) -> bool {
+        parse_bool(Self::annotation(cluster, "vaanyze.io/enable-tuning"))
     }
 
-    /// Get plugin capabilities based on runtime detection
-    fn detect_capabilities(&self) -> Vec<PluginCapability> {
-        let mut caps = vec![
-            PluginCapability {
-                capability_type: CapabilityType::HealthMonitoring,
-                enabled: true,
-            },
-            PluginCapability {
-                capability_type: CapabilityType::PerformanceAnalysis,
-                enabled: true,
-            },
-            PluginCapability {
-                capability_type: CapabilityType::IndexRecommendations,
-                enabled: true,
-            },
-            PluginCapability {
-                capability_type: CapabilityType::QueryRewriting,
-                enabled: true, // Query rewriting is always available
-            },
-            PluginCapability {
-                capability_type: CapabilityType::AutoOptimization,
-                enabled: self.config.auto_apply_config.enabled,
-            },
-            PluginCapability {
-                capability_type: CapabilityType::CostAnalysis,
-                enabled: true,
-            },
-        ];
-
-        // eBPF is only available on Linux
-        #[cfg(target_os = "linux")]
+    fn workload(cluster: &Value) -> WorkloadType {
+        match Self::annotation(cluster, "vaanyze.io/workload")
+            .unwrap_or("mixed")
+            .trim()
+            .to_lowercase()
+            .as_str()
         {
-            caps.push(PluginCapability {
-                capability_type: CapabilityType::EbpfInstrumentation,
-                enabled: self.ebpf_enabled,
-            });
+            "web" => WorkloadType::Web,
+            "oltp" => WorkloadType::OLTP,
+            "dw" | "datawarehouse" | "data-warehouse" => WorkloadType::DataWarehouse,
+            "desktop" => WorkloadType::Desktop,
+            _ => WorkloadType::Mixed,
+        }
+    }
+
+    fn manage_max_connections(cluster: &Value) -> bool {
+        parse_bool(Self::annotation(
+            cluster,
+            "vaanyze.io/manage-max-connections",
+        ))
+    }
+
+    fn disk_type(cluster: &Value) -> DiskType {
+        match Self::annotation(cluster, "vaanyze.io/disk")
+            .unwrap_or("ssd")
+            .trim()
+            .to_lowercase()
+            .as_str()
+        {
+            "hdd" => DiskType::HDD,
+            "san" => DiskType::SAN,
+            _ => DiskType::SSD,
+        }
+    }
+
+    fn annotation<'a>(cluster: &'a Value, key: &str) -> Option<&'a str> {
+        cluster
+            .get("metadata")
+            .and_then(|m| m.get("annotations"))
+            .and_then(|a| a.get(key))
+            .and_then(|v| v.as_str())
+    }
+
+    fn has_existing_parameter(cluster: &Value, key: &str) -> bool {
+        cluster
+            .get("spec")
+            .and_then(|s| s.get("postgresql"))
+            .and_then(|p| p.get("parameters"))
+            .and_then(|p| p.get(key))
+            .is_some()
+    }
+
+    fn infer_system_info(&self, cluster: &Value) -> SystemInfo {
+        let (cpu_count, total_ram_kb) = infer_cpu_and_memory_from_cluster(cluster).unwrap_or((
+            self.config.default_cpus,
+            self.config.default_ram_gb * 1024 * 1024,
+        ));
+
+        SystemInfo {
+            total_ram_kb,
+            cpu_count,
+            disk_type: Self::disk_type(cluster),
+            os_type: OsType::Linux,
+            pg_version: 16.0,
+        }
+    }
+
+    fn optimal_parameters(&self, cluster: &Value) -> BTreeMap<String, String> {
+        let system_info = self.infer_system_info(cluster);
+        let workload = Self::workload(cluster);
+
+        let tuner = ConfigTuner::new();
+        let optimal = tuner.calculate_optimal_config(&system_info, workload);
+
+        let mut out = BTreeMap::new();
+        out.insert(
+            "shared_buffers".to_string(),
+            optimal.shared_buffers_display(),
+        );
+        out.insert(
+            "effective_cache_size".to_string(),
+            optimal.effective_cache_size_display(),
+        );
+        out.insert(
+            "maintenance_work_mem".to_string(),
+            optimal.maintenance_work_mem_display(),
+        );
+        out.insert("work_mem".to_string(), optimal.work_mem_display());
+        out.insert(
+            "min_wal_size".to_string(),
+            format!("{}MB", optimal.min_wal_size_mb),
+        );
+        out.insert(
+            "max_wal_size".to_string(),
+            format!("{}MB", optimal.max_wal_size_mb),
+        );
+        out.insert(
+            "checkpoint_completion_target".to_string(),
+            format!("{:.2}", optimal.checkpoint_completion_target),
+        );
+        out.insert(
+            "random_page_cost".to_string(),
+            format!("{:.2}", optimal.random_page_cost),
+        );
+        if let Some(eioc) = optimal.effective_io_concurrency {
+            out.insert("effective_io_concurrency".to_string(), eioc.to_string());
+        }
+        out.insert("huge_pages".to_string(), optimal.huge_pages.to_string());
+
+        if Self::manage_max_connections(cluster) {
+            out.insert(
+                "max_connections".to_string(),
+                optimal.max_connections.to_string(),
+            );
         }
 
-        #[cfg(not(target_os = "linux"))]
-        {
-            caps.push(PluginCapability {
-                capability_type: CapabilityType::EbpfInstrumentation,
-                enabled: false,
-            });
-        }
-
-        caps
+        out
     }
 }
 
-/// Cluster analysis result
-struct ClusterAnalysis {
-    health_score: u8,
-    recommendations: Vec<String>,
-    table_count: usize,
-    index_count: usize,
-    total_size_mb: f64,
+fn parse_bool(v: Option<&str>) -> bool {
+    matches!(
+        v.map(|s| s.trim().to_lowercase()),
+        Some(ref s) if s == "true" || s == "1" || s == "yes" || s == "on"
+    )
 }
 
-/// Mask sensitive parts of connection string for logging
-fn mask_connection_string(conn_str: &str) -> String {
-    // Replace password with asterisks
-    let re = regex::Regex::new(r"(password=)[^&\s]+").ok();
-    if let Some(re) = re {
-        re.replace_all(conn_str, "$1****").to_string()
-    } else {
-        conn_str.to_string()
+fn infer_cpu_and_memory_from_cluster(cluster: &Value) -> Option<(u32, u64)> {
+    // Best-effort parsing from common Kubernetes resource fields.
+    // CNPG Cluster structure varies by version, so we search a few likely locations.
+    let candidates = [
+        "/spec/resources/requests",
+        "/spec/resources/limits",
+        "/spec/instancesResources/requests",
+        "/spec/instancesResources/limits",
+        "/spec/pods/resources/requests",
+        "/spec/pods/resources/limits",
+    ];
+
+    for base in candidates {
+        let mem = get_json_pointer(cluster, &format!("{}/memory", base)).and_then(|v| v.as_str());
+        let cpu = get_json_pointer(cluster, &format!("{}/cpu", base)).and_then(|v| v.as_str());
+
+        let mem_kb = mem.and_then(parse_k8s_memory_to_kb);
+        let cpu_cores = cpu.and_then(parse_k8s_cpu_to_cores);
+
+        if let (Some(cpu_cores), Some(mem_kb)) = (cpu_cores, mem_kb) {
+            return Some((cpu_cores, mem_kb));
+        }
+
+        // If one is missing, keep searching other blocks.
     }
+
+    None
+}
+
+fn get_json_pointer<'a>(root: &'a Value, pointer: &str) -> Option<&'a Value> {
+    root.pointer(pointer)
+}
+
+fn parse_k8s_memory_to_kb(s: &str) -> Option<u64> {
+    // Supports: Ki, Mi, Gi, Ti and plain bytes.
+    let s = s.trim();
+    if s.is_empty() {
+        return None;
+    }
+
+    let (num, unit) = split_num_unit(s);
+    let value: f64 = num.parse().ok()?;
+    let bytes = match unit {
+        "Ki" => value * 1024.0,
+        "Mi" => value * 1024.0 * 1024.0,
+        "Gi" => value * 1024.0 * 1024.0 * 1024.0,
+        "Ti" => value * 1024.0 * 1024.0 * 1024.0 * 1024.0,
+        "K" => value * 1000.0,
+        "M" => value * 1000.0 * 1000.0,
+        "G" => value * 1000.0 * 1000.0 * 1000.0,
+        "T" => value * 1000.0 * 1000.0 * 1000.0 * 1000.0,
+        "" => value,
+        _ => return None,
+    };
+
+    Some((bytes / 1024.0).round() as u64)
+}
+
+fn parse_k8s_cpu_to_cores(s: &str) -> Option<u32> {
+    // Supports millicores: 500m, or plain cores: 2
+    let s = s.trim();
+    if s.is_empty() {
+        return None;
+    }
+    if let Some(rest) = s.strip_suffix('m') {
+        let milli: f64 = rest.parse().ok()?;
+        let cores = (milli / 1000.0).ceil();
+        return Some(cores.max(1.0) as u32);
+    }
+
+    let cores: f64 = s.parse().ok()?;
+    Some(cores.ceil().max(1.0) as u32)
+}
+
+fn split_num_unit(s: &str) -> (&str, &str) {
+    let mut idx = s.len();
+    for (i, ch) in s.char_indices() {
+        if !(ch.is_ascii_digit() || ch == '.') {
+            idx = i;
+            break;
+        }
+    }
+    (&s[..idx], &s[idx..])
+}
+
+fn json_pointer_escape_segment(segment: &str) -> String {
+    segment.replace('~', "~0").replace('/', "~1")
+}
+
+fn ensure_object_ops(cluster: &Value, path: &str) -> Option<Value> {
+    // If the object at JSON pointer `path` doesn't exist, return a JSONPatch op to add it as {}.
+    if cluster.pointer(path).is_none() {
+        return Some(serde_json::json!({"op":"add","path": path, "value": {}}));
+    }
+    None
+}
+
+fn build_tuning_patch(service: &VaanyzeOperatorService, cluster: &Value) -> Vec<Value> {
+    let mut ops = Vec::new();
+
+    // Ensure metadata.annotations exists so we can mark the cluster as managed.
+    if let Some(op) = ensure_object_ops(cluster, "/metadata/annotations") {
+        ops.push(op);
+    }
+
+    // Ensure spec.postgresql.parameters exists for parameter injection.
+    if cluster.pointer("/spec/postgresql").is_none() {
+        ops.push(serde_json::json!({"op":"add","path":"/spec/postgresql","value": {}}));
+    }
+    if let Some(op) = ensure_object_ops(cluster, "/spec/postgresql/parameters") {
+        ops.push(op);
+    }
+
+    // Add managed marker.
+    ops.push(serde_json::json!({
+        "op":"add",
+        "path": format!("/metadata/annotations/{}", json_pointer_escape_segment("vaanyze.io/managed")),
+        "value": "true"
+    }));
+
+    let recommended = service.optimal_parameters(cluster);
+    for (key, val) in recommended {
+        if VaanyzeOperatorService::has_existing_parameter(cluster, &key) {
+            continue;
+        }
+        ops.push(serde_json::json!({
+            "op":"add",
+            "path": format!("/spec/postgresql/parameters/{}", json_pointer_escape_segment(&key)),
+            "value": val
+        }));
+    }
+
+    ops
 }
 
 #[tonic::async_trait]
-impl OperatorService for VaanyzeOperatorService {
-    async fn lifecycle(
+impl operator_v1::operator_server::Operator for VaanyzeOperatorService {
+    async fn get_capabilities(
         &self,
-        request: Request<OperatorLifecycleRequest>,
-    ) -> Result<Response<OperatorLifecycleResponse>, Status> {
+        _request: Request<operator_v1::OperatorCapabilitiesRequest>,
+    ) -> Result<Response<operator_v1::OperatorCapabilitiesResult>, Status> {
+        use operator_v1::operator_capability::{rpc::Type as RpcType, Rpc};
+        use operator_v1::OperatorCapability;
+
+        let capabilities = vec![
+            OperatorCapability {
+                r#type: Some(operator_v1::operator_capability::Type::Rpc(Rpc {
+                    r#type: RpcType::MutateCluster as i32,
+                })),
+            },
+            OperatorCapability {
+                r#type: Some(operator_v1::operator_capability::Type::Rpc(Rpc {
+                    r#type: RpcType::SetStatusInCluster as i32,
+                })),
+            },
+        ];
+
+        Ok(Response::new(operator_v1::OperatorCapabilitiesResult {
+            capabilities,
+        }))
+    }
+
+    async fn validate_cluster_create(
+        &self,
+        _request: Request<operator_v1::OperatorValidateClusterCreateRequest>,
+    ) -> Result<Response<operator_v1::OperatorValidateClusterCreateResult>, Status> {
+        Ok(Response::new(
+            operator_v1::OperatorValidateClusterCreateResult {
+                validation_errors: vec![],
+            },
+        ))
+    }
+
+    async fn validate_cluster_change(
+        &self,
+        _request: Request<operator_v1::OperatorValidateClusterChangeRequest>,
+    ) -> Result<Response<operator_v1::OperatorValidateClusterChangeResult>, Status> {
+        Ok(Response::new(
+            operator_v1::OperatorValidateClusterChangeResult {
+                validation_errors: vec![],
+            },
+        ))
+    }
+
+    async fn mutate_cluster(
+        &self,
+        request: Request<operator_v1::OperatorMutateClusterRequest>,
+    ) -> Result<Response<operator_v1::OperatorMutateClusterResult>, Status> {
         let req = request.into_inner();
-        info!(
-            "Lifecycle event: {:?} for cluster {}/{} (role: {})",
-            req.operation, req.namespace, req.cluster_name, req.role
-        );
 
-        // Handle different operation types
-        match req.operation {
-            OperationType::Delete => {
-                info!("Cluster deletion - cleaning up metrics");
-                return Ok(Response::new(OperatorLifecycleResponse {
-                    status: "OK".to_string(),
-                    message: "Cleanup completed".to_string(),
-                    health_score: 0,
-                    recommendations: "[]".to_string(),
-                    proceed: true,
-                }));
-            }
-            OperationType::Create => {
-                info!("New cluster creation - will start monitoring after ready");
-                return Ok(Response::new(OperatorLifecycleResponse {
-                    status: "OK".to_string(),
-                    message: "Will monitor after cluster is ready".to_string(),
-                    health_score: 100,
-                    recommendations: "[]".to_string(),
-                    proceed: true,
-                }));
-            }
-            _ => {}
-        }
+        let cluster: Value = serde_json::from_slice(&req.definition).map_err(|e| {
+            Status::invalid_argument(format!("invalid cluster definition JSON: {}", e))
+        })?;
 
-        // Only analyze primary instances for most operations
-        if req.role.to_lowercase() != "primary" && req.operation == OperationType::HealthCheck {
-            return Ok(Response::new(OperatorLifecycleResponse {
-                status: "Skipped".to_string(),
-                message: "Not primary instance".to_string(),
-                health_score: 0,
-                recommendations: "[]".to_string(),
-                proceed: true,
+        if !Self::is_opted_in(&cluster) {
+            debug!("CNPG tuning: cluster not opted-in (vaanyze.io/enable-tuning != true)");
+            return Ok(Response::new(operator_v1::OperatorMutateClusterResult {
+                json_patch: vec![],
             }));
         }
 
-        // Perform analysis
-        match self.analyze_cluster(&req.connection_string).await {
-            Ok(analysis) => {
-                let status = if analysis.health_score >= 80 {
-                    "Healthy"
-                } else if analysis.health_score >= 50 {
-                    "Warning"
-                } else {
-                    "Critical"
-                };
+        let ops = build_tuning_patch(self, &cluster);
+        let patch_bytes = serde_json::to_vec(&ops)
+            .map_err(|e| Status::internal(format!("failed to encode json_patch: {}", e)))?;
 
-                info!(
-                    "Cluster {}/{}: score={}, tables={}, indexes={}, size={:.1}MB",
-                    req.namespace,
-                    req.cluster_name,
-                    analysis.health_score,
-                    analysis.table_count,
-                    analysis.index_count,
-                    analysis.total_size_mb
-                );
-
-                // Update agent state
-                {
-                    let mut state = self.state.lock().await;
-                    state.last_run = chrono::Utc::now();
-                }
-
-                let recommendations_json = serde_json::to_string(&analysis.recommendations)
-                    .unwrap_or_else(|_| "[]".to_string());
-
-                Ok(Response::new(OperatorLifecycleResponse {
-                    status: status.to_string(),
-                    message: format!(
-                        "Health Score: {} | {} tables, {} indexes, {:.1}MB total",
-                        analysis.health_score,
-                        analysis.table_count,
-                        analysis.index_count,
-                        analysis.total_size_mb
-                    ),
-                    health_score: analysis.health_score as u32,
-                    recommendations: recommendations_json,
-                    proceed: true,
-                }))
-            }
-            Err(e) => {
-                error!(
-                    "Failed to analyze cluster {}/{}: {}",
-                    req.namespace, req.cluster_name, e
-                );
-                Ok(Response::new(OperatorLifecycleResponse {
-                    status: "Error".to_string(),
-                    message: format!("Analysis failed: {}", e),
-                    health_score: 0,
-                    recommendations: "[]".to_string(),
-                    proceed: true, // Don't block operations on analysis failure
-                }))
-            }
+        // Update runtime state (best-effort)
+        {
+            let mut state = self.state.lock().await;
+            state.update_last_run();
         }
+
+        Ok(Response::new(operator_v1::OperatorMutateClusterResult {
+            json_patch: patch_bytes,
+        }))
     }
 
-    async fn get_capabilities(
+    async fn set_status_in_cluster(
         &self,
-        _request: Request<GetCapabilitiesRequest>,
-    ) -> Result<Response<GetCapabilitiesResponse>, Status> {
-        let capabilities = self.detect_capabilities();
+        request: Request<operator_v1::SetStatusInClusterRequest>,
+    ) -> Result<Response<operator_v1::SetStatusInClusterResponse>, Status> {
+        let req = request.into_inner();
+        let cluster: Value = serde_json::from_slice(&req.cluster)
+            .map_err(|e| Status::invalid_argument(format!("invalid cluster JSON: {}", e)))?;
 
-        Ok(Response::new(GetCapabilitiesResponse {
-            name: "vaanyze".to_string(),
-            version: env!("CARGO_PKG_VERSION").to_string(),
-            capabilities,
+        let workload = Self::workload(&cluster);
+        let opted_in = Self::is_opted_in(&cluster);
+
+        let last_run = {
+            let state = self.state.lock().await;
+            state.last_run
+        };
+
+        let status = serde_json::json!({
+            "plugin": "vaanyze",
+            "version": env!("CARGO_PKG_VERSION"),
+            "opted_in": opted_in,
+            "workload": format!("{:?}", workload),
+            "last_run": last_run.to_rfc3339(),
+            "grpc_ready": self.grpc_ready.load(Ordering::Relaxed),
+        });
+
+        let bytes = serde_json::to_vec(&status)
+            .map_err(|e| Status::internal(format!("failed to encode json_status: {}", e)))?;
+
+        Ok(Response::new(operator_v1::SetStatusInClusterResponse {
+            json_status: bytes,
         }))
+    }
+
+    async fn deregister(
+        &self,
+        _request: Request<operator_v1::DeregisterRequest>,
+    ) -> Result<Response<operator_v1::DeregisterResponse>, Status> {
+        Ok(Response::new(operator_v1::DeregisterResponse {}))
     }
 }
 
@@ -302,24 +431,17 @@ pub async fn start_grpc_server(
 ) -> anyhow::Result<()> {
     use axum::{routing::get, Router};
     use std::net::SocketAddr;
+    use tonic::transport::Server;
 
     let addr: SocketAddr = format!("0.0.0.0:{}", port).parse()?;
-    let service = VaanyzeOperatorService::new(config.clone(), state.clone());
+    let grpc_ready = Arc::new(AtomicBool::new(false));
+    let service = VaanyzeOperatorService::new(config.clone(), state.clone(), grpc_ready.clone());
 
     info!(
         "Vaanyze CNPG Plugin v{} starting on {}",
         env!("CARGO_PKG_VERSION"),
         addr
     );
-    info!(
-        "Capabilities: {} enabled",
-        service
-            .detect_capabilities()
-            .iter()
-            .filter(|c| c.enabled)
-            .count()
-    );
-
     // Start health check HTTP server on port+1 for Kubernetes probes
     let health_addr: SocketAddr = format!("0.0.0.0:{}", port + 1).parse()?;
     let health_service = service.clone();
@@ -329,9 +451,7 @@ pub async fn start_grpc_server(
         .route(
             "/ready",
             get(move || async move {
-                // Check if we can still process requests
-                let caps = health_service.detect_capabilities();
-                if caps.iter().any(|c| c.enabled) {
+                if health_service.grpc_ready.load(Ordering::Relaxed) {
                     "Ready"
                 } else {
                     "Not Ready"
@@ -354,23 +474,23 @@ pub async fn start_grpc_server(
             .map_err(|e| anyhow::anyhow!("Health server error: {}", e))
     });
 
-    // Note: In a real implementation with tonic-build, this would be:
-    // use crate::cnpg_plugin::proto::operator_server::OperatorServer;
-    // tonic::transport::Server::builder()
-    //     .add_service(OperatorServer::new(service))
-    //     .serve_with_shutdown(addr, async {
-    //         tokio::signal::ctrl_c().await.ok();
-    //     })
-    //     .await?;
-    //
-    // For now, we'll keep the server "running" by waiting on the health server
+    // Start real CNPG-I gRPC server.
+    // Mark gRPC ready immediately before serving.
+    grpc_ready.store(true, Ordering::Relaxed);
 
-    info!("gRPC server ready on {}", addr);
-    info!("NOTE: Full gRPC implementation requires tonic-build proto compilation");
-    info!("      This version responds to health checks only");
+    info!("gRPC server listening on {}", addr);
     info!("Press Ctrl+C to stop");
 
-    // Wait for health server or Ctrl+C
+    let grpc_server = tokio::spawn(async move {
+        Server::builder()
+            .add_service(operator_v1::operator_server::OperatorServer::new(service))
+            .serve_with_shutdown(addr, async {
+                tokio::signal::ctrl_c().await.ok();
+            })
+            .await
+            .map_err(|e| anyhow::anyhow!("gRPC server error: {}", e))
+    });
+
     tokio::select! {
         result = health_server => {
             match result {
@@ -379,10 +499,117 @@ pub async fn start_grpc_server(
                 Err(e) => error!("Health server task error: {}", e),
             }
         }
-        _ = tokio::signal::ctrl_c() => {
-            info!("Shutting down gRPC server");
+        result = grpc_server => {
+            match result {
+                Ok(Ok(())) => info!("gRPC server stopped"),
+                Ok(Err(e)) => error!("gRPC server error: {}", e),
+                Err(e) => error!("gRPC server task error: {}", e),
+            }
         }
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::cnpg_plugin::cnpgi::operator_v1;
+    use crate::cnpg_plugin::cnpgi::operator_v1::operator_server::Operator;
+
+    fn make_service() -> VaanyzeOperatorService {
+        let config = PluginConfig::default();
+        let state = Arc::new(Mutex::new(AgentState::default()));
+        let grpc_ready = Arc::new(AtomicBool::new(true));
+        VaanyzeOperatorService::new(config, state, grpc_ready)
+    }
+
+    #[tokio::test]
+    async fn mutate_cluster_noop_when_not_opted_in() {
+        let service = make_service();
+
+        let cluster = serde_json::json!({
+            "apiVersion": "postgresql.cnpg.io/v1",
+            "kind": "Cluster",
+            "metadata": {"name": "demo", "annotations": {"cnpg.io/plugins": "vaanyze"}},
+            "spec": {"instances": 1, "storage": {"size": "1Gi"}}
+        });
+
+        let req = operator_v1::OperatorMutateClusterRequest {
+            definition: serde_json::to_vec(&cluster).unwrap(),
+        };
+
+        let resp = service
+            .mutate_cluster(Request::new(req))
+            .await
+            .unwrap()
+            .into_inner();
+
+        assert!(resp.json_patch.is_empty());
+    }
+
+    #[tokio::test]
+    async fn mutate_cluster_generates_parameter_patch_when_opted_in() {
+        let service = make_service();
+
+        // Note: include a user-provided shared_buffers to ensure we do not overwrite it.
+        let cluster = serde_json::json!({
+            "apiVersion": "postgresql.cnpg.io/v1",
+            "kind": "Cluster",
+            "metadata": {
+                "name": "demo",
+                "annotations": {
+                    "cnpg.io/plugins": "vaanyze",
+                    "vaanyze.io/enable-tuning": "true",
+                    "vaanyze.io/workload": "mixed"
+                }
+            },
+            "spec": {
+                "instances": 1,
+                "storage": {"size": "1Gi"},
+                "postgresql": {
+                    "parameters": {
+                        "shared_buffers": "256MB"
+                    }
+                }
+            }
+        });
+
+        let req = operator_v1::OperatorMutateClusterRequest {
+            definition: serde_json::to_vec(&cluster).unwrap(),
+        };
+
+        let resp = service
+            .mutate_cluster(Request::new(req))
+            .await
+            .unwrap()
+            .into_inner();
+
+        assert!(!resp.json_patch.is_empty());
+
+        let ops: Vec<Value> = serde_json::from_slice(&resp.json_patch).unwrap();
+        let paths: Vec<String> = ops
+            .iter()
+            .filter_map(|v| {
+                v.get("path")
+                    .and_then(|p| p.as_str())
+                    .map(|s| s.to_string())
+            })
+            .collect();
+
+        // Marker annotation should be added.
+        assert!(paths
+            .iter()
+            .any(|p| p == "/metadata/annotations/vaanyze.io~1managed"));
+
+        // Should add some parameters we didn't already specify.
+        assert!(paths
+            .iter()
+            .any(|p| p == "/spec/postgresql/parameters/effective_cache_size"));
+
+        // Should NOT attempt to overwrite shared_buffers.
+        assert!(!paths
+            .iter()
+            .any(|p| p == "/spec/postgresql/parameters/shared_buffers"));
+    }
 }

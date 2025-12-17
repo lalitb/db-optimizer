@@ -84,6 +84,9 @@ k8s-openapi = { version = "0.23", optional = true, features = ["latest"] }
 tokio-test = "0.4"
 tempfile = "3.8"
 
+[build-dependencies]
+tonic-build = "0.11"
+
 [features]
 default = []
 ebpf = ["aya", "aya-log"]

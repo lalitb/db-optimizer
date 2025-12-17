@@ -1,0 +1,30 @@
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: demo-db
+  annotations:
+    # Enable Vaanyze plugin (CNPG plugin selection)
+    cnpg.io/plugins: "vaanyze"
+
+    # Vaanyze tuning MVP opt-in (required for MutateCluster to apply changes)
+    vaanyze.io/enable-tuning: "true"
+
+    # Optional: control workload assumptions
+    # vaanyze.io/workload: "oltp"    # web|oltp|dw|mixed|desktop
+
+    # Optional: allow Vaanyze to manage max_connections too
+    # vaanyze.io/manage-max-connections: "true"
+
+    # Optional: hint disk type to influence random_page_cost / io concurrency
+    # vaanyze.io/disk: "ssd"         # ssd|hdd|san
+spec:
+  instances: 1
+  storage:
+    size: 10Gi
+
+  # CNPG will apply these Postgres parameters.
+  # Vaanyze will only add missing keys; it will not overwrite any existing values.
+  postgresql:
+    parameters:
+      # Example of a user-defined param Vaanyze will NOT overwrite
+      shared_buffers: "256MB"
