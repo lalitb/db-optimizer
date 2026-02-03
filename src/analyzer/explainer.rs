@@ -341,54 +341,53 @@ impl RecommendationExplainer {
         columns: &[String],
         table_stats: Option<&TableStats>,
     ) -> TradeoffEstimate {
-        let (estimated_storage, write_overhead, high_write, maintenance_warning) = if let Some(
-            stats,
-        ) =
-            table_stats
-        {
-            let row_count = stats.row_count.unwrap_or(10000);
-            let avg_row_width = stats.avg_row_width.unwrap_or(100);
+        let (estimated_storage, write_overhead, high_write, maintenance_warning) =
+            if let Some(stats) = table_stats {
+                let row_count = stats.row_count.unwrap_or(10000);
+                let avg_row_width = stats.avg_row_width.unwrap_or(100);
 
-            // Rough estimate: index is ~20-30% of table size for single column
-            let column_count = columns.len();
-            let index_ratio = 0.2 + (column_count as f64 * 0.1);
-            let table_size_bytes = row_count as f64 * avg_row_width as f64;
-            let index_size_bytes = table_size_bytes * index_ratio;
+                // Rough estimate: index is ~20-30% of table size for single column
+                let column_count = columns.len();
+                let index_ratio = 0.2 + (column_count as f64 * 0.1);
+                let table_size_bytes = row_count as f64 * avg_row_width as f64;
+                let index_size_bytes = table_size_bytes * index_ratio;
 
-            let storage = Self::format_bytes(index_size_bytes as u64);
+                let storage = Self::format_bytes(index_size_bytes as u64);
 
-            // Determine write overhead
-            let writes_per_sec = stats.writes_per_second.unwrap_or(0.0);
-            let high_write = writes_per_sec > 100.0;
+                // Determine write overhead
+                let writes_per_sec = stats.writes_per_second.unwrap_or(0.0);
+                let high_write = writes_per_sec > 100.0;
 
-            let write_overhead = if high_write {
-                format!(
-                    "Moderate: ~{:.0} writes/sec will have ~10-20% overhead per write",
-                    writes_per_sec
-                )
-            } else if writes_per_sec > 10.0 {
-                "Low: Write rate is moderate, index maintenance overhead is acceptable".to_string()
-            } else {
-                "Minimal: Low write rate means negligible index maintenance overhead".to_string()
-            };
+                let write_overhead = if high_write {
+                    format!(
+                        "Moderate: ~{:.0} writes/sec will have ~10-20% overhead per write",
+                        writes_per_sec
+                    )
+                } else if writes_per_sec > 10.0 {
+                    "Low: Write rate is moderate, index maintenance overhead is acceptable"
+                        .to_string()
+                } else {
+                    "Minimal: Low write rate means negligible index maintenance overhead"
+                        .to_string()
+                };
 
-            let warning = if high_write && columns.len() > 2 {
-                Some(format!(
+                let warning = if high_write && columns.len() > 2 {
+                    Some(format!(
                     "High-write table with multi-column index may have noticeable write overhead"
                 ))
-            } else {
-                None
-            };
+                } else {
+                    None
+                };
 
-            (storage, write_overhead, high_write, warning)
-        } else {
-            (
-                "Unknown (table stats not available)".to_string(),
-                "Unknown write overhead".to_string(),
-                false,
-                None,
-            )
-        };
+                (storage, write_overhead, high_write, warning)
+            } else {
+                (
+                    "Unknown (table stats not available)".to_string(),
+                    "Unknown write overhead".to_string(),
+                    false,
+                    None,
+                )
+            };
 
         let assessment = if high_write {
             "Monitor write performance after index creation".to_string()
