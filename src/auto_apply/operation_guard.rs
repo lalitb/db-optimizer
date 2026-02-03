@@ -136,7 +136,8 @@ impl OperationGuard {
     /// Update environment info after detection
     pub async fn set_environment(&self, env: EnvironmentInfo) {
         let forced = should_force_read_only(&env);
-        self.environment_forces_read_only.store(forced, Ordering::SeqCst);
+        self.environment_forces_read_only
+            .store(forced, Ordering::SeqCst);
         *self.environment.write().await = Some(env);
     }
 
@@ -254,18 +255,21 @@ impl OperationGuard {
         let check = self.check_destructive_operation().await;
         let env = self.environment.read().await.clone();
         let configured = self.configured_mode.read().await.clone();
-        
+
         // Determine force reason
         let (is_forced, force_reason) = if self.kill_switch.load(Ordering::SeqCst) {
             (true, Some("Kill switch active".to_string()))
         } else if self.environment_forces_read_only.load(Ordering::SeqCst) {
-            let reason = env.as_ref().map(|e| {
-                if !e.can_create_index {
-                    "Missing CREATE INDEX permission".to_string()
-                } else {
-                    format!("Managed environment: {:?}", e.environment)
-                }
-            }).unwrap_or_else(|| "Environment requires read-only".to_string());
+            let reason = env
+                .as_ref()
+                .map(|e| {
+                    if !e.can_create_index {
+                        "Missing CREATE INDEX permission".to_string()
+                    } else {
+                        format!("Managed environment: {:?}", e.environment)
+                    }
+                })
+                .unwrap_or_else(|| "Environment requires read-only".to_string());
             (true, Some(reason))
         } else {
             (false, None)
@@ -285,7 +289,10 @@ impl OperationGuard {
     }
 
     /// Detect environment and update guard state
-    pub async fn detect_and_update_environment(&self, pool: &PgPool) -> anyhow::Result<EnvironmentInfo> {
+    pub async fn detect_and_update_environment(
+        &self,
+        pool: &PgPool,
+    ) -> anyhow::Result<EnvironmentInfo> {
         let env = detect_environment(pool).await?;
         self.set_environment(env.clone()).await;
         Ok(env)
@@ -293,7 +300,8 @@ impl OperationGuard {
 
     /// Force read-only mode with a reason (for error conditions)
     pub fn force_read_only(&self, _reason: String) {
-        self.environment_forces_read_only.store(true, Ordering::SeqCst);
+        self.environment_forces_read_only
+            .store(true, Ordering::SeqCst);
     }
 
     // Shared state accessors for integrating with existing code

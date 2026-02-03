@@ -56,7 +56,8 @@ impl Executor {
         if let Some(guard) = &self.guard {
             let check = guard.check_destructive_operation().await;
             if !check.allowed {
-                let reason = check.block_reason
+                let reason = check
+                    .block_reason
                     .map(|r| format!("{:?}", r))
                     .unwrap_or_else(|| "Operation not allowed in current mode".to_string());
                 return Err(ExecutorError::OperationBlocked(reason));
@@ -230,8 +231,8 @@ pub enum ExecutionStatus {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::auto_apply::BlockReason;
     use crate::analyzer::environment::{DatabaseEnvironment, EnvironmentInfo};
+    use crate::auto_apply::BlockReason;
 
     fn create_guard_with_kill_switch() -> Arc<OperationGuard> {
         Arc::new(OperationGuard::with_settings("safe_auto", true))
@@ -241,7 +242,7 @@ mod tests {
     async fn test_guard_blocks_with_kill_switch() {
         // Create a guard with kill switch active
         let guard = create_guard_with_kill_switch();
-        
+
         // Verify the guard is blocking
         let check = guard.check_destructive_operation().await;
         assert!(!check.allowed);
@@ -252,7 +253,7 @@ mod tests {
     async fn test_guard_blocks_in_read_only_mode() {
         // Create a guard in read-only mode
         let guard = Arc::new(OperationGuard::with_settings("observe_only", false));
-        
+
         // Set a permissive environment (so only the mode blocks)
         let env = EnvironmentInfo {
             environment: DatabaseEnvironment::SelfManaged,
@@ -266,7 +267,7 @@ mod tests {
             recommended_mode: "safe_auto".to_string(),
         };
         guard.set_environment(env).await;
-        
+
         // Verify the guard is blocking due to read-only mode
         let check = guard.check_destructive_operation().await;
         assert!(!check.allowed);
@@ -277,7 +278,7 @@ mod tests {
     async fn test_guard_blocks_in_managed_environment() {
         // Create a guard that would allow operations by config
         let guard = Arc::new(OperationGuard::with_settings("safe_auto", false));
-        
+
         // But set an RDS environment which should force read-only
         let env = EnvironmentInfo {
             environment: DatabaseEnvironment::AwsRds,
@@ -291,7 +292,7 @@ mod tests {
             recommended_mode: "observe_only".to_string(),
         };
         guard.set_environment(env).await;
-        
+
         // Verify the guard is blocking due to managed environment
         let check = guard.check_destructive_operation().await;
         assert!(!check.allowed);
@@ -305,12 +306,9 @@ mod tests {
             blocked_err.to_string(),
             "Operation blocked: Kill switch active"
         );
-        
+
         let failed_err = ExecutorError::ExecutionFailed("Connection lost".to_string());
-        assert_eq!(
-            failed_err.to_string(),
-            "Execution failed: Connection lost"
-        );
+        assert_eq!(failed_err.to_string(), "Execution failed: Connection lost");
     }
 
     #[test]

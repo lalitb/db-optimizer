@@ -232,7 +232,10 @@ impl AuditLog {
     pub fn log_validation_started(&mut self, recommendation_id: &str, query: &str) {
         let event = AuditEvent::new(
             AuditEventType::ValidationStarted,
-            format!("Starting EXPLAIN validation for recommendation {}", recommendation_id),
+            format!(
+                "Starting EXPLAIN validation for recommendation {}",
+                recommendation_id
+            ),
         )
         .with_recommendation(recommendation_id)
         .with_sql(query);
@@ -284,11 +287,7 @@ impl AuditLog {
     }
 
     /// Log a validation skipped event (due to read-only mode or kill switch)
-    pub fn log_validation_skipped(
-        &mut self,
-        recommendation_id: &str,
-        reason: &str,
-    ) {
+    pub fn log_validation_skipped(&mut self, recommendation_id: &str, reason: &str) {
         let event = AuditEvent::new(
             AuditEventType::ValidationSkipped,
             format!("Validation skipped: {}", reason),
@@ -425,7 +424,10 @@ impl AuditLog {
 
     /// Count events by type
     pub fn count_by_type(&self, event_type: AuditEventType) -> usize {
-        self.events.iter().filter(|e| e.event_type == event_type).count()
+        self.events
+            .iter()
+            .filter(|e| e.event_type == event_type)
+            .count()
     }
 
     /// Get total event count

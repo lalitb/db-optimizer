@@ -10,7 +10,9 @@ pub mod safety_filter;
 pub mod state_machine;
 pub mod verifier;
 
-pub use operation_guard::{BlockReason, EffectiveMode, OperationCheck, OperationGuard, OperationGuardStatus};
+pub use operation_guard::{
+    BlockReason, EffectiveMode, OperationCheck, OperationGuard, OperationGuardStatus,
+};
 
 use crate::events::{DatabaseEvent, EventDetails, EventSource, EventStore, EventType};
 use crate::models::*;

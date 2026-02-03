@@ -8,7 +8,7 @@
 
 use crate::analyzer::environment::{detect_environment, EnvironmentInfo};
 use crate::auto_apply::recovery::{
-    cleanup_orphaned_candidates_guarded, check_invalid_indexes, list_vaanyze_indexes, 
+    check_invalid_indexes, cleanup_orphaned_candidates_guarded, list_vaanyze_indexes,
     RecoveryAction, VaanyzeIndex,
 };
 use crate::auto_apply::OperationGuard;
@@ -16,10 +16,7 @@ use crate::http::{
     error::{ApiError, ApiResult},
     models::ApiResponse,
 };
-use axum::{
-    extract::State,
-    Json,
-};
+use axum::{extract::State, Json};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -100,7 +97,11 @@ pub async fn health(
         warnings.push("System is in read-only mode".to_string());
     }
 
-    let status = if db_connected && !kill_switch { "healthy" } else { "degraded" };
+    let status = if db_connected && !kill_switch {
+        "healthy"
+    } else {
+        "degraded"
+    };
 
     let uptime = (chrono::Utc::now() - state.started_at).num_seconds();
 
@@ -121,9 +122,9 @@ pub async fn health(
 pub async fn environment(
     State(state): State<Arc<SystemHandlerState>>,
 ) -> ApiResult<Json<ApiResponse<EnvironmentInfo>>> {
-    let env_info = detect_environment(&state.db_pool).await.map_err(|e| {
-        ApiError::Internal(format!("Failed to detect environment: {}", e))
-    })?;
+    let env_info = detect_environment(&state.db_pool)
+        .await
+        .map_err(|e| ApiError::Internal(format!("Failed to detect environment: {}", e)))?;
 
     Ok(Json(ApiResponse::ok(env_info)))
 }
@@ -159,7 +160,9 @@ pub async fn kill_switch(
     }
 
     let message = if req.enabled {
-        let reason = req.reason.unwrap_or_else(|| "Manual activation".to_string());
+        let reason = req
+            .reason
+            .unwrap_or_else(|| "Manual activation".to_string());
         tracing::warn!(
             reason = %reason,
             "Kill switch ACTIVATED - all apply/rollback operations disabled"
@@ -189,9 +192,9 @@ pub struct ManagedIndexesResponse {
 pub async fn managed_indexes(
     State(state): State<Arc<SystemHandlerState>>,
 ) -> ApiResult<Json<ApiResponse<ManagedIndexesResponse>>> {
-    let indexes = list_vaanyze_indexes(&state.db_pool).await.map_err(|e| {
-        ApiError::Internal(format!("Failed to list indexes: {}", e))
-    })?;
+    let indexes = list_vaanyze_indexes(&state.db_pool)
+        .await
+        .map_err(|e| ApiError::Internal(format!("Failed to list indexes: {}", e)))?;
 
     let total = indexes.len();
     let total_idx_scan: i64 = indexes.iter().map(|i| i.idx_scan).sum();
@@ -222,12 +225,13 @@ pub async fn recover(
     State(state): State<Arc<SystemHandlerState>>,
 ) -> ApiResult<Json<ApiResponse<RecoveryResponse>>> {
     use crate::auto_apply::recovery::find_orphaned_candidates;
-    
+
     // STEP 1: Check kill switch - blocks everything with 403
     if let Some(guard) = &state.operation_guard {
         if guard.is_kill_switch_active() {
             return Err(ApiError::Forbidden(
-                "Recovery blocked: Kill switch is active. No cleanup operations will be executed.".to_string()
+                "Recovery blocked: Kill switch is active. No cleanup operations will be executed."
+                    .to_string(),
             ));
         }
     }
@@ -241,13 +245,13 @@ pub async fn recover(
     };
 
     // Get list of orphaned candidates (read-only operation)
-    let orphaned = find_orphaned_candidates(&state.db_pool).await.map_err(|e| {
-        ApiError::Internal(format!("Failed to find orphaned candidates: {}", e))
-    })?;
+    let orphaned = find_orphaned_candidates(&state.db_pool)
+        .await
+        .map_err(|e| ApiError::Internal(format!("Failed to find orphaned candidates: {}", e)))?;
 
-    let invalid = check_invalid_indexes(&state.db_pool).await.map_err(|e| {
-        ApiError::Internal(format!("Failed to check invalid indexes: {}", e))
-    })?;
+    let invalid = check_invalid_indexes(&state.db_pool)
+        .await
+        .map_err(|e| ApiError::Internal(format!("Failed to check invalid indexes: {}", e)))?;
 
     // STEP 3: If read-only, return report-only response
     if !destructive_allowed {
@@ -272,12 +276,10 @@ pub async fn recover(
     }
 
     // STEP 4: Destructive allowed - perform cleanup using guarded function
-    let (cleaned, blocked_action) = cleanup_orphaned_candidates_guarded(
-        &state.db_pool, 
-        state.operation_guard.as_ref()
-    ).await.map_err(|e| {
-        ApiError::Internal(format!("Failed to cleanup candidates: {}", e))
-    })?;
+    let (cleaned, blocked_action) =
+        cleanup_orphaned_candidates_guarded(&state.db_pool, state.operation_guard.as_ref())
+            .await
+            .map_err(|e| ApiError::Internal(format!("Failed to cleanup candidates: {}", e)))?;
 
     // This shouldn't happen since we already checked, but handle it
     if let Some(RecoveryAction::BlockedReadOnly { indexes_found }) = blocked_action {
@@ -344,10 +346,9 @@ pub async fn set_mode(
     };
 
     // Update read_only flag based on mode
-    state.read_only.store(
-        req.mode == "observe_only",
-        Ordering::SeqCst,
-    );
+    state
+        .read_only
+        .store(req.mode == "observe_only", Ordering::SeqCst);
 
     // Also update the operation guard if available
     if let Some(guard) = &state.operation_guard {

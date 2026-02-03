@@ -7,7 +7,7 @@
 //! - Viewing validation/apply status
 
 use crate::analyzer::validation::{ProofGenerator, ValidationResult, ValidationStatus};
-use crate::auto_apply::audit::{AuditLog, AuditEvent, AuditEventType};
+use crate::auto_apply::audit::{AuditEvent, AuditEventType, AuditLog};
 use crate::auto_apply::state_machine::{
     RecommendationLifecycle, RecommendationState, RollbackReason,
 };
@@ -188,7 +188,7 @@ pub async fn validate(
             audit.log_validation_skipped(&recommendation_id, "KILL_SWITCH_ACTIVE");
         }
         return Err(ApiError::Forbidden(
-            "Validation blocked: Kill switch is active. No queries will be executed.".to_string()
+            "Validation blocked: Kill switch is active. No queries will be executed.".to_string(),
         ));
     }
 
@@ -210,8 +210,10 @@ pub async fn validate(
     );
 
     // Generate index names
-    let candidate_index_name = generator.generate_candidate_index_name(&req.table_name, &req.columns);
-    let production_index_name = generator.generate_production_index_name(&req.table_name, &req.columns);
+    let candidate_index_name =
+        generator.generate_candidate_index_name(&req.table_name, &req.columns);
+    let production_index_name =
+        generator.generate_production_index_name(&req.table_name, &req.columns);
 
     // Run validation - behavior depends on guard state:
     // - Destructive allowed: Full candidate index validation
@@ -235,8 +237,9 @@ pub async fn validate(
     let response = match result {
         Ok(validation_result) => {
             // Handle different proof modes/statuses
-            let is_explain_only = validation_result.proof_mode == crate::analyzer::validation::ProofMode::ExplainOnly;
-            
+            let is_explain_only =
+                validation_result.proof_mode == crate::analyzer::validation::ProofMode::ExplainOnly;
+
             // Log appropriately based on result
             if validation_result.reason_code.is_safety_blocked() || is_explain_only {
                 let mut audit = state.audit_log.write().await;
@@ -247,9 +250,19 @@ pub async fn validate(
             }
 
             let validated = validation_result.status == ValidationStatus::Validated;
-            let diff_summary = validation_result.diff_summary.as_ref().map(|d| d.summary.clone());
-            let cost_improvement_pct = validation_result.diff_summary.as_ref().map(|d| d.cost_improvement_pct);
-            let index_used = validation_result.diff_summary.as_ref().map(|d| d.index_used).unwrap_or(false);
+            let diff_summary = validation_result
+                .diff_summary
+                .as_ref()
+                .map(|d| d.summary.clone());
+            let cost_improvement_pct = validation_result
+                .diff_summary
+                .as_ref()
+                .map(|d| d.cost_improvement_pct);
+            let index_used = validation_result
+                .diff_summary
+                .as_ref()
+                .map(|d| d.index_used)
+                .unwrap_or(false);
 
             // Update state
             if validated {
@@ -283,13 +296,16 @@ pub async fn validate(
             // Store extended lifecycle
             {
                 let mut lifecycles = state.lifecycles.write().await;
-                lifecycles.insert(recommendation_id.clone(), ExtendedLifecycle {
-                    lifecycle,
-                    table_name: req.table_name.clone(),
-                    columns: req.columns.clone(),
-                    index_type: req.index_type.clone(),
-                    validation_result: Some(validation_result.clone()),
-                });
+                lifecycles.insert(
+                    recommendation_id.clone(),
+                    ExtendedLifecycle {
+                        lifecycle,
+                        table_name: req.table_name.clone(),
+                        columns: req.columns.clone(),
+                        index_type: req.index_type.clone(),
+                        validation_result: Some(validation_result.clone()),
+                    },
+                );
             }
 
             // Determine state string based on mode and status
@@ -299,7 +315,8 @@ pub async fn validate(
                 "VALIDATED"
             } else {
                 "FAILED"
-            }.to_string();
+            }
+            .to_string();
 
             ValidateResponse {
                 recommendation_id,
@@ -325,13 +342,16 @@ pub async fn validate(
             // Store failed lifecycle
             {
                 let mut lifecycles = state.lifecycles.write().await;
-                lifecycles.insert(recommendation_id.clone(), ExtendedLifecycle {
-                    lifecycle,
-                    table_name: req.table_name.clone(),
-                    columns: req.columns.clone(),
-                    index_type: req.index_type.clone(),
-                    validation_result: None,
-                });
+                lifecycles.insert(
+                    recommendation_id.clone(),
+                    ExtendedLifecycle {
+                        lifecycle,
+                        table_name: req.table_name.clone(),
+                        columns: req.columns.clone(),
+                        index_type: req.index_type.clone(),
+                        validation_result: None,
+                    },
+                );
             }
 
             ValidateResponse {
@@ -364,7 +384,7 @@ pub async fn apply(
     let check = state.operation_guard.check_destructive_operation().await;
     if !check.allowed {
         let reason = check.block_reason.unwrap_or(BlockReason::ReadOnlyMode);
-        
+
         // Log the blocked attempt
         {
             let mut audit = state.audit_log.write().await;
@@ -380,7 +400,7 @@ pub async fn apply(
             }));
             audit.log(event);
         }
-        
+
         return Err(ApiError::Forbidden(format!(
             "Operation blocked: {}. Effective mode: {}{}",
             reason,
@@ -408,7 +428,8 @@ pub async fn apply(
 
     // Generate index name
     let generator = ProofGenerator::new(state.db_pool.clone());
-    let index_name = generator.generate_production_index_name(&extended.table_name, &extended.columns);
+    let index_name =
+        generator.generate_production_index_name(&extended.table_name, &extended.columns);
 
     // Log apply started
     {
@@ -420,7 +441,12 @@ pub async fn apply(
             extended.index_type,
             extended.columns.join(", ")
         );
-        audit.log_apply_started(&req.recommendation_id, &index_name, &extended.table_name, &create_sql);
+        audit.log_apply_started(
+            &req.recommendation_id,
+            &index_name,
+            &extended.table_name,
+            &create_sql,
+        );
     }
 
     let start = std::time::Instant::now();
@@ -444,7 +470,9 @@ pub async fn apply(
 
             // Update lifecycle
             let _ = extended.lifecycle.mark_applied(index_name.clone());
-            let _ = extended.lifecycle.start_verification(req.verification_minutes * 60);
+            let _ = extended
+                .lifecycle
+                .start_verification(req.verification_minutes * 60);
 
             // Log success
             {
@@ -471,16 +499,18 @@ pub async fn apply(
             // Log failure
             {
                 let mut audit = state.audit_log.write().await;
-                audit.log_apply_failed(&req.recommendation_id, &index_name, &e.to_string(), duration_ms);
+                audit.log_apply_failed(
+                    &req.recommendation_id,
+                    &index_name,
+                    &e.to_string(),
+                    duration_ms,
+                );
             }
 
             // Update lifecycle
             let _ = extended.lifecycle.mark_failed(e.to_string());
 
-            Err(ApiError::Internal(format!(
-                "Failed to create index: {}",
-                e
-            )))
+            Err(ApiError::Internal(format!("Failed to create index: {}", e)))
         }
     }
 }
@@ -494,7 +524,7 @@ pub async fn rollback(
     let check = state.operation_guard.check_destructive_operation().await;
     if !check.allowed {
         let reason = check.block_reason.unwrap_or(BlockReason::ReadOnlyMode);
-        
+
         // Log the blocked attempt
         {
             let mut audit = state.audit_log.write().await;
@@ -510,7 +540,7 @@ pub async fn rollback(
             }));
             audit.log(event);
         }
-        
+
         return Err(ApiError::Forbidden(format!(
             "Operation blocked: {}. Effective mode: {}{}",
             reason,
@@ -588,10 +618,7 @@ pub async fn rollback(
                 );
             }
 
-            Err(ApiError::Internal(format!(
-                "Failed to drop index: {}",
-                e
-            )))
+            Err(ApiError::Internal(format!("Failed to drop index: {}", e)))
         }
     }
 }
@@ -604,10 +631,7 @@ pub async fn status(
     // Get lifecycle
     let lifecycles = state.lifecycles.read().await;
     let extended = lifecycles.get(&recommendation_id).ok_or_else(|| {
-        ApiError::NotFound(format!(
-            "Recommendation {} not found",
-            recommendation_id
-        ))
+        ApiError::NotFound(format!("Recommendation {} not found", recommendation_id))
     })?;
 
     // Get recent audit events

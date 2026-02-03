@@ -123,12 +123,8 @@ impl PlanParser {
         let root_node = Self::parse_plan_node(plan_obj)?;
 
         // Extract timing info if available (from ANALYZE)
-        let planning_time_ms = plan_wrapper
-            .get("Planning Time")
-            .and_then(|v| v.as_f64());
-        let execution_time_ms = plan_wrapper
-            .get("Execution Time")
-            .and_then(|v| v.as_f64());
+        let planning_time_ms = plan_wrapper.get("Planning Time").and_then(|v| v.as_f64());
+        let execution_time_ms = plan_wrapper.get("Execution Time").and_then(|v| v.as_f64());
 
         Ok(ExplainPlan {
             raw_json: json,
@@ -183,10 +179,7 @@ impl PlanParser {
             .and_then(|v| v.as_f64())
             .unwrap_or(0.0);
 
-        let plan_width = json
-            .get("Plan Width")
-            .and_then(|v| v.as_i64())
-            .unwrap_or(0) as i32;
+        let plan_width = json.get("Plan Width").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
 
         // Parse actual values if present (from ANALYZE)
         let actual_rows = json.get("Actual Rows").and_then(|v| v.as_f64());
@@ -253,7 +246,9 @@ mod tests {
         assert!(ExplainExecutor::can_explain("INSERT INTO users VALUES (1)"));
         assert!(ExplainExecutor::can_explain("UPDATE users SET name = 'x'"));
         assert!(ExplainExecutor::can_explain("DELETE FROM users"));
-        assert!(ExplainExecutor::can_explain("WITH cte AS (SELECT 1) SELECT * FROM cte"));
+        assert!(ExplainExecutor::can_explain(
+            "WITH cte AS (SELECT 1) SELECT * FROM cte"
+        ));
 
         assert!(!ExplainExecutor::can_explain("CREATE TABLE foo (id int)"));
         assert!(!ExplainExecutor::can_explain("DROP TABLE foo"));

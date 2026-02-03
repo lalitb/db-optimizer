@@ -58,7 +58,7 @@ pub async fn find_orphaned_candidates(pool: &PgPool) -> anyhow::Result<Vec<Strin
 }
 
 /// Detects and cleans up orphaned candidate indexes
-/// 
+///
 /// IMPORTANT: This function performs DROP INDEX operations.
 /// Caller MUST check OperationGuard before calling if enforcement is required.
 /// Use `cleanup_orphaned_candidates_guarded` for enforced cleanup.
@@ -97,7 +97,7 @@ pub async fn cleanup_orphaned_candidates(pool: &PgPool) -> anyhow::Result<Vec<St
 }
 
 /// Detects and cleans up orphaned candidate indexes with guard enforcement
-/// 
+///
 /// Returns Ok with BlockedReadOnly action if guard blocks the operation,
 /// allowing caller to inform user of manual cleanup needed.
 pub async fn cleanup_orphaned_candidates_guarded(
@@ -106,11 +106,11 @@ pub async fn cleanup_orphaned_candidates_guarded(
 ) -> anyhow::Result<(Vec<String>, Option<RecoveryAction>)> {
     // First, find what exists (read-only operation)
     let candidates = find_orphaned_candidates(pool).await?;
-    
+
     if candidates.is_empty() {
         return Ok((vec![], None));
     }
-    
+
     // Check guard before destructive operations
     if let Some(g) = guard {
         let check = g.check_destructive_operation().await;
@@ -120,12 +120,15 @@ pub async fn cleanup_orphaned_candidates_guarded(
                 reason = ?check.block_reason,
                 "Cannot cleanup orphaned indexes: operation blocked"
             );
-            return Ok((vec![], Some(RecoveryAction::BlockedReadOnly { 
-                indexes_found: candidates 
-            })));
+            return Ok((
+                vec![],
+                Some(RecoveryAction::BlockedReadOnly {
+                    indexes_found: candidates,
+                }),
+            ));
         }
     }
-    
+
     // Guard allows - proceed with cleanup
     let cleaned = cleanup_orphaned_candidates(pool).await?;
     Ok((cleaned, None))
@@ -215,7 +218,7 @@ pub async fn check_invalid_indexes(pool: &PgPool) -> anyhow::Result<Vec<String>>
 }
 
 /// Drop an invalid index that failed to build
-/// 
+///
 /// NOTE: We use DROP INDEX (not CONCURRENTLY) here because:
 /// 1. Invalid indexes are not usable anyway
 /// 2. CONCURRENTLY cannot be used inside a transaction

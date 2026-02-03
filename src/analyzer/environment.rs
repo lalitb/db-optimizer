@@ -74,9 +74,7 @@ pub async fn detect_environment(pool: &PgPool) -> anyhow::Result<EnvironmentInfo
     let mut warnings = Vec::new();
 
     // Get PostgreSQL version
-    let (pg_version,): (String,) = sqlx::query_as("SELECT version()")
-        .fetch_one(pool)
-        .await?;
+    let (pg_version,): (String,) = sqlx::query_as("SELECT version()").fetch_one(pool).await?;
 
     // Check for managed environment markers
     let environment = detect_managed_environment(pool, &pg_version).await;
@@ -84,12 +82,14 @@ pub async fn detect_environment(pool: &PgPool) -> anyhow::Result<EnvironmentInfo
     // Check pg_stat_statements
     let has_pg_stat_statements = check_pg_stat_statements(pool).await;
     if !has_pg_stat_statements {
-        warnings.push("pg_stat_statements extension not available - query analysis limited".to_string());
+        warnings.push(
+            "pg_stat_statements extension not available - query analysis limited".to_string(),
+        );
     }
 
     // Check permissions
     let (is_superuser, is_db_owner) = check_permissions(pool).await?;
-    
+
     // Check if we can create indexes
     let can_create_index = check_index_permissions(pool).await;
     let can_drop_index = can_create_index; // Same permission typically
@@ -180,12 +180,11 @@ async fn detect_managed_environment(pool: &PgPool, version: &str) -> DatabaseEnv
     }
 
     // Check for Heroku markers
-    let heroku_check: Option<(String,)> = sqlx::query_as(
-        "SELECT current_database() WHERE current_database() ~ '^[a-z]{14}$'",
-    )
-    .fetch_optional(pool)
-    .await
-    .unwrap_or(None);
+    let heroku_check: Option<(String,)> =
+        sqlx::query_as("SELECT current_database() WHERE current_database() ~ '^[a-z]{14}$'")
+            .fetch_optional(pool)
+            .await
+            .unwrap_or(None);
 
     if heroku_check.is_some() {
         // Heroku databases have 14-character random names
@@ -214,26 +213,27 @@ async fn detect_managed_environment(pool: &PgPool, version: &str) -> DatabaseEnv
     }
 
     // Check for Neon
-    let neon_check: Option<(String,)> = sqlx::query_as(
-        "SELECT setting FROM pg_settings WHERE name = 'neon.timeline_id'",
-    )
-    .fetch_optional(pool)
-    .await
-    .unwrap_or(None);
+    let neon_check: Option<(String,)> =
+        sqlx::query_as("SELECT setting FROM pg_settings WHERE name = 'neon.timeline_id'")
+            .fetch_optional(pool)
+            .await
+            .unwrap_or(None);
 
     if neon_check.is_some() {
         return DatabaseEnvironment::Neon;
     }
 
     // Check if we have local file system access (self-managed indicator)
-    let data_dir: Option<(String,)> = sqlx::query_as(
-        "SELECT setting FROM pg_settings WHERE name = 'data_directory'",
-    )
-    .fetch_optional(pool)
-    .await
-    .unwrap_or(None);
+    let data_dir: Option<(String,)> =
+        sqlx::query_as("SELECT setting FROM pg_settings WHERE name = 'data_directory'")
+            .fetch_optional(pool)
+            .await
+            .unwrap_or(None);
 
-    if data_dir.map(|(d,)| d.starts_with("/var/lib/postgresql") || d.starts_with("/data")).unwrap_or(false) {
+    if data_dir
+        .map(|(d,)| d.starts_with("/var/lib/postgresql") || d.starts_with("/data"))
+        .unwrap_or(false)
+    {
         return DatabaseEnvironment::SelfManaged;
     }
 
@@ -242,22 +242,20 @@ async fn detect_managed_environment(pool: &PgPool, version: &str) -> DatabaseEnv
 }
 
 async fn check_pg_stat_statements(pool: &PgPool) -> bool {
-    let result: Option<(String,)> = sqlx::query_as(
-        "SELECT extname FROM pg_extension WHERE extname = 'pg_stat_statements'",
-    )
-    .fetch_optional(pool)
-    .await
-    .unwrap_or(None);
+    let result: Option<(String,)> =
+        sqlx::query_as("SELECT extname FROM pg_extension WHERE extname = 'pg_stat_statements'")
+            .fetch_optional(pool)
+            .await
+            .unwrap_or(None);
 
     result.is_some()
 }
 
 async fn check_permissions(pool: &PgPool) -> anyhow::Result<(bool, bool)> {
-    let (is_superuser,): (bool,) = sqlx::query_as(
-        "SELECT usesuper FROM pg_user WHERE usename = current_user",
-    )
-    .fetch_one(pool)
-    .await?;
+    let (is_superuser,): (bool,) =
+        sqlx::query_as("SELECT usesuper FROM pg_user WHERE usename = current_user")
+            .fetch_one(pool)
+            .await?;
 
     let is_db_owner: bool = sqlx::query_as::<_, (bool,)>(
         "SELECT pg_catalog.pg_get_userbyid(datdba) = current_user FROM pg_database WHERE datname = current_database()",

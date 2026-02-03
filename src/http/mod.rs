@@ -109,11 +109,11 @@ pub fn create_router(state: AppState) -> Router {
     let api_v1 = if let Some(pool) = &state.db_pool {
         use crate::auto_apply::OperationGuard;
         use std::sync::atomic::AtomicBool;
-        
+
         // Create a centralized OperationGuard for mode enforcement
         // This is the SINGLE SOURCE OF TRUTH for whether destructive operations are allowed
         let operation_guard = Arc::new(OperationGuard::new());
-        
+
         // Run environment detection to set up forced read-only if needed
         // This happens once at startup
         {
@@ -121,7 +121,10 @@ pub fn create_router(state: AppState) -> Router {
             let pool_clone = pool.clone();
             tokio::spawn(async move {
                 if let Err(e) = guard.detect_and_update_environment(&pool_clone).await {
-                    tracing::warn!("Failed to detect environment at startup: {}. Forcing read-only mode.", e);
+                    tracing::warn!(
+                        "Failed to detect environment at startup: {}. Forcing read-only mode.",
+                        e
+                    );
                     guard.force_read_only("Environment detection failed".to_string());
                 }
             });

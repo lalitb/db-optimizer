@@ -716,7 +716,7 @@ async fn run_analyze_mode(cli: AnalyzeOptions) -> Result<()> {
         // ENFORCE: Check operation guard before any auto-apply
         // Set up guard with environment detection
         let guard = Arc::new(OperationGuard::with_settings("safe_auto", false));
-        
+
         // Detect environment - handle errors by using conservative defaults
         if let Ok(env_info) = detect_environment(&pool).await {
             guard.set_environment(env_info).await;
@@ -724,27 +724,23 @@ async fn run_analyze_mode(cli: AnalyzeOptions) -> Result<()> {
             // Environment detection failed - guard will block operations
             tracing::warn!("Environment detection failed - defaulting to read-only");
         }
-        
+
         let check = guard.check_destructive_operation().await;
         if !check.allowed {
-            println!(
-                "{}",
-                "   ⚠️  AUTO-APPLY BLOCKED".bright_red().bold()
-            );
-            let reason = check.block_reason
+            println!("{}", "   ⚠️  AUTO-APPLY BLOCKED".bright_red().bold());
+            let reason = check
+                .block_reason
                 .map(|r| format!("{}", r))
                 .unwrap_or_else(|| "Operation not allowed".to_string());
-            println!(
-                "{}",
-                format!("   Reason: {}", reason).bright_red()
-            );
+            println!("{}", format!("   Reason: {}", reason).bright_red());
             println!(
                 "{}",
                 "   Environment requires read-only mode.".bright_yellow()
             );
             println!(
                 "{}",
-                "   Use 'analyze' command without --auto-apply to view recommendations.".bright_yellow()
+                "   Use 'analyze' command without --auto-apply to view recommendations."
+                    .bright_yellow()
             );
             println!("{}", "━".repeat(70).bright_blue());
         } else {
@@ -1201,20 +1197,17 @@ async fn run_analysis_cycle(
     if opts.auto_apply {
         // ENFORCE: Check operation guard before any auto-apply in agent mode
         let guard = Arc::new(OperationGuard::with_settings("safe_auto", false));
-        
+
         // Detect environment - handle errors by using conservative defaults
         if let Ok(env_info) = detect_environment(&pool).await {
             guard.set_environment(env_info).await;
         } else {
             tracing::warn!("Environment detection failed - defaulting to read-only");
         }
-        
+
         let check = guard.check_destructive_operation().await;
         if !check.allowed {
-            tracing::warn!(
-                "Auto-apply blocked in agent mode: {:?}",
-                check.block_reason
-            );
+            tracing::warn!("Auto-apply blocked in agent mode: {:?}", check.block_reason);
             results.skipped_count = recommendations.len();
         } else {
             let config = AutoApplyConfig {
@@ -1451,7 +1444,10 @@ async fn run_serve_mode(opts: ServeOptions) -> Result<()> {
             }
         }
     } else {
-        println!("   {} No DATABASE_URL set, system endpoints unavailable", "⚠".bright_yellow());
+        println!(
+            "   {} No DATABASE_URL set, system endpoints unavailable",
+            "⚠".bright_yellow()
+        );
         None
     };
 

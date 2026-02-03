@@ -12,7 +12,7 @@ pub enum ProofMode {
     /// - Drops candidate index
     /// - Provides strong proof of index usefulness
     CandidateIndex,
-    
+
     /// EXPLAIN-only validation (no DDL)
     /// - Runs EXPLAIN on existing schema only
     /// - Cannot prove proposed index would help
@@ -196,7 +196,13 @@ fn default_proof_strength() -> ProofStrength {
 
 impl ValidationResult {
     /// Create a new pending validation result
-    pub fn pending(recommendation_id: String, query_text: String, index_name: String, table_name: String, columns: Vec<String>) -> Self {
+    pub fn pending(
+        recommendation_id: String,
+        query_text: String,
+        index_name: String,
+        table_name: String,
+        columns: Vec<String>,
+    ) -> Self {
         Self {
             recommendation_id,
             query_id: None,
@@ -220,7 +226,13 @@ impl ValidationResult {
     }
 
     /// Create a pending result for explain-only mode
-    pub fn pending_explain_only(recommendation_id: String, query_text: String, index_name: String, table_name: String, columns: Vec<String>) -> Self {
+    pub fn pending_explain_only(
+        recommendation_id: String,
+        query_text: String,
+        index_name: String,
+        table_name: String,
+        columns: Vec<String>,
+    ) -> Self {
         Self {
             recommendation_id,
             query_id: None,
@@ -249,8 +261,7 @@ impl ValidationResult {
         self.reason_code = ValidationReasonCode::IndexUsed;
         self.reason_message = format!(
             "Index '{}' is used by query planner. {}",
-            self.index_name,
-            diff.summary
+            self.index_name, diff.summary
         );
         self.before_plan = Some(before);
         self.after_plan = Some(after);
@@ -287,7 +298,9 @@ impl ValidationResult {
     pub fn explain_only(mut self, before_plan: ExplainPlan, guidance: String) -> Self {
         self.status = ValidationStatus::Skipped;
         self.reason_code = ValidationReasonCode::ReadOnlyMode;
-        self.reason_message = "Cannot prove index effectiveness without creating candidate index. EXPLAIN-only mode.".to_string();
+        self.reason_message =
+            "Cannot prove index effectiveness without creating candidate index. EXPLAIN-only mode."
+                .to_string();
         self.before_plan = Some(before_plan);
         self.after_plan = None;
         self.diff_summary = None;

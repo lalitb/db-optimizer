@@ -12,7 +12,7 @@ pub mod proof;
 
 pub use explain::{ExplainExecutor, PlanParser};
 pub use models::{
-    ExplainPlan, PlanDiff, PlanNode, ProofMode, ProofStrength, ScanType, 
-    ValidationReasonCode, ValidationResult, ValidationStatus,
+    ExplainPlan, PlanDiff, PlanNode, ProofMode, ProofStrength, ScanType, ValidationReasonCode,
+    ValidationResult, ValidationStatus,
 };
 pub use proof::{DestructiveCheckResult, IndexProof, ProofGenerator};

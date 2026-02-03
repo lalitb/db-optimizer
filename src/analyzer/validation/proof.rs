@@ -12,7 +12,9 @@
 //! - Kill switch blocks all validation that would create indexes
 
 use super::explain::ExplainExecutor;
-use super::models::{PlanDiff, ProofMode, ProofStrength, ValidationReasonCode, ValidationResult, ValidationStatus};
+use super::models::{
+    PlanDiff, ProofMode, ProofStrength, ValidationReasonCode, ValidationResult, ValidationStatus,
+};
 use crate::auto_apply::{BlockReason, OperationGuard};
 use anyhow::{Context, Result};
 use sqlx::{PgPool, Row};
@@ -147,7 +149,7 @@ impl ProofGenerator {
     }
 
     /// Validate an index recommendation.
-    /// 
+    ///
     /// Behavior depends on OperationGuard state:
     /// - **Destructive allowed**: Full validation with candidate index (CREATE/DROP INDEX)
     /// - **Read-only mode**: EXPLAIN-only validation (no DDL, weaker proof)
@@ -166,8 +168,7 @@ impl ProofGenerator {
         index_type: Option<&str>,
     ) -> Result<ValidationResult> {
         // Generate deterministic candidate index name
-        let candidate_index_name =
-            self.generate_candidate_index_name(table_name, columns);
+        let candidate_index_name = self.generate_candidate_index_name(table_name, columns);
 
         // STEP 0: Check operation guard FIRST to determine proof mode
         let proof_mode = match self.check_destructive_allowed().await {
@@ -197,7 +198,9 @@ impl ProofGenerator {
                     duration_ms: Some(0),
                     proof_mode: ProofMode::ExplainOnly,
                     proof_strength: ProofStrength::NoProof,
-                    guidance: Some("Kill switch is active. Disable it to run validation.".to_string()),
+                    guidance: Some(
+                        "Kill switch is active. Disable it to run validation.".to_string(),
+                    ),
                 });
             }
             DestructiveCheckResult::ReadOnly(reason) => {
@@ -233,7 +236,10 @@ impl ProofGenerator {
         if !ExplainExecutor::can_explain(query) {
             return Ok(result.failed(
                 ValidationReasonCode::QueryNotExplainable,
-                format!("Query cannot be explained: {}", &query[..query.len().min(50)]),
+                format!(
+                    "Query cannot be explained: {}",
+                    &query[..query.len().min(50)]
+                ),
             ));
         }
 
@@ -272,7 +278,7 @@ impl ProofGenerator {
                 recommendation_id = %recommendation_id,
                 "Returning EXPLAIN-only result: no candidate index created"
             );
-            
+
             let guidance = format!(
                 "System is in read-only mode. Cannot create candidate index to prove effectiveness. \
                 Current query cost: {:.2}. To get full proof, enable safe_auto mode or disable kill switch. \
@@ -282,7 +288,7 @@ impl ProofGenerator {
                 table_name,
                 columns.join(", ")
             );
-            
+
             return Ok(result.explain_only(before_plan, guidance));
         }
 
@@ -315,15 +321,16 @@ impl ProofGenerator {
                 );
 
                 // Generate diff
-                let diff =
-                    PlanDiff::from_plans(&before_plan, &after_plan, table_name, &candidate_index_name);
+                let diff = PlanDiff::from_plans(
+                    &before_plan,
+                    &after_plan,
+                    table_name,
+                    &candidate_index_name,
+                );
 
                 info!(
                     "Validation diff: cost {:.2} → {:.2} ({:.1}% change), index_used: {}",
-                    diff.before_cost,
-                    diff.after_cost,
-                    diff.cost_improvement_pct,
-                    diff.index_used
+                    diff.before_cost, diff.after_cost, diff.cost_improvement_pct, diff.index_used
                 );
 
                 if diff.is_meaningful_improvement(self.min_improvement_pct) {
@@ -410,11 +417,11 @@ impl ProofGenerator {
             &cols_part
         };
 
-        format!("idx_{}_{}_{}",  table_part, cols_part, short_hash)
+        format!("idx_{}_{}_{}", table_part, cols_part, short_hash)
     }
 
     /// Create a candidate index for validation
-    /// 
+    ///
     /// IMPORTANT: Caller MUST verify proof_mode == CandidateIndex before calling.
     /// This method assumes the guard check has already been done.
     async fn create_candidate_index(
@@ -468,7 +475,7 @@ impl ProofGenerator {
     }
 
     /// Drop a candidate index after validation
-    /// 
+    ///
     /// IMPORTANT: Caller MUST verify proof_mode == CandidateIndex before calling.
     /// This method assumes the guard check has already been done.
     async fn drop_candidate_index(&self, index_name: &str) -> Result<()> {
@@ -581,7 +588,10 @@ impl IndexProof {
             production_index_name, table_name, index_type_clause, columns_clause
         );
 
-        let drop_sql = format!("DROP INDEX CONCURRENTLY IF EXISTS {}", production_index_name);
+        let drop_sql = format!(
+            "DROP INDEX CONCURRENTLY IF EXISTS {}",
+            production_index_name
+        );
 
         Self {
             validation,
@@ -723,8 +733,14 @@ mod tests {
 
     #[test]
     fn test_proof_strength_as_str() {
-        assert_eq!(ProofStrength::CandidateIndexTested.as_str(), "candidate_index_tested");
-        assert_eq!(ProofStrength::ExplainOnlyExistingIndexes.as_str(), "explain_only_existing_indexes");
+        assert_eq!(
+            ProofStrength::CandidateIndexTested.as_str(),
+            "candidate_index_tested"
+        );
+        assert_eq!(
+            ProofStrength::ExplainOnlyExistingIndexes.as_str(),
+            "explain_only_existing_indexes"
+        );
         assert_eq!(ProofStrength::NoProof.as_str(), "no_proof");
     }
 
@@ -739,7 +755,10 @@ mod tests {
         );
 
         assert_eq!(result.proof_mode, ProofMode::ExplainOnly);
-        assert_eq!(result.proof_strength, ProofStrength::ExplainOnlyExistingIndexes);
+        assert_eq!(
+            result.proof_strength,
+            ProofStrength::ExplainOnlyExistingIndexes
+        );
     }
 
     #[test]
@@ -781,9 +800,15 @@ mod tests {
         );
 
         assert_eq!(explain_result.status, ValidationStatus::Skipped);
-        assert_eq!(explain_result.reason_code, ValidationReasonCode::ReadOnlyMode);
+        assert_eq!(
+            explain_result.reason_code,
+            ValidationReasonCode::ReadOnlyMode
+        );
         assert_eq!(explain_result.proof_mode, ProofMode::ExplainOnly);
-        assert_eq!(explain_result.proof_strength, ProofStrength::ExplainOnlyExistingIndexes);
+        assert_eq!(
+            explain_result.proof_strength,
+            ProofStrength::ExplainOnlyExistingIndexes
+        );
         assert!(explain_result.guidance.is_some());
         assert!(explain_result.before_plan.is_some());
         assert!(explain_result.after_plan.is_none());
