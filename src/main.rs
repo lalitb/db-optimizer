@@ -290,6 +290,10 @@ struct ServeOptions {
     #[arg(short, long, default_value = "8080")]
     port: u16,
 
+    /// PostgreSQL connection string (enables validation, system endpoints)
+    #[arg(short, long, env = "DATABASE_URL")]
+    database_url: Option<String>,
+
     /// Enable eBPF-based lock contention tracking (requires Linux 5.8+ and CAP_BPF)
     #[arg(long)]
     enable_ebpf: bool,
@@ -1432,8 +1436,27 @@ async fn run_serve_mode(opts: ServeOptions) -> Result<()> {
         None
     };
 
+    // Connect to database if URL provided
+    let db_pool = if let Some(db_url) = &opts.database_url {
+        println!("   Connecting to database...");
+        match sqlx::PgPool::connect(db_url).await {
+            Ok(pool) => {
+                println!("   {} Database connected", "✓".bright_green());
+                Some(pool)
+            }
+            Err(e) => {
+                eprintln!("   {} Database connection failed: {}", "✗".bright_red(), e);
+                eprintln!("   System endpoints will be unavailable");
+                None
+            }
+        }
+    } else {
+        println!("   {} No DATABASE_URL set, system endpoints unavailable", "⚠".bright_yellow());
+        None
+    };
+
     // Start new HTTP API server
-    pg_query_advisor::http::serve(http_config, persistence, ebpf_manager, None).await
+    pg_query_advisor::http::serve(http_config, persistence, ebpf_manager, db_pool).await
 }
 
 /// Run config tune mode

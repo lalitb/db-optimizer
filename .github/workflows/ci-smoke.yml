@@ -1,0 +1,140 @@
+name: Smoke & Safety Tests
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  doc-safety:
+    name: Doc Safety Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Check docs for false safety claims
+      run: ./scripts/ci/doc_safety_check.sh
+
+  smoke-test:
+    name: Server Smoke Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: testdb
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install Rust
+      uses: actions-rs/toolchain@v1
+      with:
+        profile: minimal
+        toolchain: stable
+        override: true
+    
+    - name: Cache cargo
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ runner.os }}-cargo-smoke-${{ hashFiles('**/Cargo.lock') }}
+    
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libssl-dev libsqlite3-dev postgresql-client
+    
+    - name: Setup pg_stat_statements
+      env:
+        PGPASSWORD: postgres
+      run: |
+        psql -h localhost -p 5432 -U postgres -d testdb -c "CREATE EXTENSION IF NOT EXISTS pg_stat_statements;" || true
+    
+    - name: Build release
+      run: cargo build --release
+    
+    - name: Run server smoke test
+      env:
+        DATABASE_URL: postgresql://postgres:postgres@localhost:5432/testdb
+        PORT: 9090
+      run: ./scripts/ci/smoke_server.sh
+
+  safety-enforcement:
+    name: Kill Switch Safety Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: smoke-test  # Only run if smoke test passes
+    
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: testdb
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install Rust
+      uses: actions-rs/toolchain@v1
+      with:
+        profile: minimal
+        toolchain: stable
+        override: true
+    
+    - name: Cache cargo
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ runner.os }}-cargo-smoke-${{ hashFiles('**/Cargo.lock') }}
+    
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libssl-dev libsqlite3-dev postgresql-client
+    
+    - name: Setup pg_stat_statements
+      env:
+        PGPASSWORD: postgres
+      run: |
+        psql -h localhost -p 5432 -U postgres -d testdb -c "CREATE EXTENSION IF NOT EXISTS pg_stat_statements;" || true
+    
+    - name: Build release
+      run: cargo build --release
+    
+    - name: Run kill switch safety test
+      env:
+        DATABASE_URL: postgresql://postgres:postgres@localhost:5432/testdb
+        PORT: 9091
+      run: ./scripts/ci/safety_killswitch_test.sh

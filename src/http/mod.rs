@@ -159,17 +159,12 @@ pub fn create_router(state: AppState) -> Router {
             .route("/indexes", get(handlers::system::managed_indexes))
             .route("/recover", post(handlers::system::recover))
             .route("/mode", post(handlers::system::set_mode))
-            .with_state(system_state.clone());
-
-        // Add enhanced health endpoint
-        let health_router = Router::new()
             .route("/health", get(handlers::system::health))
             .with_state(system_state);
 
         api_v1
             .nest("/index", validation_router)
             .nest("/system", system_router)
-            .merge(health_router)
     } else {
         api_v1
     };
