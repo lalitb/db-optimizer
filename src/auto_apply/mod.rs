@@ -1,10 +1,16 @@
+pub mod audit;
 pub mod baseline;
 pub mod enhanced_safety;
 pub mod enhanced_verifier;
 pub mod executor;
 pub mod notifier;
+pub mod operation_guard;
+pub mod recovery;
 pub mod safety_filter;
+pub mod state_machine;
 pub mod verifier;
+
+pub use operation_guard::{BlockReason, EffectiveMode, OperationCheck, OperationGuard, OperationGuardStatus};
 
 use crate::events::{DatabaseEvent, EventDetails, EventSource, EventStore, EventType};
 use crate::models::*;

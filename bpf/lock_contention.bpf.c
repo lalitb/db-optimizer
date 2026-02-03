@@ -66,8 +66,8 @@ struct {
     __uint(value_size, sizeof(__u32));
 } lock_events SEC(".maps");
 
-// Track lock acquisition attempts
-SEC("kprobe/pg_lock_acquire")
+// Track lock acquisition attempts (user-space uprobe on postgres)
+SEC("uprobe/pg_lock_acquire")
 int trace_lock_acquire_start(struct pt_regs *ctx) {
     __u32 pid = bpf_get_current_pid_tgid() >> 32;
     
@@ -88,7 +88,7 @@ int trace_lock_acquire_start(struct pt_regs *ctx) {
 }
 
 // Track successful lock acquisition
-SEC("kretprobe/pg_lock_acquire")
+SEC("uretprobe/pg_lock_acquire")
 int trace_lock_acquire_return(struct pt_regs *ctx) {
     __u32 pid = bpf_get_current_pid_tgid() >> 32;
     
@@ -173,7 +173,7 @@ int trace_futex_wait_return(struct pt_regs *ctx) {
 }
 
 // Track which query is holding a lock when another waits
-SEC("kprobe/pg_wait_for_lock")
+SEC("uprobe/pg_wait_for_lock")
 int trace_wait_for_lock(struct pt_regs *ctx) {
     __u32 waiting_pid = bpf_get_current_pid_tgid() >> 32;
     
@@ -216,7 +216,7 @@ int trace_wait_for_lock(struct pt_regs *ctx) {
     return 0;
 }
 
-SEC("kretprobe/pg_wait_for_lock")
+SEC("uretprobe/pg_wait_for_lock")
 int trace_wait_for_lock_return(struct pt_regs *ctx) {
     __u32 waiting_pid = bpf_get_current_pid_tgid() >> 32;
     

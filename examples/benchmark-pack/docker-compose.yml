@@ -1,0 +1,146 @@
+# Vaanyze Benchmark Pack - Docker Compose
+#
+# Spins up:
+# - PostgreSQL 16 with pg_stat_statements and track_io_timing
+# - pgbench for load generation (built into postgres image)
+# - Optional: Vaanyze service
+#
+# Usage:
+#   docker-compose up -d postgres
+#   docker-compose run --rm load-generator scenario=missing-index-where
+#
+version: '3.8'
+
+services:
+  # PostgreSQL with pg_stat_statements enabled
+  postgres:
+    image: postgres:16-alpine
+    container_name: vaanyze-bench-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: benchdb
+    ports:
+      - "5433:5432"  # Use 5433 to avoid conflicts with local postgres
+    command:
+      - "postgres"
+      - "-c"
+      - "shared_preload_libraries=pg_stat_statements"
+      - "-c"
+      - "pg_stat_statements.track=all"
+      - "-c"
+      - "pg_stat_statements.max=10000"
+      - "-c"
+      - "track_io_timing=on"
+      - "-c"
+      - "track_functions=all"
+      - "-c"
+      - "log_min_duration_statement=100"
+      - "-c"
+      - "log_statement=none"
+      - "-c"
+      - "shared_buffers=256MB"
+      - "-c"
+      - "work_mem=16MB"
+    volumes:
+      - bench_pgdata:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/00-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d benchdb"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - bench-network
+
+  # Load generator using pgbench (from postgres image)
+  load-generator:
+    image: postgres:16-alpine
+    container_name: vaanyze-bench-loadgen
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      PGDATABASE: benchdb
+    volumes:
+      - ./scenarios:/scenarios:ro
+      - ./results:/results
+      - ../../../scripts/bench:/scripts:ro
+    working_dir: /scenarios
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["echo 'Load generator ready. Run with: docker-compose run --rm load-generator /scripts/run_scenario.sh <scenario>'"]
+    networks:
+      - bench-network
+
+  # Vaanyze service (optional - can run outside container)
+  vaanyze:
+    build:
+      context: ../../..
+      dockerfile: Dockerfile
+    container_name: vaanyze-bench-service
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      RUST_LOG: info
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/benchdb
+    ports:
+      - "9090:9090"
+    command: ["serve", "--port", "9090", "-d", "postgresql://postgres:postgres@postgres:5432/benchdb"]
+    networks:
+      - bench-network
+    profiles:
+      - with-vaanyze
+
+  # Metrics collector for benchmark results
+  metrics-collector:
+    image: postgres:16-alpine
+    container_name: vaanyze-bench-metrics
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      PGDATABASE: benchdb
+    volumes:
+      - ./results:/results
+      - ../../../scripts/bench:/scripts:ro
+    entrypoint: ["/bin/sh"]
+    command: ["-c", "echo 'Metrics collector ready'"]
+    networks:
+      - bench-network
+
+volumes:
+  bench_pgdata:
+    driver: local
+
+networks:
+  bench-network:
+    driver: bridge
+
+# Usage:
+#
+# 1. Start PostgreSQL:
+#    docker-compose up -d postgres
+#
+# 2. Run all benchmarks:
+#    docker-compose run --rm load-generator /scripts/run_all.sh
+#
+# 3. Run single scenario:
+#    docker-compose run --rm load-generator /scripts/run_scenario.sh missing-index-where
+#
+# 4. With Vaanyze service:
+#    docker-compose --profile with-vaanyze up -d
+#
+# 5. View results:
+#    cat results/<scenario>.json
+#
+# 6. Clean up:
+#    docker-compose down -v

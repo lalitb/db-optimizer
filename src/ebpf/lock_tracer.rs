@@ -1,6 +1,7 @@
 // Lock contention tracking and analysis
 // Collects lock events from eBPF probes and provides aggregated metrics
 
+use crate::ebpf::events::{LockContentionEventRaw, LwLockEventRaw, RowLockEventRaw};
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -188,6 +189,15 @@ pub struct LockTracer {
     /// Recent events (for debugging/analysis)
     recent_events: Arc<Mutex<Vec<LockEvent>>>,
     max_recent_events: usize,
+
+    /// Recent lock contention events from kernel (waiting/blocking PIDs)
+    contention_events: Arc<Mutex<Vec<LockContentionEventRaw>>>,
+
+    /// Recent LWLock events (kernel/uprobes)
+    lwlock_events: Arc<Mutex<Vec<LwLockEventRaw>>>,
+
+    /// Recent row-lock events (kernel/uprobes)
+    row_lock_events: Arc<Mutex<Vec<RowLockEventRaw>>>,
 }
 
 impl LockTracer {
@@ -196,7 +206,10 @@ impl LockTracer {
             stats: Arc::new(Mutex::new(HashMap::new())),
             table_names: Arc::new(Mutex::new(HashMap::new())),
             recent_events: Arc::new(Mutex::new(Vec::new())),
+            contention_events: Arc::new(Mutex::new(Vec::new())),
             max_recent_events: 1000,
+            lwlock_events: Arc::new(Mutex::new(Vec::new())),
+            row_lock_events: Arc::new(Mutex::new(Vec::new())),
         }
     }
 
@@ -350,6 +363,46 @@ impl LockTracer {
             total_wait_time_ms,
             total_failed_acquisitions: total_failed,
         }
+    }
+
+    /// Record a lock contention event from eBPF (blocking/waiting PIDs)
+    pub fn record_lock_contention_event(&self, event: LockContentionEventRaw) {
+        let mut recent = self.contention_events.lock().unwrap();
+        recent.push(event);
+        if recent.len() > self.max_recent_events {
+            recent.remove(0);
+        }
+    }
+
+    /// Get recent lock contention events (for API/debugging)
+    pub fn recent_contention_events(&self) -> Vec<LockContentionEventRaw> {
+        self.contention_events.lock().unwrap().clone()
+    }
+
+    /// Record LWLock event
+    pub fn record_lwlock_event(&self, event: LwLockEventRaw) {
+        let mut recent = self.lwlock_events.lock().unwrap();
+        recent.push(event);
+        if recent.len() > self.max_recent_events {
+            recent.remove(0);
+        }
+    }
+
+    pub fn recent_lwlock_events(&self) -> Vec<LwLockEventRaw> {
+        self.lwlock_events.lock().unwrap().clone()
+    }
+
+    /// Record row lock event
+    pub fn record_row_lock_event(&self, event: RowLockEventRaw) {
+        let mut recent = self.row_lock_events.lock().unwrap();
+        recent.push(event);
+        if recent.len() > self.max_recent_events {
+            recent.remove(0);
+        }
+    }
+
+    pub fn recent_row_lock_events(&self) -> Vec<RowLockEventRaw> {
+        self.row_lock_events.lock().unwrap().clone()
     }
 }
 

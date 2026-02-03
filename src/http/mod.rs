@@ -47,6 +47,12 @@ pub fn create_router(state: AppState) -> Router {
         .route("/locks/contention", get(handlers::locks::contention))
         .route("/locks/summary", get(handlers::locks::summary))
         .route("/locks/events", get(handlers::locks::events))
+        .route(
+            "/locks/contention/events",
+            get(handlers::locks::contention_events),
+        )
+        .route("/locks/lwlocks/events", get(handlers::locks::lwlock_events))
+        .route("/locks/rows/events", get(handlers::locks::row_lock_events))
         .route("/locks/table/:oid", get(handlers::locks::table_locks))
         // Query Endpoints
         .route("/queries/slow", get(handlers::queries::slow_queries))
@@ -95,6 +101,75 @@ pub fn create_router(state: AppState) -> Router {
             .with_state(config_state);
 
         api_v1.nest("/config", config_router)
+    } else {
+        api_v1
+    };
+
+    // Add validation and system routes if database pool is available
+    let api_v1 = if let Some(pool) = &state.db_pool {
+        use crate::auto_apply::OperationGuard;
+        use std::sync::atomic::AtomicBool;
+        
+        // Create a centralized OperationGuard for mode enforcement
+        // This is the SINGLE SOURCE OF TRUTH for whether destructive operations are allowed
+        let operation_guard = Arc::new(OperationGuard::new());
+        
+        // Run environment detection to set up forced read-only if needed
+        // This happens once at startup
+        {
+            let guard = operation_guard.clone();
+            let pool_clone = pool.clone();
+            tokio::spawn(async move {
+                if let Err(e) = guard.detect_and_update_environment(&pool_clone).await {
+                    tracing::warn!("Failed to detect environment at startup: {}. Forcing read-only mode.", e);
+                    guard.force_read_only("Environment detection failed".to_string());
+                }
+            });
+        }
+
+        // Create shared state for validation handlers - uses operation guard
+        let validation_state = Arc::new(handlers::validation::ValidationHandlerState {
+            db_pool: pool.clone(),
+            lifecycles: Arc::new(RwLock::new(std::collections::HashMap::new())),
+            audit_log: Arc::new(RwLock::new(crate::auto_apply::audit::AuditLog::new())),
+            operation_guard: operation_guard.clone(),
+        });
+
+        let validation_router = Router::new()
+            .route("/validate", post(handlers::validation::validate))
+            .route("/apply", post(handlers::validation::apply))
+            .route("/rollback", post(handlers::validation::rollback))
+            .route("/status/:id", get(handlers::validation::status))
+            .route("/audit", get(handlers::validation::audit_log))
+            .with_state(validation_state);
+
+        // Create shared state for system handlers - also uses operation guard
+        let system_state = Arc::new(handlers::system::SystemHandlerState {
+            db_pool: pool.clone(),
+            kill_switch: Arc::new(AtomicBool::new(false)),
+            operation_mode: Arc::new(RwLock::new("observe_only".to_string())),
+            read_only: Arc::new(AtomicBool::new(true)),
+            started_at: chrono::Utc::now(),
+            operation_guard: Some(operation_guard.clone()),
+        });
+
+        let system_router = Router::new()
+            .route("/environment", get(handlers::system::environment))
+            .route("/kill-switch", post(handlers::system::kill_switch))
+            .route("/indexes", get(handlers::system::managed_indexes))
+            .route("/recover", post(handlers::system::recover))
+            .route("/mode", post(handlers::system::set_mode))
+            .with_state(system_state.clone());
+
+        // Add enhanced health endpoint
+        let health_router = Router::new()
+            .route("/health", get(handlers::system::health))
+            .with_state(system_state);
+
+        api_v1
+            .nest("/index", validation_router)
+            .nest("/system", system_router)
+            .merge(health_router)
     } else {
         api_v1
     };

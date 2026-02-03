@@ -1,0 +1,27 @@
+{
+  "scenario": "write-heavy-rollback",
+  "description": "Write-heavy workload where index causes regression - tests rollback",
+  "target_table": "metrics",
+  "target_columns": ["sensor_id", "recorded_at"],
+  "expected_recommendation": "CREATE INDEX ON metrics(sensor_id, recorded_at)",
+  "expected_outcome": "rollback",
+  "reason": "Write performance regression due to index maintenance overhead",
+  "pgbench_options": {
+    "clients": 8,
+    "jobs": 4,
+    "time_seconds": 60,
+    "transactions": 0
+  },
+  "workload_mix": {
+    "writes_pct": 70,
+    "reads_pct": 30
+  },
+  "rollback_test": {
+    "enabled": true,
+    "regression_threshold_pct": 10,
+    "metric": "write_latency_p99"
+  },
+  "validation": {
+    "expect_rollback": true
+  }
+}

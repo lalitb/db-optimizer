@@ -6,7 +6,17 @@
 //! - Ring buffer or perf event based on kernel version
 //! - Safe program lifecycle management
 
-use std::collections::HashMap;
+use anyhow::{self, Result};
+#[cfg(feature = "ebpf")]
+use aya::maps::perf::{PerfEventArray, PerfEventArrayBuffer};
+#[cfg(feature = "ebpf")]
+use aya::maps::HashMap as BpfHashMap;
+#[cfg(feature = "ebpf")]
+use aya::programs::{KProbe, KRetProbe, Program, UProbe, UProbeAttachType, URetProbe};
+#[cfg(feature = "ebpf")]
+use aya::Bpf;
+#[cfg(not(all(target_os = "linux", feature = "ebpf")))]
+type PerfEventArrayBuffer = ();
 #[allow(unused_imports)]
 use std::path::Path;
 use std::sync::Arc;
@@ -177,13 +187,13 @@ pub enum LoadResult {
 }
 
 /// eBPF program loader
+#[derive(Clone)]
 pub struct EbpfLoader {
     /// Configuration
     config: Arc<RwLock<LoaderConfig>>,
-    /// Loaded programs
-    programs: Arc<RwLock<HashMap<String, LoadedProgram>>>,
-    /// Loaded maps
-    maps: Arc<RwLock<HashMap<String, LoadedMap>>>,
+    /// Loaded BPF object
+    #[cfg(feature = "ebpf")]
+    bpf: Arc<RwLock<Option<Bpf>>>,
     /// Detected kernel version
     kernel_version: Arc<RwLock<(u32, u32, u32)>>,
     /// Whether BTF is available
@@ -200,8 +210,8 @@ impl EbpfLoader {
     pub fn new() -> Self {
         Self {
             config: Arc::new(RwLock::new(LoaderConfig::default())),
-            programs: Arc::new(RwLock::new(HashMap::new())),
-            maps: Arc::new(RwLock::new(HashMap::new())),
+            #[cfg(feature = "ebpf")]
+            bpf: Arc::new(RwLock::new(None)),
             kernel_version: Arc::new(RwLock::new((0, 0, 0))),
             btf_available: Arc::new(RwLock::new(false)),
             ringbuf_available: Arc::new(RwLock::new(false)),
@@ -272,7 +282,7 @@ impl EbpfLoader {
 
     /// Load eBPF object file
     pub async fn load_object(&self, path: &str) -> LoadResult {
-        #[cfg(target_os = "linux")]
+        #[cfg(all(target_os = "linux", feature = "ebpf"))]
         {
             info!("Loading eBPF object from: {}", path);
 
@@ -282,196 +292,130 @@ impl EbpfLoader {
                 return LoadResult::Failed(err);
             }
 
-            // In a real implementation, this would use libbpf-rs or aya to load
-            // the eBPF object file. The code would:
-            //
-            // 1. Open the object file
-            // 2. Find and process BTF data
-            // 3. Create maps
-            // 4. Load programs with verification
-            // 5. Attach programs to their hooks
-            //
-            // For now, we just simulate successful loading
-
-            let config = self.config.read().await;
-
-            // Define the programs we expect to load
-            let program_defs = vec![
-                ProgramDef {
-                    name: "trace_read_entry".to_string(),
-                    prog_type: if config.prefer_fentry {
-                        ProgramType::Fentry
-                    } else {
-                        ProgramType::Kprobe
-                    },
-                    attach_point: "vfs_read".to_string(),
-                    optional: false,
-                },
-                ProgramDef {
-                    name: "trace_read_exit".to_string(),
-                    prog_type: if config.prefer_fentry {
-                        ProgramType::Fexit
-                    } else {
-                        ProgramType::Kretprobe
-                    },
-                    attach_point: "vfs_read".to_string(),
-                    optional: false,
-                },
-                ProgramDef {
-                    name: "trace_write_entry".to_string(),
-                    prog_type: if config.prefer_fentry {
-                        ProgramType::Fentry
-                    } else {
-                        ProgramType::Kprobe
-                    },
-                    attach_point: "vfs_write".to_string(),
-                    optional: false,
-                },
-                ProgramDef {
-                    name: "trace_write_exit".to_string(),
-                    prog_type: if config.prefer_fentry {
-                        ProgramType::Fexit
-                    } else {
-                        ProgramType::Kretprobe
-                    },
-                    attach_point: "vfs_write".to_string(),
-                    optional: false,
-                },
-                ProgramDef {
-                    name: "trace_postgres_query".to_string(),
-                    prog_type: ProgramType::Uprobe,
-                    attach_point: "postgres:exec_simple_query".to_string(),
-                    optional: true,
-                },
-            ];
-
-            drop(config);
-
-            // Simulate loading programs
-            let mut programs = self.programs.write().await;
-            let mut warnings = Vec::new();
-
-            for (idx, def) in program_defs.into_iter().enumerate() {
-                // Check kernel version support
-                let version = *self.kernel_version.read().await;
-                let min_ver = def.prog_type.min_kernel_version();
-
-                if version.0 < min_ver.0 || (version.0 == min_ver.0 && version.1 < min_ver.1) {
-                    if def.optional {
-                        warnings.push(format!(
-                            "Skipping optional program {}: requires kernel {}.{}, have {}.{}",
-                            def.name, min_ver.0, min_ver.1, version.0, version.1
-                        ));
-                        continue;
-                    } else {
-                        let err = format!(
-                            "Required program {} needs kernel {}.{}, have {}.{}",
-                            def.name, min_ver.0, min_ver.1, version.0, version.1
-                        );
-                        return LoadResult::Failed(err);
-                    }
+            match Bpf::load_file(path) {
+                Ok(bpf) => {
+                    *self.bpf.write().await = Some(bpf);
+                    info!("Successfully loaded eBPF object");
+                    LoadResult::Success
                 }
-
-                let loaded = LoadedProgram {
-                    def: def.clone(),
-                    fd: 100 + idx as i32, // Simulated FD
-                    attached: false,
-                    loaded_at: Instant::now(),
-                    attached_at: None,
-                };
-
-                programs.insert(def.name.clone(), loaded);
-                debug!("Loaded program: {}", def.name);
-            }
-
-            // Define maps
-            let map_defs = vec![
-                MapDef {
-                    name: "events".to_string(),
-                    map_type: if *self.ringbuf_available.read().await {
-                        MapType::RingBuf
-                    } else {
-                        MapType::PerfEventArray
-                    },
-                    key_size: 0,
-                    value_size: 256,
-                    max_entries: 256 * 1024,
-                },
-                MapDef {
-                    name: "pid_filter".to_string(),
-                    map_type: MapType::Hash,
-                    key_size: 4,
-                    value_size: 1,
-                    max_entries: 1024,
-                },
-                MapDef {
-                    name: "sampling_config".to_string(),
-                    map_type: MapType::Array,
-                    key_size: 4,
-                    value_size: 8,
-                    max_entries: 16,
-                },
-            ];
-
-            let mut maps = self.maps.write().await;
-            for (idx, def) in map_defs.into_iter().enumerate() {
-                let loaded = LoadedMap {
-                    def: def.clone(),
-                    fd: 200 + idx as i32,
-                    pinned_path: None,
-                };
-                maps.insert(def.name.clone(), loaded);
-                debug!("Created map: {}", def.name);
-            }
-
-            info!("Successfully loaded eBPF object");
-
-            if warnings.is_empty() {
-                LoadResult::Success
-            } else {
-                LoadResult::SuccessWithWarnings(warnings)
+                Err(e) => {
+                    let err = format!("Failed to load eBPF object: {e}");
+                    self.errors.write().await.push(err.clone());
+                    LoadResult::Failed(err)
+                }
             }
         }
 
-        #[cfg(not(target_os = "linux"))]
+        #[cfg(any(not(target_os = "linux"), not(feature = "ebpf")))]
         {
             let _ = path;
-            LoadResult::NotSupported("eBPF is only supported on Linux".to_string())
+            LoadResult::NotSupported(
+                "eBPF is only supported on Linux with the ebpf feature".to_string(),
+            )
         }
     }
 
     /// Attach all loaded programs
-    pub async fn attach_all(&self) -> LoadResult {
-        let mut programs = self.programs.write().await;
-        let errors = Vec::new();
+    pub async fn attach_all(&self, target_path: Option<&str>) -> LoadResult {
+        #[cfg(all(target_os = "linux", feature = "ebpf"))]
+        {
+            let mut guard = self.bpf.write().await;
+            let bpf = match guard.as_mut() {
+                Some(b) => b,
+                None => return LoadResult::Failed("BPF object not loaded".to_string()),
+            };
 
-        for (name, prog) in programs.iter_mut() {
-            if prog.attached {
-                continue;
+            for (name, program) in bpf.programs_mut() {
+                let section = program.section().map(|s| s.to_string());
+                let symbol = section
+                    .as_deref()
+                    .and_then(|s| s.split('/').nth(1))
+                    .map(|s| s.to_string())
+                    .unwrap_or_else(|| name.to_string());
+
+                match program {
+                    Program::KProbe(mut prog) => {
+                        if let Err(e) = prog.load() {
+                            return LoadResult::Failed(format!("load kprobe {}: {}", name, e));
+                        }
+                        if let Err(e) = prog.attach(&symbol, 0) {
+                            return LoadResult::Failed(format!("attach kprobe {}: {}", name, e));
+                        }
+                    }
+                    Program::KRetProbe(mut prog) => {
+                        if let Err(e) = prog.load() {
+                            return LoadResult::Failed(format!("load kretprobe {}: {}", name, e));
+                        }
+                        if let Err(e) = prog.attach(&symbol, 0) {
+                            return LoadResult::Failed(format!("attach kretprobe {}: {}", name, e));
+                        }
+                    }
+                    Program::UProbe(mut prog) => {
+                        let binary = match target_path {
+                            Some(p) => p,
+                            None => {
+                                return LoadResult::Failed(format!(
+                                    "no target binary provided for uprobe {}",
+                                    name
+                                ))
+                            }
+                        };
+                        if let Err(e) = prog.load() {
+                            return LoadResult::Failed(format!("load uprobe {}: {}", name, e));
+                        }
+                        if let Err(e) =
+                            prog.attach(Some(binary), &symbol, 0, UProbeAttachType::Entry, None)
+                        {
+                            return LoadResult::Failed(format!("attach uprobe {}: {}", name, e));
+                        }
+                    }
+                    Program::URetProbe(mut prog) => {
+                        let binary = match target_path {
+                            Some(p) => p,
+                            None => {
+                                return LoadResult::Failed(format!(
+                                    "no target binary provided for uretprobe {}",
+                                    name
+                                ))
+                            }
+                        };
+                        if let Err(e) = prog.load() {
+                            return LoadResult::Failed(format!("load uretprobe {}: {}", name, e));
+                        }
+                        if let Err(e) = prog.attach(Some(binary), &symbol, 0, None) {
+                            return LoadResult::Failed(format!("attach uretprobe {}: {}", name, e));
+                        }
+                    }
+                    _ => {
+                        // Skip unsupported program types for now
+                        warn!("Skipping unsupported program type for {}", name);
+                    }
+                }
+                debug!("Attached program: {}", name);
             }
 
-            // In a real implementation, this would attach to the kernel
-            // For now, simulate success
-            prog.attached = true;
-            prog.attached_at = Some(Instant::now());
-            debug!("Attached program: {}", name);
+            LoadResult::Success
         }
 
-        if errors.is_empty() {
-            LoadResult::Success
-        } else {
-            LoadResult::SuccessWithWarnings(errors)
+        #[cfg(any(not(target_os = "linux"), not(feature = "ebpf")))]
+        {
+            let _ = target_path;
+            LoadResult::NotSupported(
+                "eBPF is only supported on Linux with the ebpf feature".to_string(),
+            )
         }
     }
 
     /// Detach all programs
     pub async fn detach_all(&self) {
-        let mut programs = self.programs.write().await;
-
-        for (name, prog) in programs.iter_mut() {
-            if prog.attached {
-                prog.attached = false;
-                debug!("Detached program: {}", name);
+        #[cfg(all(target_os = "linux", feature = "ebpf"))]
+        if let Some(bpf) = self.bpf.write().await.as_mut() {
+            for (name, program) in bpf.programs_mut() {
+                if let Err(e) = program.detach() {
+                    warn!("Failed to detach {}: {}", name, e);
+                } else {
+                    debug!("Detached program: {}", name);
+                }
             }
         }
     }
@@ -480,35 +424,40 @@ impl EbpfLoader {
     pub async fn unload(&self) {
         self.detach_all().await;
 
-        self.programs.write().await.clear();
-        self.maps.write().await.clear();
-
-        info!("Unloaded all eBPF programs and maps");
+        #[cfg(all(target_os = "linux", feature = "ebpf"))]
+        {
+            *self.bpf.write().await = None;
+            info!("Unloaded all eBPF programs and maps");
+        }
     }
 
     /// Get loaded programs
     pub async fn get_programs(&self) -> Vec<LoadedProgram> {
-        self.programs.read().await.values().cloned().collect()
+        Vec::new()
     }
 
     /// Get loaded maps
     pub async fn get_maps(&self) -> Vec<LoadedMap> {
-        self.maps.read().await.values().cloned().collect()
+        Vec::new()
     }
 
     /// Get a map by name
     pub async fn get_map(&self, name: &str) -> Option<LoadedMap> {
-        self.maps.read().await.get(name).cloned()
+        let _ = name;
+        None
     }
 
     /// Check if fully loaded and attached
     pub async fn is_ready(&self) -> bool {
-        let programs = self.programs.read().await;
-        !programs.is_empty()
-            && programs
-                .values()
-                .filter(|p| !p.def.optional)
-                .all(|p| p.attached)
+        #[cfg(all(target_os = "linux", feature = "ebpf"))]
+        {
+            self.bpf.read().await.is_some()
+        }
+
+        #[cfg(any(not(target_os = "linux"), not(feature = "ebpf")))]
+        {
+            false
+        }
     }
 
     /// Get kernel version
@@ -524,6 +473,65 @@ impl EbpfLoader {
     /// Check if ring buffer is available
     pub async fn has_ringbuf(&self) -> bool {
         *self.ringbuf_available.read().await
+    }
+
+    /// Update a u32->u64 hash map (used for pid->query_hash)
+    pub async fn update_hash_map_u32_u64(
+        &self,
+        map_name: &str,
+        key: u32,
+        value: u64,
+    ) -> Result<()> {
+        #[cfg(all(target_os = "linux", feature = "ebpf"))]
+        {
+            let mut guard = self.bpf.write().await;
+            let bpf = guard
+                .as_mut()
+                .ok_or_else(|| anyhow::anyhow!("BPF object not loaded"))?;
+
+            let mut map: BpfHashMap<_, u32, u64> = BpfHashMap::try_from(bpf.map_mut(map_name)?)?;
+            map.insert(key, value, 0)?;
+            return Ok(());
+        }
+
+        #[cfg(any(not(target_os = "linux"), not(feature = "ebpf")))]
+        {
+            let _ = (map_name, key, value);
+            Err(anyhow::anyhow!(
+                "eBPF map updates require Linux with ebpf feature"
+            ))
+        }
+    }
+
+    /// Open perf event buffers for a given map (e.g., "lock_events", "lwlock_events")
+    pub async fn open_perf_buffers(&self, map_name: &str) -> Result<Vec<PerfEventArrayBuffer>> {
+        #[cfg(all(target_os = "linux", feature = "ebpf"))]
+        {
+            let mut guard = self.bpf.write().await;
+            let bpf = guard
+                .as_mut()
+                .ok_or_else(|| anyhow::anyhow!("BPF object not loaded"))?;
+
+            let mut perf = PerfEventArray::try_from(bpf.map_mut(map_name)?)?;
+            let mut buffers = Vec::new();
+
+            for cpu in aya::util::online_cpus()? {
+                match perf.open(cpu, None) {
+                    Ok(buf) => buffers.push(buf),
+                    Err(e) => warn!("Failed to open perf buffer for CPU {}: {}", cpu, e),
+                }
+            }
+
+            Ok(buffers)
+        }
+
+        #[cfg(any(not(target_os = "linux"), not(feature = "ebpf")))]
+        {
+            let _ = map_name;
+            Err(anyhow::anyhow!(
+                "Perf buffers require Linux with ebpf feature"
+            ))
+        }
     }
 }
 

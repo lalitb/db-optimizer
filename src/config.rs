@@ -537,6 +537,14 @@ pub struct EbpfConfig {
     #[serde(default)]
     pub enabled: bool,
 
+    /// PostgreSQL pid -> query hash refresh interval (ms)
+    #[serde(default = "default_pid_map_refresh_ms")]
+    pub pid_map_refresh_ms: u64,
+
+    /// Database URL to run pid->query mapping SQL against
+    #[serde(default)]
+    pub pid_query_database_url: Option<String>,
+
     /// Sampling interval in milliseconds
     #[serde(default = "default_sampling_interval")]
     pub sampling_interval_ms: u64,
@@ -560,22 +568,40 @@ pub struct EbpfConfig {
     /// Maximum events to buffer before dropping
     #[serde(default = "default_max_events")]
     pub max_events_buffer: usize,
+
+    /// SQL used to populate pid->query hash mapping (must return pid int, queryid bigint)
+    #[serde(default = "default_pid_query_sql")]
+    pub pid_query_sql: String,
 }
 
 impl Default for EbpfConfig {
     fn default() -> Self {
         Self {
             enabled: false, // Disabled by default (requires privileges)
+            pid_map_refresh_ms: default_pid_map_refresh_ms(),
+            pid_query_database_url: None,
             sampling_interval_ms: default_sampling_interval(),
             collect_cpu_metrics: true,
             collect_io_metrics: true,
             collect_memory_metrics: true,
             collect_lock_metrics: true,
             max_events_buffer: default_max_events(),
+            pid_query_sql: default_pid_query_sql(),
         }
     }
 }
 
+fn default_pid_query_sql() -> String {
+    // Use pg_stat_activity and pg_stat_statements to map PID to query ID (queryid in v13+).
+    "select sa.pid::int, ss.queryid::bigint \
+     from pg_stat_activity sa \
+     join pg_stat_statements ss on sa.query = ss.query \
+     where ss.queryid is not null"
+        .to_string()
+}
+fn default_pid_map_refresh_ms() -> u64 {
+    1000
+}
 fn default_sampling_interval() -> u64 {
     100
 } // 100ms

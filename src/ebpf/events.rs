@@ -5,6 +5,7 @@
 // parsing with full validation.
 
 use bytemuck::{Pod, Zeroable};
+use chrono::{DateTime, TimeZone, Utc};
 use std::fmt;
 
 /// Event types matching bpf/events.bpf.c
@@ -35,6 +36,127 @@ impl From<u8> for EventType {
             8 => EventType::LockWait,
             _ => EventType::Unknown,
         }
+    }
+}
+
+/// Lock contention event emitted by bpf/lock_contention.bpf.c
+///
+/// This must match `struct lock_contention_event` exactly.
+#[repr(C, packed)]
+#[derive(Debug, Clone, Copy, Pod, Zeroable)]
+pub struct LockContentionEventRaw {
+    pub timestamp_ns: u64,
+    pub blocking_pid: u32,
+    pub waiting_pid: u32,
+    pub blocking_query_hash: u64,
+    pub waiting_query_hash: u64,
+    pub wait_duration_ns: u64,
+    pub lock_type: u8,
+    pub lock_mode: u8,
+    pub _pad: [u8; 2],
+}
+
+impl LockContentionEventRaw {
+    pub const fn size() -> usize {
+        std::mem::size_of::<Self>()
+    }
+
+    pub fn parse(data: &[u8]) -> Result<Self, ParseError> {
+        if data.len() < std::mem::size_of::<Self>() {
+            return Err(ParseError::InsufficientData {
+                expected: std::mem::size_of::<Self>(),
+                actual: data.len(),
+            });
+        }
+
+        let event = bytemuck::try_pod_read_unaligned::<Self>(&data[..std::mem::size_of::<Self>()])
+            .map_err(|e| ParseError::InvalidData(e.to_string()))?;
+
+        if event.timestamp_ns == 0 {
+            return Err(ParseError::InvalidTimestamp(event.timestamp_ns));
+        }
+
+        Ok(event)
+    }
+
+    pub fn timestamp(&self) -> DateTime<Utc> {
+        // Saturate to prevent panic on invalid timestamps
+        let secs = (self.timestamp_ns / 1_000_000_000) as i64;
+        let nsecs = (self.timestamp_ns % 1_000_000_000) as u32;
+        Utc.timestamp_opt(secs, nsecs)
+            .single()
+            .unwrap_or_else(|| Utc.timestamp_opt(0, 0).single().unwrap_or_else(Utc::now))
+    }
+}
+
+/// LWLock event (skeleton; lock_id/mode depend on probe wiring)
+#[repr(C, packed)]
+#[derive(Debug, Clone, Copy, Pod, Zeroable)]
+pub struct LwLockEventRaw {
+    pub timestamp_ns: u64,
+    pub pid: u32,
+    pub lock_id: u32,
+    pub mode: u32,
+    pub wait_duration_ns: u64,
+}
+
+impl LwLockEventRaw {
+    pub const fn size() -> usize {
+        std::mem::size_of::<Self>()
+    }
+
+    pub fn parse(data: &[u8]) -> Result<Self, ParseError> {
+        if data.len() < std::mem::size_of::<Self>() {
+            return Err(ParseError::InsufficientData {
+                expected: std::mem::size_of::<Self>(),
+                actual: data.len(),
+            });
+        }
+
+        let event = bytemuck::try_pod_read_unaligned::<Self>(&data[..std::mem::size_of::<Self>()])
+            .map_err(|e| ParseError::InvalidData(e.to_string()))?;
+
+        if event.timestamp_ns == 0 {
+            return Err(ParseError::InvalidTimestamp(event.timestamp_ns));
+        }
+
+        Ok(event)
+    }
+}
+
+/// Row lock event (skeleton; relfilenode/tuple_offset depend on probe wiring)
+#[repr(C, packed)]
+#[derive(Debug, Clone, Copy, Pod, Zeroable)]
+pub struct RowLockEventRaw {
+    pub timestamp_ns: u64,
+    pub pid: u32,
+    pub relfilenode: u64,
+    pub tuple_offset: u64,
+    pub lock_mode: u32,
+    pub wait_duration_ns: u64,
+}
+
+impl RowLockEventRaw {
+    pub const fn size() -> usize {
+        std::mem::size_of::<Self>()
+    }
+
+    pub fn parse(data: &[u8]) -> Result<Self, ParseError> {
+        if data.len() < std::mem::size_of::<Self>() {
+            return Err(ParseError::InsufficientData {
+                expected: std::mem::size_of::<Self>(),
+                actual: data.len(),
+            });
+        }
+
+        let event = bytemuck::try_pod_read_unaligned::<Self>(&data[..std::mem::size_of::<Self>()])
+            .map_err(|e| ParseError::InvalidData(e.to_string()))?;
+
+        if event.timestamp_ns == 0 {
+            return Err(ParseError::InvalidTimestamp(event.timestamp_ns));
+        }
+
+        Ok(event)
     }
 }
 

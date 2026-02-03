@@ -2,7 +2,10 @@
 
 use crate::http::{
     error::{ApiError, ApiResult},
-    models::{ApiResponse, LockContentionResponse, PaginationParams},
+    models::{
+        ApiResponse, LockContentionEventDto, LockContentionResponse, LwLockEventDto,
+        PaginationParams, RowLockEventDto,
+    },
     AppState,
 };
 use axum::{
@@ -88,5 +91,98 @@ pub async fn table_locks(
     Ok(Json(ApiResponse::ok(serde_json::json!({
         "table_oid": oid,
         "metrics": table_metrics,
+    }))))
+}
+
+/// GET /api/v1/locks/lwlocks/events - Recent LWLock events
+pub async fn lwlock_events(
+    State(state): State<AppState>,
+    Query(params): Query<PaginationParams>,
+) -> ApiResult<Json<ApiResponse<serde_json::Value>>> {
+    let manager = state
+        .ebpf_manager
+        .ok_or_else(|| ApiError::ServiceUnavailable("eBPF not enabled".to_string()))?;
+
+    let tracer = manager.lock_tracer();
+    let events = tracer
+        .recent_lwlock_events()
+        .into_iter()
+        .map(LwLockEventDto::from)
+        .collect::<Vec<_>>();
+
+    let total = events.len();
+    let paginated: Vec<_> = events
+        .into_iter()
+        .skip(params.offset)
+        .take(params.limit)
+        .collect();
+
+    Ok(Json(ApiResponse::ok(serde_json::json!({
+        "events": paginated,
+        "total": total,
+        "limit": params.limit,
+        "offset": params.offset,
+    }))))
+}
+
+/// GET /api/v1/locks/rows/events - Recent row lock events
+pub async fn row_lock_events(
+    State(state): State<AppState>,
+    Query(params): Query<PaginationParams>,
+) -> ApiResult<Json<ApiResponse<serde_json::Value>>> {
+    let manager = state
+        .ebpf_manager
+        .ok_or_else(|| ApiError::ServiceUnavailable("eBPF not enabled".to_string()))?;
+
+    let tracer = manager.lock_tracer();
+    let events = tracer
+        .recent_row_lock_events()
+        .into_iter()
+        .map(RowLockEventDto::from)
+        .collect::<Vec<_>>();
+
+    let total = events.len();
+    let paginated: Vec<_> = events
+        .into_iter()
+        .skip(params.offset)
+        .take(params.limit)
+        .collect();
+
+    Ok(Json(ApiResponse::ok(serde_json::json!({
+        "events": paginated,
+        "total": total,
+        "limit": params.limit,
+        "offset": params.offset,
+    }))))
+}
+
+/// GET /api/v1/locks/contention/events - Recent lock contention events (blocking/waiting PIDs)
+pub async fn contention_events(
+    State(state): State<AppState>,
+    Query(params): Query<PaginationParams>,
+) -> ApiResult<Json<ApiResponse<serde_json::Value>>> {
+    let manager = state
+        .ebpf_manager
+        .ok_or_else(|| ApiError::ServiceUnavailable("eBPF not enabled".to_string()))?;
+
+    let tracer = manager.lock_tracer();
+    let events = tracer
+        .recent_contention_events()
+        .into_iter()
+        .map(LockContentionEventDto::from)
+        .collect::<Vec<_>>();
+
+    let total = events.len();
+    let paginated: Vec<_> = events
+        .into_iter()
+        .skip(params.offset)
+        .take(params.limit)
+        .collect();
+
+    Ok(Json(ApiResponse::ok(serde_json::json!({
+        "events": paginated,
+        "total": total,
+        "limit": params.limit,
+        "offset": params.offset,
     }))))
 }

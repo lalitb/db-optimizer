@@ -211,7 +211,7 @@ db-optimizer serve --port 8080 -v
 ### Health & Stats
 - `GET /health` - Health check
 - `GET /stats/summary` - Statistics summary
-- `GET /stats/metrics` - Prometheus metrics
+- `GET /stats/metrics` - Prometheus metrics (includes eBPF event counters/drop/error gauges)
 
 ### Query Endpoints
 - `GET /queries/slow` - List slow queries
@@ -234,7 +234,15 @@ db-optimizer serve --port 8080 -v
 - `GET /locks/contention` - Lock contention summary
 - `GET /locks/summary` - Lock statistics
 - `GET /locks/events` - Recent lock events
+- `GET /locks/contention/events` - Raw contention events (waiting/blocking PIDs, query hashes)
+- `GET /locks/lwlocks/events` - Recent LWLock events
+- `GET /locks/rows/events` - Recent row lock events
 - `GET /locks/table/:oid` - Table-specific lock info
+
+**Prometheus eBPF metrics exposed via `/stats/metrics`:**
+- `db_optimizer_ebpf_events_processed_total`
+- `db_optimizer_ebpf_events_dropped_total`
+- `db_optimizer_ebpf_perf_buffer_read_errors_total`
 
 **Example Request:**
 ```bash
@@ -273,6 +281,12 @@ ebpf:
   enabled: true
   sample_interval_ms: 1000
   enable_lock_tracking: true
+  pid_map_refresh_ms: 1000
+  pid_query_database_url: ""
+  # Exposed endpoints:
+  # - GET /locks/contention
+  # - GET /locks/contention/events
+  # - GET /stats/metrics (Prometheus, includes ebpf event counters)
 ```
 
 See [config.example.yml](../config.example.yml) for full configuration options.
@@ -303,6 +317,7 @@ ebpf:
 **View lock contention:**
 ```bash
 curl http://localhost:8080/api/v1/locks/contention
+curl http://localhost:8080/api/v1/locks/contention/events  # raw contention events (blocking/waiting PIDs)
 ```
 
 ---

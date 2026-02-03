@@ -8,21 +8,34 @@
 
 use super::aggregator::AggregatedMetrics;
 use super::daemon::DaemonClient;
+#[cfg(all(target_os = "linux", feature = "ebpf"))]
+use super::events::{LockContentionEventRaw, LwLockEventRaw, RowLockEventRaw};
 #[cfg(test)]
 use super::loader::EventStreamStats;
 use super::loader::{EbpfEventStream, EbpfProgram, EbpfTarget};
 use super::lock_tracer::{LockContentionMetrics, LockContentionSummary, LockEvent, LockTracer};
 use super::metrics::{EbpfMetrics, SharedMetrics};
+use super::program_loader::{EbpfLoader, LoadResult};
 use super::protocol::MetricsData;
 use super::SystemMetrics;
 use crate::config::EbpfConfig;
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
+#[cfg(all(target_os = "linux", feature = "ebpf"))]
+use sqlx::postgres::PgPoolOptions;
+#[cfg(all(target_os = "linux", feature = "ebpf"))]
+use sqlx::Row;
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::fs;
+use std::future::Future;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
+use tokio::runtime::{Handle, Runtime};
+use tokio::sync::watch;
 use tokio::sync::{mpsc, RwLock};
+#[cfg(all(target_os = "linux", feature = "ebpf"))]
+use tracing::warn;
 use tracing::{debug, error, info};
 
 /// Mode of operation for the eBPF manager
@@ -53,6 +66,8 @@ pub struct EbpfManager {
     metrics_rx: Option<mpsc::Receiver<AggregatedMetrics>>,
     /// Daemon client (when in Client mode)
     daemon_client: Option<DaemonClient>,
+    /// Stop signal for background tasks
+    stop_sender: Option<watch::Sender<bool>>,
 }
 
 /// Statistics about the eBPF manager
@@ -71,7 +86,7 @@ impl EbpfManager {
     /// Create a new eBPF manager in disabled mode
     pub fn new(config: EbpfConfig) -> Self {
         let mode = if config.enabled {
-            EbpfMode::Mock // Default to mock if enabled but no socket specified
+            EbpfMode::Privileged
         } else {
             EbpfMode::Disabled
         };
@@ -86,6 +101,7 @@ impl EbpfManager {
             metrics: Arc::new(EbpfMetrics::new()),
             metrics_rx: None,
             daemon_client: None,
+            stop_sender: None,
         }
     }
 
@@ -101,13 +117,14 @@ impl EbpfManager {
             metrics: Arc::new(EbpfMetrics::new()),
             metrics_rx: None,
             daemon_client: None,
+            stop_sender: None,
         }
     }
 
     /// Create a manager with existing lock tracer
     pub fn with_lock_tracer(config: EbpfConfig, lock_tracer: Arc<LockTracer>) -> Self {
         let mode = if config.enabled {
-            EbpfMode::Mock
+            EbpfMode::Privileged
         } else {
             EbpfMode::Disabled
         };
@@ -122,6 +139,7 @@ impl EbpfManager {
             metrics: Arc::new(EbpfMetrics::new()),
             metrics_rx: None,
             daemon_client: None,
+            stop_sender: None,
         }
     }
 
@@ -145,6 +163,322 @@ impl EbpfManager {
         self.programs.push(program);
     }
 
+    /// Add the default lock contention program (loads bpf/lock_contention.bpf.o)
+    pub fn add_default_lock_program(&mut self) {
+        let loader = EbpfLoader::new();
+        let program = LoaderProgram::new(
+            "lock_contention",
+            "bpf/.output/lock_contention.bpf.o",
+            loader,
+        );
+        self.add_program(Box::new(program));
+    }
+
+    /// Add LWLock tracer program
+    pub fn add_lwlock_program(&mut self) {
+        let loader = EbpfLoader::new();
+        let program =
+            LoaderProgram::new("lwlock_tracer", "bpf/.output/lwlock_tracer.bpf.o", loader);
+        self.add_program(Box::new(program));
+    }
+
+    /// Add row lock tracer program
+    pub fn add_row_lock_program(&mut self) {
+        let loader = EbpfLoader::new();
+        let program = LoaderProgram::new(
+            "row_lock_tracer",
+            "bpf/.output/row_lock_tracer.bpf.o",
+            loader,
+        );
+        self.add_program(Box::new(program));
+    }
+
+    /// Update pid -> query hash mapping used by the eBPF program for correlation
+    pub async fn set_pid_query_mapping(&self, pid: u32, query_hash: u64) -> Result<()> {
+        for program in &self.programs {
+            if let Some(loader_prog) = program.as_any().downcast_ref::<LoaderProgram>() {
+                return loader_prog.update_pid_query_map(pid, query_hash).await;
+            }
+        }
+        Err(anyhow!(
+            "No loader-backed eBPF program available to update pid map"
+        ))
+    }
+
+    #[cfg(all(target_os = "linux", feature = "ebpf"))]
+    async fn spawn_lock_event_consumer(&self) -> Result<()> {
+        let mut buffers = self.open_perf_buffers_for_map("lock_events").await?;
+        if buffers.is_empty() {
+            return Err(anyhow!("No perf buffers opened for lock_events"));
+        }
+
+        let tracer = Arc::clone(&self.lock_tracer);
+        let metrics = Arc::clone(&self.metrics);
+
+        tokio::spawn(async move {
+            let event_size = LockContentionEventRaw::size();
+            let mut buf = vec![0u8; event_size * 16]; // read up to 16 events per poll
+
+            loop {
+                for perf_buf in buffers.iter_mut() {
+                    match perf_buf.read_events(&mut buf) {
+                        Ok(read) => {
+                            let events = read / event_size;
+                            for idx in 0..events {
+                                let start = idx * event_size;
+                                let end = start + event_size;
+                                if end > buf.len() {
+                                    break;
+                                }
+                                if let Ok(raw) = LockContentionEventRaw::parse(&buf[start..end]) {
+                                    tracer.record_lock_contention_event(raw);
+                                } else {
+                                    metrics.perf_buffer_read_errors.inc();
+                                }
+                            }
+                            if read % event_size != 0 {
+                                metrics.perf_buffer_read_errors.inc();
+                            }
+                            metrics.events_processed.inc_by(events as u64);
+                        }
+                        Err(aya::maps::perf::PerfBufferError::NoData) => {}
+                        Err(e) => {
+                            metrics.perf_buffer_read_errors.inc();
+                            error!("Error reading lock_events perf buffer: {}", e);
+                        }
+                    }
+                }
+
+                tokio::time::sleep(Duration::from_millis(50)).await;
+            }
+        });
+
+        Ok(())
+    }
+
+    #[cfg(all(target_os = "linux", feature = "ebpf"))]
+    async fn spawn_lwlock_event_consumer(&self) -> Result<()> {
+        let loader_prog = self
+            .programs
+            .iter()
+            .find_map(|p| p.as_any().downcast_ref::<LoaderProgram>())
+            .ok_or_else(|| anyhow!("No loader-backed program to read lwlock events"))?;
+
+        let mut buffers = loader_prog
+            .loader
+            .open_perf_buffers("lwlock_events")
+            .await?;
+        if buffers.is_empty() {
+            return Err(anyhow!("No perf buffers opened for lwlock_events"));
+        }
+
+        let tracer = Arc::clone(&self.lock_tracer);
+        let metrics = Arc::clone(&self.metrics);
+
+        tokio::spawn(async move {
+            let event_size = LwLockEventRaw::size();
+            let mut buf = vec![0u8; event_size * 16];
+
+            loop {
+                for perf_buf in buffers.iter_mut() {
+                    match perf_buf.read_events(&mut buf) {
+                        Ok(read) => {
+                            let events = read / event_size;
+                            for idx in 0..events {
+                                let start = idx * event_size;
+                                let end = start + event_size;
+                                if end > buf.len() {
+                                    break;
+                                }
+                                if let Ok(raw) = LwLockEventRaw::parse(&buf[start..end]) {
+                                    tracer.record_lwlock_event(raw);
+                                } else {
+                                    metrics.perf_buffer_read_errors.inc();
+                                }
+                            }
+                            if read % event_size != 0 {
+                                metrics.perf_buffer_read_errors.inc();
+                            }
+                            metrics.events_processed.inc_by(events as u64);
+                        }
+                        Err(aya::maps::perf::PerfBufferError::NoData) => {}
+                        Err(e) => {
+                            metrics.perf_buffer_read_errors.inc();
+                            error!("Error reading lwlock_events perf buffer: {}", e);
+                        }
+                    }
+                }
+
+                tokio::time::sleep(Duration::from_millis(50)).await;
+            }
+        });
+
+        Ok(())
+    }
+
+    #[cfg(all(target_os = "linux", feature = "ebpf"))]
+    async fn spawn_row_lock_event_consumer(&self) -> Result<()> {
+        let loader_prog = self
+            .programs
+            .iter()
+            .find_map(|p| p.as_any().downcast_ref::<LoaderProgram>())
+            .ok_or_else(|| anyhow!("No loader-backed program to read row lock events"))?;
+
+        let mut buffers = loader_prog
+            .loader
+            .open_perf_buffers("row_lock_events")
+            .await?;
+        if buffers.is_empty() {
+            return Err(anyhow!("No perf buffers opened for row_lock_events"));
+        }
+
+        let tracer = Arc::clone(&self.lock_tracer);
+        let metrics = Arc::clone(&self.metrics);
+
+        tokio::spawn(async move {
+            let event_size = RowLockEventRaw::size();
+            let mut buf = vec![0u8; event_size * 16];
+
+            loop {
+                for perf_buf in buffers.iter_mut() {
+                    match perf_buf.read_events(&mut buf) {
+                        Ok(read) => {
+                            let events = read / event_size;
+                            for idx in 0..events {
+                                let start = idx * event_size;
+                                let end = start + event_size;
+                                if end > buf.len() {
+                                    break;
+                                }
+                                if let Ok(raw) = RowLockEventRaw::parse(&buf[start..end]) {
+                                    tracer.record_row_lock_event(raw);
+                                } else {
+                                    metrics.perf_buffer_read_errors.inc();
+                                }
+                            }
+                            if read % event_size != 0 {
+                                metrics.perf_buffer_read_errors.inc();
+                            }
+                            metrics.events_processed.inc_by(events as u64);
+                        }
+                        Err(aya::maps::perf::PerfBufferError::NoData) => {}
+                        Err(e) => {
+                            metrics.perf_buffer_read_errors.inc();
+                            error!("Error reading row_lock_events perf buffer: {}", e);
+                        }
+                    }
+                }
+
+                tokio::time::sleep(Duration::from_millis(50)).await;
+            }
+        });
+
+        Ok(())
+    }
+
+    #[cfg(all(target_os = "linux", feature = "ebpf"))]
+    async fn spawn_pid_map_refresher(
+        &self,
+        _target: EbpfTarget,
+        mut stop: watch::Receiver<bool>,
+    ) -> Result<()> {
+        let interval_ms = self.config.pid_map_refresh_ms;
+        if interval_ms == 0 {
+            return Ok(());
+        }
+
+        let pid_query_sql = self.config.pid_query_sql.clone();
+        let db_url = if let Some(url) = &self.config.pid_query_database_url {
+            if url.is_empty() {
+                None
+            } else {
+                Some(url.clone())
+            }
+        } else {
+            None
+        };
+
+        if db_url.is_none() {
+            warn!("pid->query map refresh is enabled but no pid_query_database_url provided; skipping");
+            return Ok(());
+        }
+
+        let db_url = db_url.unwrap();
+
+        // Collect loader-backed programs we can update
+        let loaders: Vec<Arc<LoaderProgram>> = self
+            .programs
+            .iter()
+            .filter_map(|p| p.as_any().downcast_ref::<LoaderProgram>())
+            .map(|p| Arc::new(p.clone_shallow()))
+            .collect();
+
+        if loaders.is_empty() {
+            return Err(anyhow!(
+                "No loader-backed eBPF program available to update pid map"
+            ));
+        }
+
+        tokio::spawn(async move {
+            let mut tick = tokio::time::interval(Duration::from_millis(interval_ms));
+            let pool = match PgPoolOptions::new()
+                .max_connections(1)
+                .acquire_timeout(Duration::from_secs(3))
+                .connect(&db_url)
+                .await
+            {
+                Ok(pool) => pool,
+                Err(e) => {
+                    error!("Failed to connect for pid map refresh: {}", e);
+                    return;
+                }
+            };
+
+            loop {
+                tokio::select! {
+                    _ = tick.tick() => {
+                        match sqlx::query(&pid_query_sql).fetch_all(&pool).await {
+                            Ok(rows) => {
+                                for row in rows {
+                                    let pid: i32 = match row.try_get(0) {
+                                        Ok(v) => v,
+                                        Err(e) => {
+                                            warn!("pid map row missing pid: {}", e);
+                                            continue;
+                                        }
+                                    };
+                                    let query_hash: i64 = match row.try_get(1) {
+                                        Ok(v) => v,
+                                        Err(e) => {
+                                            warn!("pid map row missing queryid: {}", e);
+                                            continue;
+                                        }
+                                    };
+
+                                    for loader in &loaders {
+                                        if let Err(e) = loader.update_pid_query_map(pid as u32, query_hash as u64).await {
+                                            warn!("Failed to update pid map for pid {}: {}", pid, e);
+                                        }
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                warn!("Failed to refresh pid->query map: {}", e);
+                            }
+                        }
+                    }
+                    _ = stop.changed() => {
+                        if *stop.borrow() {
+                            break;
+                        }
+                    }
+                }
+            }
+        });
+
+        Ok(())
+    }
+
     /// Start the eBPF manager
     ///
     /// Behavior depends on mode:
@@ -153,6 +487,11 @@ impl EbpfManager {
     /// - Privileged: Loads and attaches eBPF programs directly
     /// - Mock: Uses mock event generator for testing
     pub async fn start(&mut self, target: EbpfTarget) -> Result<()> {
+        let (stop_sender, stop_receiver) = watch::channel(false);
+        self.stop_sender = Some(stop_sender);
+        #[cfg(not(all(target_os = "linux", feature = "ebpf")))]
+        let _ = &stop_receiver;
+
         match &self.mode {
             EbpfMode::Disabled => {
                 info!("eBPF is disabled, skipping start");
@@ -179,6 +518,12 @@ impl EbpfManager {
                     self.programs.len()
                 );
 
+                if self.programs.is_empty() {
+                    return Err(anyhow!(
+                        "No eBPF programs registered. Add a program before starting."
+                    ));
+                }
+
                 // Load all programs
                 for program in &mut self.programs {
                     program.load().with_context(|| {
@@ -199,6 +544,19 @@ impl EbpfManager {
                 stats.programs_loaded = self.programs.iter().filter(|p| p.is_loaded()).count();
                 stats.programs_attached = self.programs.iter().filter(|p| p.is_attached()).count();
                 stats.mode = "privileged".to_string();
+
+                #[cfg(all(target_os = "linux", feature = "ebpf"))]
+                if let Err(e) = self.spawn_lock_event_consumer().await {
+                    error!("Failed to start lock event consumer: {}", e);
+                }
+
+                #[cfg(all(target_os = "linux", feature = "ebpf"))]
+                if let Err(e) = self
+                    .spawn_pid_map_refresher(target.clone(), stop_receiver.clone())
+                    .await
+                {
+                    error!("Failed to start pid->query map refresher: {}", e);
+                }
             }
             EbpfMode::Mock => {
                 info!("Starting eBPF manager in mock mode");
@@ -223,6 +581,10 @@ impl EbpfManager {
 
         info!("Stopping eBPF manager");
         self.running.store(false, Ordering::SeqCst);
+
+        if let Some(stop) = self.stop_sender.take() {
+            let _ = stop.send(true);
+        }
 
         // Disconnect from daemon if in client mode
         if let Some(client) = self.daemon_client.take() {
@@ -367,6 +729,150 @@ impl Drop for EbpfManager {
     }
 }
 
+/// Loader-backed program that uses the in-repo program_loader abstraction
+/// to load and attach a compiled eBPF object file.
+#[derive(Clone)]
+pub struct LoaderProgram {
+    name: String,
+    object_path: String,
+    loader: EbpfLoader,
+    loaded: bool,
+    attached: bool,
+}
+
+impl LoaderProgram {
+    pub fn new(name: &str, object_path: &str, loader: EbpfLoader) -> Self {
+        Self {
+            name: name.to_string(),
+            object_path: object_path.to_string(),
+            loader,
+            loaded: false,
+            attached: false,
+        }
+    }
+
+    /// Create a shallow clone sharing the loader (used by background tasks)
+    pub fn clone_shallow(&self) -> Self {
+        Self {
+            name: self.name.clone(),
+            object_path: self.object_path.clone(),
+            loader: self.loader.clone(),
+            loaded: self.loaded,
+            attached: self.attached,
+        }
+    }
+
+    fn block_on<F: Future>(&self, fut: F) -> Result<F::Output>
+    where
+        F: Send,
+        F::Output: Send,
+    {
+        if let Ok(handle) = Handle::try_current() {
+            Ok(handle.block_on(fut))
+        } else {
+            let rt = Runtime::new()?;
+            Ok(rt.block_on(fut))
+        }
+    }
+
+    fn convert_load_result(&self, res: LoadResult, action: &str) -> Result<()> {
+        match res {
+            LoadResult::Success | LoadResult::SuccessWithWarnings(_) => Ok(()),
+            LoadResult::Failed(err) => Err(anyhow!("Failed to {}: {}", action, err)),
+            LoadResult::NotSupported(reason) => Err(anyhow!("eBPF not supported: {}", reason)),
+        }
+    }
+
+    /// Update pid -> query hash map for correlation
+    pub async fn update_pid_query_map(&self, pid: u32, query_hash: u64) -> Result<()> {
+        self.loader
+            .update_hash_map_u32_u64("pid_query_map", pid, query_hash)
+            .await
+    }
+}
+
+impl EbpfProgram for LoaderProgram {
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    fn load(&mut self) -> Result<()> {
+        // Discover kernel capabilities and then load the object file.
+        let detect = self.block_on(self.loader.detect_capabilities())?;
+        self.convert_load_result(detect, "detect capabilities")?;
+
+        // Try primary path, then a packaged fallback
+        let candidates = vec![
+            self.object_path.clone(),
+            "/usr/local/lib/db-optimizer/lock_contention.bpf.o".to_string(),
+        ];
+
+        let mut last_err = None;
+        for path in candidates {
+            if !Path::new(&path).exists() {
+                last_err = Some(format!("Object file not found: {}", path));
+                continue;
+            }
+            let res = self.block_on(self.loader.load_object(&path))?;
+            if self.convert_load_result(res, "load eBPF object").is_ok() {
+                self.loaded = true;
+                return Ok(());
+            }
+        }
+
+        Err(anyhow!(
+            "Failed to load eBPF object; last error: {}",
+            last_err.unwrap_or_else(|| "unknown".to_string())
+        ))
+    }
+
+    fn attach(&mut self, target: &EbpfTarget) -> Result<()> {
+        let target_path = match target {
+            EbpfTarget::BinaryPath(path) => Some(path.clone()),
+            EbpfTarget::ProcessPid(pid) => fs::read_link(format!("/proc/{pid}/exe"))
+                .ok()
+                .map(|p| p.to_string_lossy().to_string()),
+        };
+
+        let res = self.block_on(self.loader.attach_all(target_path.as_deref()))?;
+        self.convert_load_result(res, "attach eBPF program")?;
+
+        self.attached = true;
+        Ok(())
+    }
+
+    fn detach(&mut self) -> Result<()> {
+        // Best-effort detach/unload; ignore errors to avoid poisoning shutdown.
+        let _ = self.block_on(self.loader.detach_all());
+        let _ = self.block_on(self.loader.unload());
+        self.attached = false;
+        Ok(())
+    }
+
+    fn is_loaded(&self) -> bool {
+        self.loaded
+    }
+
+    fn is_attached(&self) -> bool {
+        self.attached
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self
+    }
+
+    #[cfg(all(target_os = "linux", feature = "ebpf"))]
+    pub async fn open_lock_perf_buffers(
+        &self,
+    ) -> Result<Vec<aya::maps::perf::PerfEventArrayBuffer>> {
+        self.loader.open_perf_buffers("lock_events").await
+    }
+}
+
 /// Mock eBPF program for testing
 #[cfg(test)]
 pub struct MockEbpfProgram {
@@ -414,6 +920,14 @@ impl EbpfProgram for MockEbpfProgram {
     fn is_attached(&self) -> bool {
         self.attached
     }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self
+    }
 }
 
 #[cfg(test)]
@@ -452,15 +966,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_ebpf_manager_lifecycle() {
-        let config = EbpfConfig {
-            enabled: true,
-            sampling_interval_ms: 100,
-            collect_cpu_metrics: true,
-            collect_io_metrics: true,
-            collect_memory_metrics: true,
-            collect_lock_metrics: true,
-            max_events_buffer: 10000,
-        };
+        let config = EbpfConfig::default();
 
         let mut manager = EbpfManager::new(config);
         manager.set_mode(EbpfMode::Privileged);
@@ -483,15 +989,7 @@ mod tests {
     async fn test_process_lock_events() {
         use crate::ebpf::lock_tracer::LockEventType;
 
-        let config = EbpfConfig {
-            enabled: true,
-            sampling_interval_ms: 100,
-            collect_cpu_metrics: true,
-            collect_io_metrics: true,
-            collect_memory_metrics: true,
-            collect_lock_metrics: true,
-            max_events_buffer: 10000,
-        };
+        let config = EbpfConfig::default();
 
         let manager = EbpfManager::new(config);
 

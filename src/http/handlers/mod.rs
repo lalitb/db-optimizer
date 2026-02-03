@@ -7,6 +7,8 @@ pub mod locks;
 pub mod queries;
 pub mod recommendations;
 pub mod stats;
+pub mod system;
+pub mod validation;
 
 use axum::response::Html;
 

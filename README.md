@@ -175,7 +175,11 @@ uname -r  # Should be >= 5.8
 # 2. Grant capabilities (instead of running as root)
 sudo setcap cap_bpf,cap_perfmon=eip ./target/release/pg-query-advisor
 
-# 3. Start with eBPF enabled
+# 3. Build the eBPF object files
+make -C bpf
+ls bpf/.output/lock_contention.bpf.o  # should exist
+
+# 4. Start with eBPF enabled
 ./target/release/pg-query-advisor \
   --database-url $DATABASE_URL \
   serve --port 8080 --enable-ebpf

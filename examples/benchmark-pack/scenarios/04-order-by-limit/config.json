@@ -1,0 +1,19 @@
+{
+  "scenario": "order-by-limit",
+  "description": "Missing index for ORDER BY + LIMIT pagination",
+  "target_table": "products",
+  "target_column": "price",
+  "expected_recommendation": "CREATE INDEX ON products(price)",
+  "expected_plan_change": "Sort -> Index Scan",
+  "min_expected_improvement_pct": 50,
+  "pgbench_options": {
+    "clients": 4,
+    "jobs": 2,
+    "time_seconds": 30,
+    "transactions": 0
+  },
+  "validation": {
+    "index_must_be_used": true,
+    "min_cost_improvement_pct": 30
+  }
+}

@@ -17,6 +17,9 @@ pub enum ApiError {
     /// Bad request (validation error)
     BadRequest(String),
 
+    /// Forbidden - action blocked by policy
+    Forbidden(String),
+
     /// Internal server error
     Internal(String),
 
@@ -32,6 +35,7 @@ impl fmt::Display for ApiError {
         match self {
             Self::NotFound(msg) => write!(f, "Not found: {}", msg),
             Self::BadRequest(msg) => write!(f, "Bad request: {}", msg),
+            Self::Forbidden(msg) => write!(f, "Forbidden: {}", msg),
             Self::Internal(msg) => write!(f, "Internal error: {}", msg),
             Self::Database(msg) => write!(f, "Database error: {}", msg),
             Self::ServiceUnavailable(msg) => write!(f, "Service unavailable: {}", msg),
@@ -55,6 +59,7 @@ impl IntoResponse for ApiError {
         let (status, code) = match &self {
             ApiError::NotFound(_) => (StatusCode::NOT_FOUND, "NOT_FOUND"),
             ApiError::BadRequest(_) => (StatusCode::BAD_REQUEST, "BAD_REQUEST"),
+            ApiError::Forbidden(_) => (StatusCode::FORBIDDEN, "FORBIDDEN"),
             ApiError::Internal(_) => (StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL_ERROR"),
             ApiError::Database(_) => (StatusCode::INTERNAL_SERVER_ERROR, "DATABASE_ERROR"),
             ApiError::ServiceUnavailable(_) => {

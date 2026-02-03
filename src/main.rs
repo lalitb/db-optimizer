@@ -1344,10 +1344,14 @@ async fn run_serve_mode(opts: ServeOptions) -> Result<()> {
             let ebpf_config = pg_query_advisor::EbpfConfig {
                 enabled: true,
                 collect_lock_metrics: true,
+                pid_query_database_url: opts.database_url.clone(),
                 ..Default::default()
             };
             let target = pg_query_advisor::ebpf::EbpfTarget::BinaryPath("postgres".to_string());
             let mut manager = pg_query_advisor::ebpf::EbpfManager::new(ebpf_config);
+            manager.add_default_lock_program();
+            manager.add_lwlock_program();
+            manager.add_row_lock_program();
             match manager.start(target).await {
                 Ok(()) => {
                     println!("   {} eBPF lock tracer started", "✓".bright_green());

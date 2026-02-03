@@ -36,3 +36,9 @@ report.*
 
 # Test data
 test_database/
+
+# Benchmark results (generated)
+examples/benchmark-pack/results/*.json
+
+# Pilot artifacts (generated)
+pilot-artifacts/

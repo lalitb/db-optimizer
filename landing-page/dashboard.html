@@ -370,6 +370,33 @@
                         </table>
                     </div>
                 </div>
+
+                <!-- Raw Contention Events -->
+                <div class="mt-10">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="font-semibold text-gray-700 text-lg">Recent Contention Events (eBPF)</h3>
+                        <button onclick="loadContentionEvents()" class="text-sm text-purple-600 hover:text-purple-700 font-semibold">Refresh</button>
+                    </div>
+                    <div class="overflow-x-auto border border-gray-200 rounded-lg">
+                        <table class="min-w-full">
+                            <thead class="bg-gray-100">
+                                <tr>
+                                    <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700">When</th>
+                                    <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700">Waiting PID</th>
+                                    <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700">Blocking PID</th>
+                                    <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700">Wait (ms)</th>
+                                    <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700">Lock</th>
+                                    <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700">Severity</th>
+                                </tr>
+                            </thead>
+                            <tbody id="contention-events" class="divide-y divide-gray-200">
+                                <tr>
+                                    <td colspan="5" class="px-4 py-4 text-center text-gray-500">Loading...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -997,6 +1024,8 @@
 
                 // Load blocking queries
                 loadBlockingQueries();
+                // Load raw contention events
+                loadContentionEvents();
 
             } catch (error) {
                 console.error('Error loading lock analysis:', error);
@@ -1079,6 +1108,70 @@
             } catch (error) {
                 console.error('Error loading blocking queries:', error);
             }
+        }
+
+        async function loadContentionEvents() {
+            try {
+                const response = await fetch(`${API_BASE}/locks/contention/events?limit=20&offset=0`);
+                const data = await response.json();
+                const payload = data.data || data;
+                const events = payload.events || [];
+
+                const LOCK_TYPES = ['Row', 'Table', 'Advisory'];
+                const LOCK_MODES = ['Shared', 'Exclusive'];
+
+                const tbody = document.getElementById('contention-events');
+                if (!events.length) {
+                    tbody.innerHTML = `
+                        <tr>
+                            <td colspan="5" class="px-4 py-4 text-center text-gray-500">
+                                ✅ No contention detected
+                            </td>
+                        </tr>
+                    `;
+                    return;
+                }
+
+                tbody.innerHTML = events.map(ev => `
+                    <tr class="hover:bg-gray-50 text-sm">
+                        <td class="px-4 py-3 text-gray-700">${new Date(ev.timestamp).toLocaleTimeString()}</td>
+                        <td class="px-4 py-3 font-mono text-xs text-gray-800">${ev.waiting_pid} <span class="text-gray-500">(${ev.waiting_query_hash})</span></td>
+                        <td class="px-4 py-3 font-mono text-xs text-gray-800">${ev.blocking_pid} <span class="text-gray-500">(${ev.blocking_query_hash})</span></td>
+                        <td class="px-4 py-3 text-gray-700 font-semibold">${(ev.wait_duration_ns / 1_000_000).toFixed(2)}</td>
+                        <td class="px-4 py-3 text-gray-600">${LOCK_TYPES[ev.lock_type] || 'Unknown'} / ${LOCK_MODES[ev.lock_mode] || 'Unknown'}</td>
+                        <td class="px-4 py-3">
+                            <span class="px-2 py-1 rounded-full text-xs font-semibold ${severityClass(ev.wait_duration_ns)}">
+                                ${ev.severity ? ev.severity.charAt(0).toUpperCase() + ev.severity.slice(1) : severityLabel(ev.wait_duration_ns)}
+                            </span>
+                        </td>
+                    </tr>
+                `).join('');
+            } catch (error) {
+                console.error('Error loading contention events:', error);
+                document.getElementById('contention-events').innerHTML = `
+                    <tr>
+                        <td colspan="5" class="px-4 py-4 text-center text-red-500">
+                            ❌ Failed to load contention events
+                        </td>
+                    </tr>
+                `;
+            }
+        }
+
+        function severityLabel(waitNs) {
+            const ms = waitNs / 1_000_000;
+            if (ms > 100) return 'Critical';
+            if (ms > 20) return 'High';
+            if (ms > 5) return 'Medium';
+            return 'Low';
+        }
+
+        function severityClass(waitNs) {
+            const ms = waitNs / 1_000_000;
+            if (ms > 100) return 'bg-red-100 text-red-700';
+            if (ms > 20) return 'bg-orange-100 text-orange-700';
+            if (ms > 5) return 'bg-yellow-100 text-yellow-700';
+            return 'bg-green-100 text-green-700';
         }
 
         function truncateQuery(query, maxLen) {

@@ -2,6 +2,7 @@
 // Provides trait-based interface for loading and managing eBPF programs
 
 use anyhow::Result;
+use std::any::Any;
 use std::time::Duration;
 
 /// Target for eBPF program attachment
@@ -34,6 +35,10 @@ pub trait EbpfProgram: Send + Sync {
 
     /// Check if program is currently attached
     fn is_attached(&self) -> bool;
+
+    /// Downcast support for manager helpers
+    fn as_any(&self) -> &dyn Any;
+    fn as_any_mut(&mut self) -> &mut dyn Any;
 }
 
 /// Trait for streaming events from eBPF programs

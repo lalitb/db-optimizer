@@ -1,0 +1,19 @@
+{
+  "scenario": "missing-index-where",
+  "description": "Missing index on WHERE equality predicate",
+  "target_table": "users",
+  "target_column": "email",
+  "expected_recommendation": "CREATE INDEX ON users(email)",
+  "expected_plan_change": "Seq Scan -> Index Scan",
+  "min_expected_improvement_pct": 80,
+  "pgbench_options": {
+    "clients": 4,
+    "jobs": 2,
+    "time_seconds": 30,
+    "transactions": 0
+  },
+  "validation": {
+    "index_must_be_used": true,
+    "min_cost_improvement_pct": 50
+  }
+}

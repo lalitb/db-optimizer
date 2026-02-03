@@ -1,0 +1,22 @@
+{
+  "scenario": "wal-pressure-negative",
+  "description": "WAL/fsync pressure workload - should NOT produce index recommendations",
+  "target_table": "audit_log",
+  "expected_recommendation": null,
+  "expected_outcome": "no_recommendation",
+  "reason": "Append-only workload with no selective read patterns",
+  "pgbench_options": {
+    "clients": 8,
+    "jobs": 4,
+    "time_seconds": 30,
+    "transactions": 0
+  },
+  "workload_mix": {
+    "writes_pct": 95,
+    "reads_pct": 5
+  },
+  "validation": {
+    "no_index_recommendation": true,
+    "allowed_recommendations": ["unused_index", "vacuum"]
+  }
+}

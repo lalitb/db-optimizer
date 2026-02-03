@@ -1,0 +1,19 @@
+{
+  "scenario": "composite-index",
+  "description": "Missing composite index on (tenant_id, created_at)",
+  "target_table": "events",
+  "target_columns": ["tenant_id", "created_at"],
+  "expected_recommendation": "CREATE INDEX ON events(tenant_id, created_at)",
+  "expected_plan_change": "Seq Scan -> Index Scan",
+  "min_expected_improvement_pct": 70,
+  "pgbench_options": {
+    "clients": 4,
+    "jobs": 2,
+    "time_seconds": 30,
+    "transactions": 0
+  },
+  "validation": {
+    "index_must_be_used": true,
+    "min_cost_improvement_pct": 40
+  }
+}

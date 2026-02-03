@@ -8,7 +8,10 @@ use std::collections::HashMap;
 pub mod advanced;
 pub mod ai_advisor;
 pub mod ask;
+pub mod environment;
+pub mod explainer;
 pub mod hypothetical;
+pub mod validation;
 
 pub struct QueryAnalyzer {
     config: AnalysisConfig,

@@ -1,0 +1,19 @@
+{
+  "scenario": "join-path",
+  "description": "Missing index on foreign key for join optimization",
+  "target_table": "orders",
+  "target_column": "customer_id",
+  "expected_recommendation": "CREATE INDEX ON orders(customer_id)",
+  "expected_plan_change": "Hash Join -> Index Nested Loop",
+  "min_expected_improvement_pct": 60,
+  "pgbench_options": {
+    "clients": 4,
+    "jobs": 2,
+    "time_seconds": 30,
+    "transactions": 0
+  },
+  "validation": {
+    "index_must_be_used": true,
+    "min_cost_improvement_pct": 30
+  }
+}

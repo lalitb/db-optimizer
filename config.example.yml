@@ -90,6 +90,19 @@ ebpf:
   # Maximum events to buffer before dropping
   max_events_buffer: 10000
 
+  # Refresh interval for PID->query hash map (milliseconds)
+  pid_map_refresh_ms: 1000
+
+  # Database URL for PID->query mapping (defaults to DATABASE_URL if omitted)
+  pid_query_database_url: ""
+
+  # SQL used to populate PID->query hash mapping (must return pid int, queryid bigint)
+  pid_query_sql: >
+    select sa.pid::int, ss.queryid::bigint
+    from pg_stat_activity sa
+    join pg_stat_statements ss on sa.query = ss.query
+    where ss.queryid is not null
+
 # Auto-apply configuration
 auto_apply:
   # Base configuration

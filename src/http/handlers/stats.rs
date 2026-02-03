@@ -67,6 +67,7 @@ pub async fn metrics(State(state): State<AppState>) -> ApiResult<String> {
     // Lock contention metrics if available
     if let Some(ref manager) = state.ebpf_manager {
         let summary = manager.get_summary();
+        let ebpf_metrics = manager.metrics();
 
         lines.push("# HELP db_optimizer_tables_tracked Total tables tracked".to_string());
         lines.push("# TYPE db_optimizer_tables_tracked gauge".to_string());
@@ -89,6 +90,33 @@ pub async fn metrics(State(state): State<AppState>) -> ApiResult<String> {
         lines.push(format!(
             "db_optimizer_total_lock_events {}",
             summary.total_lock_events
+        ));
+
+        // eBPF kernel/user event processing
+        lines.push(
+            "# HELP db_optimizer_ebpf_events_processed_total eBPF events processed".to_string(),
+        );
+        lines.push("# TYPE db_optimizer_ebpf_events_processed_total counter".to_string());
+        lines.push(format!(
+            "db_optimizer_ebpf_events_processed_total {}",
+            ebpf_metrics.events_processed.get()
+        ));
+
+        lines.push("# HELP db_optimizer_ebpf_events_dropped_total eBPF events dropped".to_string());
+        lines.push("# TYPE db_optimizer_ebpf_events_dropped_total counter".to_string());
+        lines.push(format!(
+            "db_optimizer_ebpf_events_dropped_total {}",
+            ebpf_metrics.events_dropped_kernel.get() + ebpf_metrics.events_dropped_userspace.get()
+        ));
+
+        lines.push(
+            "# HELP db_optimizer_ebpf_perf_buffer_read_errors_total eBPF perf buffer read errors"
+                .to_string(),
+        );
+        lines.push("# TYPE db_optimizer_ebpf_perf_buffer_read_errors_total counter".to_string());
+        lines.push(format!(
+            "db_optimizer_ebpf_perf_buffer_read_errors_total {}",
+            ebpf_metrics.perf_buffer_read_errors.get()
         ));
     }
 
