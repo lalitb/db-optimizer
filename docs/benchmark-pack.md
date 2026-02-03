@@ -2,6 +2,19 @@
 
 A repeatable, automated benchmark suite for validating Vaanyze's index recommendation and safe apply capabilities.
 
+> ⚠️ **BENCHMARK-ONLY - NOT PART OF PRODUCT SAFETY MODEL**
+>
+> This benchmark harness runs DDL (CREATE/DROP INDEX) directly against a test database
+> to create controlled scenarios. This is intentional for testing purposes.
+>
+> **Important distinctions:**
+> - Benchmark scripts bypass Vaanyze's OperationGuard and safety controls
+> - They execute DDL directly via `psql`, not through Vaanyze API
+> - Results demonstrate what Vaanyze *can detect*, not what it *will execute*
+> - Production safety guarantees only apply when using Vaanyze HTTP API with proper mode
+>
+> **Never run these scripts against production databases.**
+
 ## Quick Start
 
 ```bash

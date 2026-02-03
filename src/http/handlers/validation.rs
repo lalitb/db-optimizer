@@ -87,6 +87,13 @@ pub struct ValidateResponse {
     pub create_index_sql: String,
     /// Plan diff summary
     pub diff_summary: Option<String>,
+    /// Proof mode used (candidate_index or explain_only)
+    pub proof_mode: String,
+    /// Proof strength (candidate_index_tested, explain_only_existing_indexes, no_proof)
+    pub proof_strength: String,
+    /// Guidance if proof is incomplete
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub guidance: Option<String>,
 }
 
 /// Request to apply a validated recommendation
@@ -173,6 +180,18 @@ pub async fn validate(
     // Generate recommendation ID
     let recommendation_id = uuid::Uuid::new_v4().to_string();
 
+    // STEP 1: Check OperationGuard FIRST - kill switch blocks everything
+    if state.operation_guard.is_kill_switch_active() {
+        // Kill switch - 403 Forbidden, no queries executed
+        {
+            let mut audit = state.audit_log.write().await;
+            audit.log_validation_skipped(&recommendation_id, "KILL_SWITCH_ACTIVE");
+        }
+        return Err(ApiError::Forbidden(
+            "Validation blocked: Kill switch is active. No queries will be executed.".to_string()
+        ));
+    }
+
     // Log validation started
     {
         let mut audit = state.audit_log.write().await;
@@ -181,19 +200,23 @@ pub async fn validate(
 
     let start = std::time::Instant::now();
 
-    // Create proof generator with custom settings if provided
+    // Create proof generator WITH operation guard for safety enforcement
     let min_improvement = req.min_improvement_pct.unwrap_or(5.0);
-    let generator = ProofGenerator::with_settings(
+    let generator = ProofGenerator::with_settings_and_guard(
         state.db_pool.clone(),
         min_improvement,
         std::time::Duration::from_secs(300), // 5 min timeout
+        state.operation_guard.clone(),
     );
 
     // Generate index names
     let candidate_index_name = generator.generate_candidate_index_name(&req.table_name, &req.columns);
     let production_index_name = generator.generate_production_index_name(&req.table_name, &req.columns);
 
-    // Run validation
+    // Run validation - behavior depends on guard state:
+    // - Destructive allowed: Full candidate index validation
+    // - Read-only: EXPLAIN-only mode (returns SKIPPED with guidance)
+    // - Kill switch: Already blocked above
     let result = generator
         .validate_index(
             &recommendation_id,
@@ -211,6 +234,18 @@ pub async fn validate(
 
     let response = match result {
         Ok(validation_result) => {
+            // Handle different proof modes/statuses
+            let is_explain_only = validation_result.proof_mode == crate::analyzer::validation::ProofMode::ExplainOnly;
+            
+            // Log appropriately based on result
+            if validation_result.reason_code.is_safety_blocked() || is_explain_only {
+                let mut audit = state.audit_log.write().await;
+                audit.log_validation_skipped(
+                    &recommendation_id,
+                    validation_result.reason_code.as_str(),
+                );
+            }
+
             let validated = validation_result.status == ValidationStatus::Validated;
             let diff_summary = validation_result.diff_summary.as_ref().map(|d| d.summary.clone());
             let cost_improvement_pct = validation_result.diff_summary.as_ref().map(|d| d.cost_improvement_pct);
@@ -257,17 +292,29 @@ pub async fn validate(
                 });
             }
 
+            // Determine state string based on mode and status
+            let state_str = if is_explain_only {
+                "EXPLAIN_ONLY"
+            } else if validated {
+                "VALIDATED"
+            } else {
+                "FAILED"
+            }.to_string();
+
             ValidateResponse {
                 recommendation_id,
-                state: if validated { "VALIDATED" } else { "FAILED" }.to_string(),
+                state: state_str,
                 validated,
-                reason: validation_result.reason_message,
+                reason: validation_result.reason_message.clone(),
                 cost_improvement_pct,
                 index_used,
                 candidate_index_name,
                 production_index_name,
                 create_index_sql: create_sql,
                 diff_summary,
+                proof_mode: validation_result.proof_mode.as_str().to_string(),
+                proof_strength: validation_result.proof_strength.as_str().to_string(),
+                guidance: validation_result.guidance.clone(),
             }
         }
         Err(e) => {
@@ -298,6 +345,9 @@ pub async fn validate(
                 production_index_name,
                 create_index_sql: String::new(),
                 diff_summary: None,
+                proof_mode: "none".to_string(),
+                proof_strength: "no_proof".to_string(),
+                guidance: Some("Validation failed with an error.".to_string()),
             }
         }
     };

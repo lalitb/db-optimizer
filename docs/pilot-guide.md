@@ -219,11 +219,13 @@ NEW → VALIDATED → APPLIED → VERIFYING → STABLE
    - Default: 30 minutes (configurable)
    - Monitors `idx_scan` counter
    - Monitors query latency if available
+   - **Note**: The pilot scripts poll the status endpoint during verification. Background auto-verification is not yet implemented in the HTTP server - use the pilot scripts for verification.
 
 4. **Automatic Rollback**
    - If idx_scan stays at 0: index not used, roll back
    - If latency regresses: roll back
    - Uses `DROP INDEX CONCURRENTLY`
+   - **Note**: Rollback is triggered by pilot scripts polling, not background server process.
 
 ### Manual Rollback
 

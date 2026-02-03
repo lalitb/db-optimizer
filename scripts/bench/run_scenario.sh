@@ -2,6 +2,15 @@
 #
 # Vaanyze Benchmark Pack - Run Single Scenario
 #
+# ⚠️  WARNING: LOCAL DEVELOPMENT ONLY
+# This script runs DDL (CREATE/DROP INDEX) directly against the database.
+# It bypasses Vaanyze safety controls and should ONLY be used for:
+#   - Local testing
+#   - CI environments with disposable databases
+#   - Benchmark validation before release
+#
+# DO NOT run this script against production or shared databases.
+#
 # Usage:
 #   ./run_scenario.sh <scenario-name>
 #   ./run_scenario.sh 01-missing-index-where
@@ -31,6 +40,18 @@ export PGPORT="${PGPORT:-5433}"
 export PGUSER="${PGUSER:-postgres}"
 export PGPASSWORD="${PGPASSWORD:-postgres}"
 export PGDATABASE="${PGDATABASE:-benchdb}"
+
+# Safety check - warn if running against non-local database
+if [[ "$PGHOST" != "localhost" && "$PGHOST" != "127.0.0.1" && "$PGHOST" != "::1" ]]; then
+    echo -e "${RED}⚠️  WARNING: PGHOST ($PGHOST) is not localhost!${NC}"
+    echo -e "${YELLOW}This script runs DDL directly and bypasses Vaanyze safety controls.${NC}"
+    echo -e "${YELLOW}Are you sure you want to continue? (yes/no)${NC}"
+    read -r response
+    if [[ "$response" != "yes" ]]; then
+        echo "Aborted."
+        exit 1
+    fi
+fi
 
 # Vaanyze API
 VAANYZE_URL="${VAANYZE_URL:-http://localhost:9090}"

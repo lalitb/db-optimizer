@@ -3,6 +3,53 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
+/// Proof mode determines how validation runs
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ProofMode {
+    /// Full validation with candidate index (CREATE/DROP INDEX)
+    /// - Creates temporary candidate index
+    /// - Runs EXPLAIN before and after
+    /// - Drops candidate index
+    /// - Provides strong proof of index usefulness
+    CandidateIndex,
+    
+    /// EXPLAIN-only validation (no DDL)
+    /// - Runs EXPLAIN on existing schema only
+    /// - Cannot prove proposed index would help
+    /// - Used when destructive operations are blocked
+    ExplainOnly,
+}
+
+impl ProofMode {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::CandidateIndex => "candidate_index",
+            Self::ExplainOnly => "explain_only",
+        }
+    }
+}
+
+/// Proof strength indicates how reliable the validation result is
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ProofStrength {
+    /// Strong proof - candidate index was created and tested
+    CandidateIndexTested,
+    /// Weak proof - only EXPLAIN on existing indexes, cannot prove proposed index helps
+    ExplainOnlyExistingIndexes,
+    /// No proof - validation could not run
+    NoProof,
+}
+
+impl ProofStrength {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::CandidateIndexTested => "candidate_index_tested",
+            Self::ExplainOnlyExistingIndexes => "explain_only_existing_indexes",
+            Self::NoProof => "no_proof",
+        }
+    }
+}
+
 /// Status of a validation attempt
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ValidationStatus {
@@ -44,6 +91,10 @@ pub enum ValidationReasonCode {
     Timeout,
     /// Query references non-existent table/column
     InvalidQuery,
+    /// Operation blocked by read-only mode
+    ReadOnlyMode,
+    /// Operation blocked by kill switch
+    KillSwitchActive,
     /// Other error occurred
     Error(String),
 }
@@ -58,12 +109,19 @@ impl ValidationReasonCode {
             Self::PermissionDenied => "PERMISSION_DENIED",
             Self::Timeout => "TIMEOUT",
             Self::InvalidQuery => "INVALID_QUERY",
+            Self::ReadOnlyMode => "READ_ONLY_MODE",
+            Self::KillSwitchActive => "KILL_SWITCH_ACTIVE",
             Self::Error(_) => "ERROR",
         }
     }
 
     pub fn is_success(&self) -> bool {
         matches!(self, Self::IndexUsed)
+    }
+
+    /// Returns true if this reason indicates the operation was blocked by safety controls
+    pub fn is_safety_blocked(&self) -> bool {
+        matches!(self, Self::ReadOnlyMode | Self::KillSwitchActive)
     }
 }
 
@@ -114,6 +172,26 @@ pub struct ValidationResult {
 
     /// Duration in milliseconds
     pub duration_ms: Option<i64>,
+
+    /// The proof mode used for this validation
+    #[serde(default = "default_proof_mode")]
+    pub proof_mode: ProofMode,
+
+    /// Strength of the proof provided
+    #[serde(default = "default_proof_strength")]
+    pub proof_strength: ProofStrength,
+
+    /// Guidance for user when proof is incomplete
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub guidance: Option<String>,
+}
+
+fn default_proof_mode() -> ProofMode {
+    ProofMode::CandidateIndex
+}
+
+fn default_proof_strength() -> ProofStrength {
+    ProofStrength::NoProof
 }
 
 impl ValidationResult {
@@ -135,6 +213,33 @@ impl ValidationResult {
             started_at: Utc::now(),
             completed_at: None,
             duration_ms: None,
+            proof_mode: ProofMode::CandidateIndex,
+            proof_strength: ProofStrength::NoProof,
+            guidance: None,
+        }
+    }
+
+    /// Create a pending result for explain-only mode
+    pub fn pending_explain_only(recommendation_id: String, query_text: String, index_name: String, table_name: String, columns: Vec<String>) -> Self {
+        Self {
+            recommendation_id,
+            query_id: None,
+            query_text,
+            index_name,
+            table_name,
+            columns,
+            status: ValidationStatus::Pending,
+            reason_code: ValidationReasonCode::Error("Not yet validated".to_string()),
+            reason_message: "Validation pending (EXPLAIN-only mode)".to_string(),
+            before_plan: None,
+            after_plan: None,
+            diff_summary: None,
+            started_at: Utc::now(),
+            completed_at: None,
+            duration_ms: None,
+            proof_mode: ProofMode::ExplainOnly,
+            proof_strength: ProofStrength::ExplainOnlyExistingIndexes,
+            guidance: None,
         }
     }
 
@@ -152,6 +257,9 @@ impl ValidationResult {
         self.diff_summary = Some(diff);
         self.completed_at = Some(Utc::now());
         self.duration_ms = Some((Utc::now() - self.started_at).num_milliseconds());
+        self.proof_mode = ProofMode::CandidateIndex;
+        self.proof_strength = ProofStrength::CandidateIndexTested;
+        self.guidance = None;
         self
     }
 
@@ -172,6 +280,22 @@ impl ValidationResult {
         self.reason_message = reason.to_string();
         self.completed_at = Some(Utc::now());
         self.duration_ms = Some((Utc::now() - self.started_at).num_milliseconds());
+        self
+    }
+
+    /// Mark as explain-only result (no DDL was performed)
+    pub fn explain_only(mut self, before_plan: ExplainPlan, guidance: String) -> Self {
+        self.status = ValidationStatus::Skipped;
+        self.reason_code = ValidationReasonCode::ReadOnlyMode;
+        self.reason_message = "Cannot prove index effectiveness without creating candidate index. EXPLAIN-only mode.".to_string();
+        self.before_plan = Some(before_plan);
+        self.after_plan = None;
+        self.diff_summary = None;
+        self.completed_at = Some(Utc::now());
+        self.duration_ms = Some((Utc::now() - self.started_at).num_milliseconds());
+        self.proof_mode = ProofMode::ExplainOnly;
+        self.proof_strength = ProofStrength::ExplainOnlyExistingIndexes;
+        self.guidance = Some(guidance);
         self
     }
 }

@@ -20,6 +20,9 @@ pub enum ApiError {
     /// Forbidden - action blocked by policy
     Forbidden(String),
 
+    /// Conflict - operation cannot proceed due to current state
+    Conflict(String),
+
     /// Internal server error
     Internal(String),
 
@@ -36,6 +39,7 @@ impl fmt::Display for ApiError {
             Self::NotFound(msg) => write!(f, "Not found: {}", msg),
             Self::BadRequest(msg) => write!(f, "Bad request: {}", msg),
             Self::Forbidden(msg) => write!(f, "Forbidden: {}", msg),
+            Self::Conflict(msg) => write!(f, "Conflict: {}", msg),
             Self::Internal(msg) => write!(f, "Internal error: {}", msg),
             Self::Database(msg) => write!(f, "Database error: {}", msg),
             Self::ServiceUnavailable(msg) => write!(f, "Service unavailable: {}", msg),
@@ -60,6 +64,7 @@ impl IntoResponse for ApiError {
             ApiError::NotFound(_) => (StatusCode::NOT_FOUND, "NOT_FOUND"),
             ApiError::BadRequest(_) => (StatusCode::BAD_REQUEST, "BAD_REQUEST"),
             ApiError::Forbidden(_) => (StatusCode::FORBIDDEN, "FORBIDDEN"),
+            ApiError::Conflict(_) => (StatusCode::CONFLICT, "CONFLICT"),
             ApiError::Internal(_) => (StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL_ERROR"),
             ApiError::Database(_) => (StatusCode::INTERNAL_SERVER_ERROR, "DATABASE_ERROR"),
             ApiError::ServiceUnavailable(_) => {

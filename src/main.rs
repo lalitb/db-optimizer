@@ -4,13 +4,15 @@ use colored::*;
 use sqlx::postgres::PgPoolOptions;
 use sqlx::Row;
 use std::path::PathBuf;
+use std::sync::Arc;
 use tokio::signal;
 use tokio::time::{interval, Duration};
 
 use pg_query_advisor::{
     agent::{AgentState, AnalysisResults},
     ai::{AiConfig, LlmProvider},
-    analyzer::HealthCalculator,
+    analyzer::{environment::detect_environment, HealthCalculator},
+    auto_apply::operation_guard::OperationGuard,
     query_rewriter::cli::{InputSource, OutputFormat as RewriterOutputFormat, RewriterCli},
     AnalysisConfig, AnalysisReport, AutoApplyConfig, AutoApplyOrchestrator, DatabaseCollector,
     OutputFormatter, PricingConfig, RecommendationEngine, RiskLevel, Severity, ThresholdConfig,
@@ -707,30 +709,66 @@ async fn run_analyze_mode(cli: AnalyzeOptions) -> Result<()> {
             );
         }
 
-        println!("{}", "━".repeat(70).bright_blue());
+        // ENFORCE: Check operation guard before any auto-apply
+        // Set up guard with environment detection
+        let guard = Arc::new(OperationGuard::with_settings("safe_auto", false));
+        
+        // Detect environment - handle errors by using conservative defaults
+        if let Ok(env_info) = detect_environment(&pool).await {
+            guard.set_environment(env_info).await;
+        } else {
+            // Environment detection failed - guard will block operations
+            tracing::warn!("Environment detection failed - defaulting to read-only");
+        }
+        
+        let check = guard.check_destructive_operation().await;
+        if !check.allowed {
+            println!(
+                "{}",
+                "   ⚠️  AUTO-APPLY BLOCKED".bright_red().bold()
+            );
+            let reason = check.block_reason
+                .map(|r| format!("{}", r))
+                .unwrap_or_else(|| "Operation not allowed".to_string());
+            println!(
+                "{}",
+                format!("   Reason: {}", reason).bright_red()
+            );
+            println!(
+                "{}",
+                "   Environment requires read-only mode.".bright_yellow()
+            );
+            println!(
+                "{}",
+                "   Use 'analyze' command without --auto-apply to view recommendations.".bright_yellow()
+            );
+            println!("{}", "━".repeat(70).bright_blue());
+        } else {
+            println!("{}", "━".repeat(70).bright_blue());
 
-        // Build auto-apply configuration
-        let config = AutoApplyConfig {
-            enabled: true,
-            dry_run: cli.dry_run,
-            min_savings_threshold: cli.min_savings,
-            max_risk_level: cli.max_risk.into(),
-            verification_duration_secs: cli.verification_duration,
-            min_improvement_threshold: cli.min_improvement,
-            auto_rollback_on_failure: cli.auto_rollback,
-            execution_timeout_secs: 600,
-            require_manual_approval: vec![], // Could be configurable
-            slack_webhook: cli.slack_webhook.clone(),
-        };
+            // Build auto-apply configuration
+            let config = AutoApplyConfig {
+                enabled: true,
+                dry_run: cli.dry_run,
+                min_savings_threshold: cli.min_savings,
+                max_risk_level: cli.max_risk.into(),
+                verification_duration_secs: cli.verification_duration,
+                min_improvement_threshold: cli.min_improvement,
+                auto_rollback_on_failure: cli.auto_rollback,
+                execution_timeout_secs: 600,
+                require_manual_approval: vec![], // Could be configurable
+                slack_webhook: cli.slack_webhook.clone(),
+            };
 
-        // Create orchestrator and process recommendations
-        let mut orchestrator = AutoApplyOrchestrator::new(pool.clone(), config);
-        let apply_results = orchestrator.process_all(&recommendations).await;
+            // Create orchestrator with guard and process recommendations
+            let mut orchestrator = AutoApplyOrchestrator::with_guard(pool.clone(), config, guard);
+            let apply_results = orchestrator.process_all(&recommendations).await;
 
-        // Display results
-        display_auto_apply_results(&apply_results);
+            // Display results
+            display_auto_apply_results(&apply_results);
 
-        println!("{}", "━".repeat(70).bright_blue());
+            println!("{}", "━".repeat(70).bright_blue());
+        }
     }
 
     // Create report
@@ -1157,38 +1195,57 @@ async fn run_analysis_cycle(
 
     // Auto-apply if enabled
     if opts.auto_apply {
-        let config = AutoApplyConfig {
-            enabled: true,
-            dry_run: opts.dry_run,
-            min_savings_threshold: opts.min_savings,
-            max_risk_level: opts.max_risk.clone().into(),
-            verification_duration_secs: opts.verification_duration,
-            min_improvement_threshold: opts.min_improvement,
-            auto_rollback_on_failure: opts.auto_rollback,
-            execution_timeout_secs: 600,
-            require_manual_approval: vec![],
-            slack_webhook: opts.slack_webhook.clone(),
-        };
+        // ENFORCE: Check operation guard before any auto-apply in agent mode
+        let guard = Arc::new(OperationGuard::with_settings("safe_auto", false));
+        
+        // Detect environment - handle errors by using conservative defaults
+        if let Ok(env_info) = detect_environment(&pool).await {
+            guard.set_environment(env_info).await;
+        } else {
+            tracing::warn!("Environment detection failed - defaulting to read-only");
+        }
+        
+        let check = guard.check_destructive_operation().await;
+        if !check.allowed {
+            tracing::warn!(
+                "Auto-apply blocked in agent mode: {:?}",
+                check.block_reason
+            );
+            results.skipped_count = recommendations.len();
+        } else {
+            let config = AutoApplyConfig {
+                enabled: true,
+                dry_run: opts.dry_run,
+                min_savings_threshold: opts.min_savings,
+                max_risk_level: opts.max_risk.clone().into(),
+                verification_duration_secs: opts.verification_duration,
+                min_improvement_threshold: opts.min_improvement,
+                auto_rollback_on_failure: opts.auto_rollback,
+                execution_timeout_secs: 600,
+                require_manual_approval: vec![],
+                slack_webhook: opts.slack_webhook.clone(),
+            };
 
-        let mut orchestrator = AutoApplyOrchestrator::new(pool.clone(), config);
-        let apply_results = orchestrator.process_all(&recommendations).await;
+            let mut orchestrator = AutoApplyOrchestrator::with_guard(pool.clone(), config, guard);
+            let apply_results = orchestrator.process_all(&recommendations).await;
 
-        // Track results
-        for result in &apply_results {
-            use pg_query_advisor::ApplyStatus;
+            // Track results
+            for result in &apply_results {
+                use pg_query_advisor::ApplyStatus;
 
-            match result.status {
-                ApplyStatus::Success => {
-                    results.applied_count += 1;
-                    state.mark_applied(result.recommendation_id.clone());
+                match result.status {
+                    ApplyStatus::Success => {
+                        results.applied_count += 1;
+                        state.mark_applied(result.recommendation_id.clone());
+                    }
+                    ApplyStatus::Failed | ApplyStatus::RolledBack => {
+                        results.failed_count += 1;
+                    }
+                    ApplyStatus::Skipped | ApplyStatus::PendingApproval => {
+                        results.skipped_count += 1;
+                    }
+                    _ => {}
                 }
-                ApplyStatus::Failed | ApplyStatus::RolledBack => {
-                    results.failed_count += 1;
-                }
-                ApplyStatus::Skipped | ApplyStatus::PendingApproval => {
-                    results.skipped_count += 1;
-                }
-                _ => {}
             }
         }
     } else {

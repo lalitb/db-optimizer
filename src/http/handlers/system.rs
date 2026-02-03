@@ -8,7 +8,8 @@
 
 use crate::analyzer::environment::{detect_environment, EnvironmentInfo};
 use crate::auto_apply::recovery::{
-    cleanup_orphaned_candidates, check_invalid_indexes, list_vaanyze_indexes, VaanyzeIndex,
+    cleanup_orphaned_candidates_guarded, check_invalid_indexes, list_vaanyze_indexes, 
+    RecoveryAction, VaanyzeIndex,
 };
 use crate::auto_apply::OperationGuard;
 use crate::http::{
@@ -208,33 +209,93 @@ pub struct RecoveryResponse {
     pub orphaned_candidates_cleaned: Vec<String>,
     pub invalid_indexes_found: Vec<String>,
     pub message: String,
+    /// Whether recovery was blocked due to read-only mode
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub blocked_reason: Option<String>,
+    /// Whether this is a report-only response (no cleanup performed)
+    #[serde(default)]
+    pub report_only: bool,
 }
 
 /// POST /api/v1/system/recover - Clean up orphaned indexes and check consistency
 pub async fn recover(
     State(state): State<Arc<SystemHandlerState>>,
 ) -> ApiResult<Json<ApiResponse<RecoveryResponse>>> {
-    // Check kill switch
-    if state.kill_switch.load(Ordering::SeqCst) {
-        return Err(ApiError::BadRequest(
-            "Kill switch is active - recovery disabled".to_string(),
-        ));
+    use crate::auto_apply::recovery::find_orphaned_candidates;
+    
+    // STEP 1: Check kill switch - blocks everything with 403
+    if let Some(guard) = &state.operation_guard {
+        if guard.is_kill_switch_active() {
+            return Err(ApiError::Forbidden(
+                "Recovery blocked: Kill switch is active. No cleanup operations will be executed.".to_string()
+            ));
+        }
     }
 
-    // Check read-only
-    if state.read_only.load(Ordering::SeqCst) {
-        return Err(ApiError::BadRequest(
-            "System is in read-only mode - recovery disabled".to_string(),
-        ));
-    }
+    // STEP 2: Check OperationGuard for read-only mode
+    let destructive_allowed = if let Some(guard) = &state.operation_guard {
+        guard.check_destructive_operation().await.allowed
+    } else {
+        // No guard = allow (backward compat)
+        true
+    };
 
-    let cleaned = cleanup_orphaned_candidates(&state.db_pool).await.map_err(|e| {
-        ApiError::Internal(format!("Failed to cleanup candidates: {}", e))
+    // Get list of orphaned candidates (read-only operation)
+    let orphaned = find_orphaned_candidates(&state.db_pool).await.map_err(|e| {
+        ApiError::Internal(format!("Failed to find orphaned candidates: {}", e))
     })?;
 
     let invalid = check_invalid_indexes(&state.db_pool).await.map_err(|e| {
         ApiError::Internal(format!("Failed to check invalid indexes: {}", e))
     })?;
+
+    // STEP 3: If read-only, return report-only response
+    if !destructive_allowed {
+        let message = if orphaned.is_empty() && invalid.is_empty() {
+            "Report-only mode (read-only active). No orphaned or invalid indexes found.".to_string()
+        } else {
+            format!(
+                "Report-only mode (read-only active). Found {} orphaned candidate(s) and {} invalid index(es). \
+                Manual cleanup required: DROP INDEX CONCURRENTLY <name>",
+                orphaned.len(),
+                invalid.len()
+            )
+        };
+
+        return Ok(Json(ApiResponse::ok(RecoveryResponse {
+            orphaned_candidates_cleaned: vec![],
+            invalid_indexes_found: invalid,
+            message,
+            blocked_reason: Some("ReadOnly".to_string()),
+            report_only: true,
+        })));
+    }
+
+    // STEP 4: Destructive allowed - perform cleanup using guarded function
+    let (cleaned, blocked_action) = cleanup_orphaned_candidates_guarded(
+        &state.db_pool, 
+        state.operation_guard.as_ref()
+    ).await.map_err(|e| {
+        ApiError::Internal(format!("Failed to cleanup candidates: {}", e))
+    })?;
+
+    // This shouldn't happen since we already checked, but handle it
+    if let Some(RecoveryAction::BlockedReadOnly { indexes_found }) = blocked_action {
+        let message = format!(
+            "Recovery unexpectedly blocked. Found {} orphaned candidate(s) and {} invalid index(es). \
+            Manual cleanup required: DROP INDEX CONCURRENTLY <name>",
+            indexes_found.len(),
+            invalid.len()
+        );
+
+        return Ok(Json(ApiResponse::ok(RecoveryResponse {
+            orphaned_candidates_cleaned: vec![],
+            invalid_indexes_found: invalid,
+            message,
+            blocked_reason: Some("ReadOnly".to_string()),
+            report_only: true,
+        })));
+    }
 
     let message = match (cleaned.len(), invalid.len()) {
         (0, 0) => "No orphaned or invalid indexes found".to_string(),
@@ -250,6 +311,8 @@ pub async fn recover(
         orphaned_candidates_cleaned: cleaned,
         invalid_indexes_found: invalid,
         message,
+        blocked_reason: None,
+        report_only: false,
     })))
 }
 

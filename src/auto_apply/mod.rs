@@ -18,6 +18,7 @@ use anyhow::Result;
 use chrono::Utc;
 use sqlx::PgPool;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use baseline::BaselineCollector;
 use executor::Executor;
@@ -43,6 +44,33 @@ impl AutoApplyOrchestrator {
         let safety_filter = SafetyFilter::new(config.clone());
         let baseline_collector = BaselineCollector::new(pool.clone());
         let executor = Executor::new(pool.clone(), config.clone());
+        let verifier = Verifier::new(pool.clone(), config.clone());
+        let notifier = config
+            .slack_webhook
+            .as_ref()
+            .map(|webhook| Notifier::new(webhook.clone()));
+
+        let event_store_path = PathBuf::from(".vaanyze/events.json");
+        let event_store = EventStore::load(&event_store_path).unwrap_or_else(|_| EventStore::new());
+
+        Self {
+            pool,
+            config,
+            safety_filter,
+            baseline_collector,
+            executor,
+            verifier,
+            notifier,
+            event_store,
+            event_store_path,
+        }
+    }
+
+    /// Create orchestrator with operation guard for safety enforcement
+    pub fn with_guard(pool: PgPool, config: AutoApplyConfig, guard: Arc<OperationGuard>) -> Self {
+        let safety_filter = SafetyFilter::new(config.clone());
+        let baseline_collector = BaselineCollector::new(pool.clone());
+        let executor = Executor::with_guard(pool.clone(), config.clone(), guard);
         let verifier = Verifier::new(pool.clone(), config.clone());
         let notifier = config
             .slack_webhook

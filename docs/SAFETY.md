@@ -108,14 +108,23 @@ Response includes:
 
 - Collects statistics
 - Generates recommendations
-- Runs EXPLAIN validation
-- **Never creates or drops indexes**
+- Runs EXPLAIN-only validation (no candidate index created)
+- **Does not create or drop indexes** (enforced by OperationGuard)
+- Validation returns `EXPLAIN_ONLY` status with `proof_strength: explain_only_existing_indexes`
+- Cannot prove proposed index will be used (no DDL allowed)
 
 This is the safest mode and recommended for initial deployment.
 
+**Important:** In observe_only mode:
+- `/index/validate` runs EXPLAIN on existing schema only
+- No candidate indexes are created - you cannot prove a proposed index will help
+- To get full proof, enable `safe_auto` mode
+
 ### safe_auto
 
-- All of `observe_only` plus:
+- All analysis from `observe_only` plus:
+- **Full validation with candidate indexes** (CREATE INDEX CONCURRENTLY to test, then DROP)
+- Returns `proof_strength: candidate_index_tested` when index helps
 - **Only applies validated recommendations** (EXPLAIN proof passed)
 - Uses `CREATE INDEX CONCURRENTLY` (no table locks)
 - Enters verification window after apply
@@ -126,6 +135,17 @@ This is the safest mode and recommended for initial deployment.
 - More relaxed thresholds
 - Shorter verification windows
 - Not recommended for production without extensive testing
+
+## Mode vs Allowed Actions
+
+| Action | observe_only | safe_auto | aggressive |
+|--------|--------------|-----------|------------|
+| EXPLAIN queries | ✅ | ✅ | ✅ |
+| Validation (explain-only) | ✅ | ✅ | ✅ |
+| Candidate index proof | ❌ | ✅ | ✅ |
+| Apply recommendations | ❌ | ✅ | ✅ |
+| Rollback indexes | ❌ | ✅ | ✅ |
+| Recovery cleanup | ❌ (report-only) | ✅ | ✅ |
 
 ## State Machine
 

@@ -20,6 +20,7 @@ pub enum AuditEventType {
     ValidationStarted,
     ValidationSucceeded,
     ValidationFailed,
+    ValidationSkipped,
 
     // Apply events
     ApplyStarted,
@@ -44,6 +45,7 @@ pub enum AuditEventType {
     // System events
     ConfigChanged,
     SystemError,
+    OperationBlocked,
 }
 
 impl AuditEventType {
@@ -52,6 +54,7 @@ impl AuditEventType {
             Self::ValidationStarted => "VALIDATION_STARTED",
             Self::ValidationSucceeded => "VALIDATION_SUCCEEDED",
             Self::ValidationFailed => "VALIDATION_FAILED",
+            Self::ValidationSkipped => "VALIDATION_SKIPPED",
             Self::ApplyStarted => "APPLY_STARTED",
             Self::ApplySucceeded => "APPLY_SUCCEEDED",
             Self::ApplyFailed => "APPLY_FAILED",
@@ -66,6 +69,7 @@ impl AuditEventType {
             Self::ManualRollback => "MANUAL_ROLLBACK",
             Self::ConfigChanged => "CONFIG_CHANGED",
             Self::SystemError => "SYSTEM_ERROR",
+            Self::OperationBlocked => "OPERATION_BLOCKED",
         }
     }
 
@@ -275,6 +279,23 @@ impl AuditLog {
         .with_duration(duration_ms)
         .with_metadata(serde_json::json!({
             "failure_reason": reason
+        }));
+        self.log(event);
+    }
+
+    /// Log a validation skipped event (due to read-only mode or kill switch)
+    pub fn log_validation_skipped(
+        &mut self,
+        recommendation_id: &str,
+        reason: &str,
+    ) {
+        let event = AuditEvent::new(
+            AuditEventType::ValidationSkipped,
+            format!("Validation skipped: {}", reason),
+        )
+        .with_recommendation(recommendation_id)
+        .with_metadata(serde_json::json!({
+            "skip_reason": reason
         }));
         self.log(event);
     }
